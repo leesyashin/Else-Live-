@@ -16,6 +16,7 @@ import { loginHandlers, renderLogin, setLoginCallback } from './views/login.js';
 import { profileHandlers, profileView, resetPushCheck } from './views/profile.js';
 import { requestsHandlers, requestsView } from './views/requests.js';
 import { stockHandlers, stockView } from './views/stock.js';
+import { router } from './lib/router.js';
 
 const ROUTES = {
   '': { view: dashboardView, title: 'Übersicht' },
@@ -26,7 +27,7 @@ const ROUTES = {
 };
 
 function parseRoute() {
-  const [name = '', id = null] = location.hash.replace(/^#\/?/, '').split(/[/?]/);
+  const [name = '', id = null] = router.current().replace(/^#\/?/, '').split(/[/?]/);
   return ROUTES[name] ? { name, id } : { name: '', id: null };
 }
 
@@ -145,7 +146,7 @@ setUnauthorizedHandler(() => {
 
 setLoginCallback(() => {
   startSession();
-  if (location.hash.includes('code=')) history.replaceState(null, '', '#/');
+  if (router.current().includes('code=')) router.replace('#/');
   render();
 });
 
@@ -168,13 +169,13 @@ async function logout() {
 function handleDeepLink() {
   const route = parseRoute();
   if (store.state && route.name === 'joints' && route.id) {
-    history.replaceState(null, '', '#/joints');
+    router.replace('#/joints');
     closeAllSheets();
     openJointDetail(route.id);
   }
 }
 
-window.addEventListener('hashchange', () => {
+router.onChange(() => {
   handleDeepLink();
   render();
 });

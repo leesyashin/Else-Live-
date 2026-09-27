@@ -2,6 +2,7 @@
 
 import { html } from './lib/html.js';
 import { icon } from './lib/icons.js';
+import { router } from './lib/router.js';
 
 // ---------------------------------------------------------------------------
 // Event-Delegation: <button data-click="name">, <input data-input="name"> …
@@ -185,7 +186,7 @@ export function toast({ title, body, tone = 'info', url, timeout = 5000 }) {
     setTimeout(() => el.remove(), 280);
   };
   el.addEventListener('click', () => {
-    if (url) location.href = url;
+    if (url) router.open(url);
     dismiss();
   });
   box.prepend(el);

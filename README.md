@@ -29,6 +29,8 @@ Dann <http://localhost:3000> öffnen. Die erste Person richtet die Gruppe ohne C
 
 Tests: `npm test`
 
+**Vorschau ohne Server:** `npm run build:demo` baut `dist/else-live-preview.html`, eine einzelne Datei mit derselben Oberfläche und Logik, aber mit Beispieldaten im Browser und simulierten Mitgliedern (zum Herzeigen, nicht für den echten Betrieb).
+
 ## Konfiguration
 
 Alles optional, per Umgebungsvariable:

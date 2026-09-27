@@ -2,6 +2,7 @@
 
 import { request } from './api.js';
 import { store } from './store.js';
+import { router } from './lib/router.js';
 
 export const pushSupported = () =>
   'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext;
@@ -16,10 +17,7 @@ export function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   navigator.serviceWorker.register('/sw.js').catch((err) => console.warn('Service Worker:', err));
   navigator.serviceWorker.addEventListener('message', (event) => {
-    if (event.data?.type === 'navigate' && event.data.url) {
-      const url = new URL(event.data.url);
-      if (url.origin === location.origin) location.hash = url.hash || '#/';
-    }
+    if (event.data?.type === 'navigate' && event.data.url) router.open(event.data.url);
   });
 }
 

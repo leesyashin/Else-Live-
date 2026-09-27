@@ -9,6 +9,7 @@ import { icon } from '../lib/icons.js';
 import { setState, setToken, store } from '../store.js';
 import { busy } from '../ui.js';
 import { colorPicker, emojiPicker, pickerHandlers } from '../sheets/profile.js';
+import { router } from '../lib/router.js';
 
 const L = {
   step: 'code',
@@ -33,7 +34,7 @@ function go(step, patch = {}) {
 }
 
 function codeFromLink() {
-  const match = location.hash.match(/code=([A-Za-z0-9-]+)/);
+  const match = router.current().match(/code=([A-Za-z0-9-]+)/);
   return match ? match[1].toUpperCase() : '';
 }
 

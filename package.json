@@ -8,7 +8,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test \"test/*.test.js\""
+    "test": "node --test \"test/*.test.js\"",
+    "build:demo": "node scripts/build-demo.mjs"
   },
   "engines": {
     "node": ">=22"
@@ -16,5 +17,8 @@
   "dependencies": {
     "express": "^5.2.1",
     "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   }
 }

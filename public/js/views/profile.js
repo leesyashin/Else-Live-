@@ -50,6 +50,8 @@ function pushCard() {
       <button type="button" class="btn btn--primary" data-click="push-enable">${icon('bell', { size: 18 })} Push aktivieren</button>`;
   } else if (status === 'denied') {
     main = html`<div class="hint-box">${icon('bell-off')}<div>Benachrichtigungen sind für diese Seite blockiert. Erlaube sie in den Browser- bzw. Systemeinstellungen und lade neu.</div></div>`;
+  } else if (status === 'demo') {
+    main = html`<div class="hint-box">${icon('info')}<div>In der Vorschau gibt es keine echten Push-Nachrichten. Was sonst aufs Handy käme, erscheint oben als Einblendung.</div></div>`;
   } else if (status === 'ios-install') {
     main = html`<div class="hint-box">${icon('smartphone')}<div><strong>iPhone/iPad:</strong> Tippe in Safari auf „Teilen“ → „Zum Home-Bildschirm“ und öffne Else Live dann über das neue App-Symbol. Dort kannst du Push aktivieren (ab iOS 16.4).</div></div>`;
   } else {

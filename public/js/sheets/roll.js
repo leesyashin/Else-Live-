@@ -9,6 +9,7 @@ import { icon } from '../lib/icons.js';
 import { activeStrains, prefs, requestById, settings, strain } from '../store.js';
 import { busy, openSheet, toast } from '../ui.js';
 import { openStrainForm } from './strain.js';
+import { router } from '../lib/router.js';
 
 const STEP = 0.05;
 const MAX_ROWS = 4;
@@ -308,8 +309,9 @@ export function openRollSheet({ requestId = null } = {}) {
             body: `${fmtG(joint.grams)} vom Bestand abgezogen${st.notify ? ' – die Gruppe weiß Bescheid.' : '.'}`,
             tone: 'success',
           });
-          if (!location.hash || location.hash === '#/' || location.hash === '#') window.scrollTo({ top: 0, behavior: 'smooth' });
-          else location.hash = '#/';
+          const here = router.current();
+          if (!here || here === '#/' || here === '#') window.scrollTo({ top: 0, behavior: 'smooth' });
+          else router.go('#/');
         });
       },
     },
