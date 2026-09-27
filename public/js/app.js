@@ -43,7 +43,7 @@ const LIVE_LABELS = { live: 'Live', connecting: 'Verbinde …', offline: 'Offlin
 function topbar() {
   return html`
     <a class="brand" href="#/" aria-label="Else Live – Übersicht">
-      <span class="brand__mark">${icon('leaf', { size: 19 })}</span>
+      <span class="brand__mark">${icon('cannabis', { size: 20 })}</span>
       <span class="brand__name">Else Live</span>
     </a>
     <span class="live-pill" data-status="${store.connection}" title="Verbindungsstatus">
@@ -63,9 +63,9 @@ function nav(route) {
     </a>`;
   return html`
     ${item('', '#/', 'house', 'Übersicht')}
-    ${item('bestand', '#/bestand', 'leaf', 'Bestand')}
+    ${item('bestand', '#/bestand', 'jar', 'Bestand')}
     <button type="button" class="nav__fab" data-click="open-roll" aria-label="Joint gerollt eintragen">${icon('plus', { size: 28 })}</button>
-    ${item('joints', '#/joints', 'cigarette', 'Joints', active)}
+    ${item('joints', '#/joints', 'joint', 'Joints', active)}
     ${item('anfragen', '#/anfragen', 'hand-heart', 'Anfragen', incoming)}`;
 }
 
@@ -124,7 +124,9 @@ root.addEventListener('focusout', () => {
 function startSession() {
   connectLive({
     onNotes(notes) {
-      for (const note of notes) toast({ title: note.title, body: note.body, url: note.url });
+      for (const note of notes) {
+        toast({ title: note.title, body: note.body, url: note.url, tone: note.tag?.startsWith('stock-') ? 'stock' : 'info' });
+      }
     },
   });
   syncSubscription();

@@ -6,7 +6,7 @@ import * as D from '../../../src/domain.js';
 import { setConnection, setState, setToken, store } from '../store.js';
 import { seedDemo } from './seed.js';
 
-const STORAGE_KEY = 'else-live.demo.v1';
+const STORAGE_KEY = 'else-live.demo.v2';
 const MAX_AGE = 12 * 60 * 60 * 1000;
 
 export class ApiError extends Error {

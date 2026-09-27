@@ -5,7 +5,14 @@
 // ctx.notify() eingesammelt und vom Server nach dem Speichern verschickt.
 // Dadurch lässt sich die Logik ohne Server testen (test/domain.test.js).
 
-import { DEFAULT_SETTINGS, STRAIN_TYPES, MEMBER_COLORS, MEMBER_EMOJIS } from './defaults.js';
+import {
+  AUTO_FINISH_HOURS,
+  DEFAULT_SETTINGS,
+  MEMBER_COLORS,
+  MEMBER_EMOJIS,
+  STRAIN_EFFECTS,
+  STRAIN_TYPES,
+} from './defaults.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -201,7 +208,12 @@ function memberFields(db, input, selfId) {
   }
   if (input.notify !== undefined) {
     const n = input.notify || {};
-    out.notify = { joints: n.joints !== false, requests: n.requests !== false, rotation: n.rotation !== false };
+    out.notify = {
+      joints: n.joints !== false,
+      requests: n.requests !== false,
+      rotation: n.rotation !== false,
+      stock: n.stock !== false,
+    };
   }
   return out;
 }
@@ -221,7 +233,7 @@ export function createMember(db, input) {
     id: uid(),
     ...fields,
     pinHash: input.pinHash || null,
-    notify: { joints: true, requests: true, rotation: true },
+    notify: { joints: true, requests: true, rotation: true, stock: true },
     createdAt: nowIso(),
   };
   db.members.push(member);
@@ -249,6 +261,15 @@ function strainFields(db, input, partial) {
   if (has('thc')) out.thc = percent(input.thc, 'THC-Gehalt');
   if (has('cbd')) out.cbd = percent(input.cbd, 'CBD-Gehalt');
   if (has('producer')) out.producer = text(input.producer, { label: 'Hersteller / Apotheke', max: 60 });
+  if (has('pricePerGram')) {
+    const price = parseNumber(input.pricePerGram);
+    if (price !== null && (!Number.isFinite(price) || price < 0 || price > 1000)) fail(400, 'Preis pro Gramm muss zwischen 0 und 1000 € liegen.');
+    out.pricePerGram = price === null ? null : Math.round(price * 100) / 100;
+  }
+  if (has('effects')) {
+    const list = Array.isArray(input.effects) ? input.effects : [];
+    out.effects = STRAIN_EFFECTS.filter((e) => list.includes(e));
+  }
   if (has('notes')) out.notes = text(input.notes, { label: 'Notiz', max: 500 });
   if (has('ownerId')) {
     const id = input.ownerId || null;
@@ -256,6 +277,24 @@ function strainFields(db, input, partial) {
     out.ownerId = id;
   }
   return out;
+}
+
+/**
+ * Fällt eine Sorte unter die Warnschwelle (oder auf 0), bekommt die Person,
+ * der sie gehört, Bescheid – ohne Besitzer:in die ganze Gruppe.
+ */
+function warnIfLow(ctx, strain, before) {
+  const { db } = ctx;
+  const threshold = db.settings.lowStockGrams ?? 2;
+  const empty = strain.grams <= EPSILON;
+  const crossed = empty ? before > EPSILON : before > threshold && strain.grams <= threshold;
+  if (!crossed) return;
+  ctx.notify(strain.ownerId ? [strain.ownerId] : allMemberIds(db), 'stock', {
+    title: empty ? `📦 ${strain.name} ist leer` : `⚠️ ${strain.name} wird knapp`,
+    body: empty ? 'Zeit zum Nachfüllen.' : `Nur noch ${fmtGrams(strain.grams)} im Bestand.`,
+    url: '/#/bestand',
+    tag: `stock-${strain.id}`,
+  });
 }
 
 export function createStrain(ctx, input) {
@@ -304,6 +343,7 @@ export function changeStock(ctx, id, { action, grams: value, note } = {}) {
     strain.grams = amount;
     if (amount > strain.refillLevel) strain.refillLevel = amount;
     logStock(db, strain, delta, 'correction', actor.id, { note: noteText });
+    warnIfLow(ctx, strain, amount - delta);
     addActivity(db, 'strain_corrected', actor.id, { strainId: strain.id, strainName: strain.name, grams: delta });
   } else {
     fail(400, 'Unbekannte Bestandsaktion.');
@@ -387,9 +427,11 @@ export function createJoint(ctx, input = {}) {
 
   for (const c of components) {
     const strain = strainById(db, c.strainId);
+    const before = strain.grams;
     strain.grams = roundG(Math.max(0, strain.grams - c.grams));
     strain.updatedAt = now;
     logStock(db, strain, -c.grams, 'joint', actor.id, { jointId: joint.id });
+    warnIfLow(ctx, strain, before);
   }
 
   if (request) {
@@ -538,6 +580,20 @@ export function finishJoint(ctx, id) {
   joint.doneAt = nowIso();
   addActivity(db, 'joint_done', actor.id, { jointId: joint.id });
   return joint;
+}
+
+/** Joints, die seit Stunden „brennen“, gelten als aufgeraucht. Gibt die Anzahl zurück. */
+export function autoFinishJoints(db, now = Date.now(), hours = AUTO_FINISH_HOURS) {
+  let count = 0;
+  for (const joint of db.joints) {
+    if (joint.status !== 'lit' || now - Date.parse(joint.litAt) < hours * 3600 * 1000) continue;
+    joint.status = 'done';
+    joint.turn = null;
+    joint.doneAt = new Date(now).toISOString();
+    addActivity(db, 'joint_auto_done', null, { jointId: joint.id });
+    count += 1;
+  }
+  return count;
 }
 
 /** Löscht einen (falsch erfassten) Joint und bucht die Menge zurück in den Bestand. */

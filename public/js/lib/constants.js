@@ -1,14 +1,25 @@
 // Auswahllisten fürs Profil (gleich wie in src/defaults.js auf dem Server).
 
 export const MEMBER_COLORS = [
-  '#34d399', '#22d3ee', '#818cf8', '#c084fc',
-  '#f472b6', '#fb923c', '#facc15', '#a3e635',
+  '#86d45f', '#4fb38a', '#b6cf5e', '#e3a73d',
+  '#e07b5a', '#e59ab5', '#6fa8c7', '#c7b89a',
 ];
 
 export const MEMBER_EMOJIS = [
   '🌿', '🍃', '🌱', '🌵', '🍀', '🌸', '🌻', '🍄',
   '🔥', '✨', '🌙', '☀️', '🌊', '🦊', '🐸', '🐢',
   '🦉', '🐙', '🦋', '🐝', '🎧', '🎸', '🎮', '🛸',
+];
+
+export const STRAIN_EFFECTS = [
+  'Entspannend',
+  'Aktivierend',
+  'Schmerzlindernd',
+  'Schlaffördernd',
+  'Appetitanregend',
+  'Stimmungsaufhellend',
+  'Fokus',
+  'Kreativ',
 ];
 
 /** Schnellauswahl für Joint-Mengen in Gramm (frei eingeben geht immer). */

@@ -137,6 +137,14 @@ export async function createApp({ dataDir, groupCode, vapid = {}, log = console 
     res.json({ result, state: stateFor(req.member) });
   };
 
+  // Vergessene, noch „brennende“ Joints regelmäßig abschließen.
+  const sweep = () => {
+    if (domain.autoFinishJoints(db)) commit([]);
+  };
+  sweep();
+  const sweeper = setInterval(sweep, 5 * 60 * 1000);
+  sweeper.unref();
+
   // -------------------------------------------------------------------------
   // App & Middleware
 
@@ -349,6 +357,7 @@ export async function createApp({ dataDir, groupCode, vapid = {}, log = console 
   });
 
   async function close() {
+    clearInterval(sweeper);
     for (const res of clients.keys()) res.end();
     clients.clear();
     await store.flush();

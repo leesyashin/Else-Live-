@@ -4,7 +4,7 @@
 import { act } from '../api.js';
 import { emptyState, nameOf } from '../components.js';
 import { JOINT_QUICK_GRAMS, pressed } from '../lib/constants.js';
-import { fmtG, fmtNum, fmtPct, html, inputNum, parseNum, thcMg } from '../lib/html.js';
+import { fmtEur, fmtG, fmtNum, fmtPct, html, inputNum, parseNum, thcMg } from '../lib/html.js';
 import { icon } from '../lib/icons.js';
 import { activeStrains, prefs, requestById, settings, strain } from '../store.js';
 import { busy, openSheet, toast } from '../ui.js';
@@ -50,6 +50,7 @@ export function openRollSheet({ requestId = null } = {}) {
     const used = usage();
     let grams = 0;
     let mg = 0;
+    let cost = null;
     let ok = st.rows.length > 0;
     for (const row of st.rows) {
       const g = parseNum(row.gramsText);
@@ -60,13 +61,19 @@ export function openRollSheet({ requestId = null } = {}) {
       }
       grams += g;
       mg += thcMg(g, s.thc);
+      if (s.pricePerGram != null) cost = (cost ?? 0) + g * s.pricePerGram;
     }
     for (const [id, g] of used) {
       const s = strain(id);
       if (s && g > s.grams + 0.0005) ok = false;
     }
-    return { grams, mg, ok };
+    return { grams, mg, cost, ok };
   }
+
+  const summaryText = (sum) =>
+    [sum.mg > 0 ? `≈ ${fmtNum(Math.round(sum.mg))} mg THC` : 'THC unbekannt', sum.cost != null ? `≈ ${fmtEur(sum.cost)}` : null]
+      .filter(Boolean)
+      .join(' · ');
 
   function afterText(row) {
     const s = strain(row.strainId);
@@ -141,7 +148,7 @@ export function openRollSheet({ requestId = null } = {}) {
           </div>` : ''}
         <form id="roll-form" data-submit="submit" novalidate>
           <section class="sheet-section">
-            <h3 class="sheet-section__title">${icon('leaf')} Sorte & Menge</h3>
+            <h3 class="sheet-section__title">${icon('cannabis')} Sorte & Menge</h3>
             ${st.rows.map(rowHtml)}
             ${st.rows.length < MAX_ROWS ? html`
               <button type="button" class="btn btn--ghost btn--sm" data-click="add-row" style="align-self:flex-start">
@@ -150,15 +157,15 @@ export function openRollSheet({ requestId = null } = {}) {
           </section>
 
           <section class="sheet-section">
-            <h3 class="sheet-section__title">${icon('wind')} Tabak</h3>
+            <h3 class="sheet-section__title">${icon('leaf')} Tabak</h3>
             <div class="chip-select">
-              ${chip('tobacco', '', 'Pur – ohne Tabak', st.tobacco === null)}
+              ${chip('tobacco', '', 'Pur, ohne Tabak', st.tobacco === null)}
               ${tobaccos.map((t) => chip('tobacco', t, t, st.tobacco === t))}
             </div>
           </section>
 
           <section class="sheet-section">
-            <h3 class="sheet-section__title">${icon('shield-check')} Filter</h3>
+            <h3 class="sheet-section__title">${icon('carbon-filter')} Filter</h3>
             <label class="switch-row">
               <span class="switch-row__text">
                 <span class="strong" style="display:block">Aktivkohlefilter</span>
@@ -195,10 +202,10 @@ export function openRollSheet({ requestId = null } = {}) {
       foot: html`
         <div class="grow">
           <div class="strong num" data-summary="grams" style="font-size:18px">${fmtG(sum.grams)}</div>
-          <div class="tiny faint" data-summary="thc">${sum.mg > 0 ? `≈ ${fmtNum(Math.round(sum.mg))} mg THC` : 'THC unbekannt'}</div>
+          <div class="tiny faint" data-summary="thc">${summaryText(sum)}</div>
         </div>
         <button type="submit" form="roll-form" class="btn btn--primary" data-submit-btn ${sum.ok ? '' : 'disabled'}>
-          ${icon('check')} Joint gerollt
+          ${icon('joint')} Joint eintragen
         </button>`,
     };
   }
@@ -219,7 +226,7 @@ export function openRollSheet({ requestId = null } = {}) {
     const thc = root.querySelector('[data-summary="thc"]');
     const submit = root.querySelector('[data-submit-btn]');
     if (grams) grams.textContent = fmtG(sum.grams);
-    if (thc) thc.textContent = sum.mg > 0 ? `≈ ${fmtNum(Math.round(sum.mg))} mg THC` : 'THC unbekannt';
+    if (thc) thc.textContent = summaryText(sum);
     if (submit) submit.disabled = !sum.ok;
   }
 
@@ -306,8 +313,16 @@ export function openRollSheet({ requestId = null } = {}) {
           sheet.close();
           toast({
             title: 'Joint eingetragen 🌿',
-            body: `${fmtG(joint.grams)} vom Bestand abgezogen${st.notify ? ' – die Gruppe weiß Bescheid.' : '.'}`,
+            body: `${fmtG(joint.grams)} vom Bestand abgezogen${st.notify ? ', die Gruppe weiß Bescheid.' : '.'}`,
             tone: 'success',
+            timeout: 8000,
+            action: {
+              label: 'Rückgängig',
+              async onClick() {
+                await act('DELETE', `/api/joints/${joint.id}`);
+                toast({ title: 'Rückgängig gemacht', body: 'Die Menge ist wieder im Bestand.' });
+              },
+            },
           });
           const here = router.current();
           if (!here || here === '#/' || here === '#') window.scrollTo({ top: 0, behavior: 'smooth' });

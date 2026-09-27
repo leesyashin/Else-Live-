@@ -1,9 +1,9 @@
 // Sorten: anlegen/bearbeiten, Detailansicht mit Verlauf, Nachfüllen/Korrigieren.
 
 import { act } from '../api.js';
-import { TYPE_LABELS, avatar, levelStatus, nameOf, stockMeter } from '../components.js';
-import { pressed } from '../lib/constants.js';
-import { dayLabel, fmtG, fmtNum, fmtPct, fmtTime, html, inputNum, parseNum, thcMg } from '../lib/html.js';
+import { TYPE_LABELS, avatar, effectTags, levelStatus, nameOf, stockMeter } from '../components.js';
+import { STRAIN_EFFECTS, pressed } from '../lib/constants.js';
+import { dayLabel, fmtEur, fmtG, fmtNum, fmtPct, fmtTime, html, inputNum, parseNum, thcMg } from '../lib/html.js';
 import { icon } from '../lib/icons.js';
 import { me, member, members, store, strain } from '../store.js';
 import { busy, confirmDialog, openSheet, toast } from '../ui.js';
@@ -11,7 +11,7 @@ import { busy, confirmDialog, openSheet, toast } from '../ui.js';
 const valueOr = (v) => (v === null || v === undefined ? '' : inputNum(v));
 
 export function openStrainForm(existing = null) {
-  const st = { type: existing?.type ?? null };
+  const st = { type: existing?.type ?? null, effects: new Set(existing?.effects ?? []) };
 
   const sheet = openSheet({
     render: () => ({
@@ -62,10 +62,28 @@ export function openStrainForm(existing = null) {
               </span>
             </label>`}
 
-          <label class="field">
-            <span class="field__label">Hersteller / Apotheke <span class="faint">optional</span></span>
-            <input class="input" name="producer" maxlength="60" autocomplete="off" value="${existing?.producer ?? ''}" />
-          </label>
+          <div class="field">
+            <span class="field__label">Wirkung <span class="faint">optional, mehrere möglich</span></span>
+            <div class="chip-select" role="group" aria-label="Wirkung">
+              ${STRAIN_EFFECTS.map(
+                (e) => html`<button type="button" class="chip-option" data-click="effect" data-value="${e}" aria-pressed="${pressed(st.effects.has(e))}">${e}</button>`,
+              )}
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <label class="field">
+              <span class="field__label">Hersteller / Apotheke</span>
+              <input class="input" name="producer" maxlength="60" autocomplete="off" placeholder="optional" value="${existing?.producer ?? ''}" />
+            </label>
+            <label class="field">
+              <span class="field__label">Preis pro Gramm</span>
+              <span class="input-suffix">
+                <input class="input" name="pricePerGram" inputmode="decimal" autocomplete="off" placeholder="optional" value="${valueOr(existing?.pricePerGram)}" />
+                <span class="input-suffix__text">€</span>
+              </span>
+            </label>
+          </div>
 
           <label class="field">
             <span class="field__label">Gehört zu</span>
@@ -92,6 +110,12 @@ export function openStrainForm(existing = null) {
         st.type = el.dataset.value || null;
         sheet.el.querySelectorAll('[data-click="type"]').forEach((b) => b.setAttribute('aria-pressed', pressed(b === el)));
       },
+      effect(el) {
+        const e = el.dataset.value;
+        if (st.effects.has(e)) st.effects.delete(e);
+        else st.effects.add(e);
+        el.setAttribute('aria-pressed', pressed(st.effects.has(e)));
+      },
       async save(form) {
         const data = Object.fromEntries(new FormData(form));
         const payload = {
@@ -100,6 +124,8 @@ export function openStrainForm(existing = null) {
           thc: data.thc,
           cbd: data.cbd,
           producer: data.producer,
+          pricePerGram: data.pricePerGram,
+          effects: [...st.effects],
           ownerId: data.ownerId || null,
           notes: data.notes,
         };
@@ -160,8 +186,12 @@ export function openStrainDetail(id) {
                 <span class="grow">${s.refillLevel > 0 ? `${fmtNum(Math.round((s.grams / s.refillLevel) * 100))} % von ${fmtG(s.refillLevel)} (letzte Füllung)` : 'Noch nichts eingetragen'}</span>
                 ${levelStatus(s)}
               </div>
-              ${mg > 0 ? html`<div class="small faint">≈ ${fmtNum(Math.round(mg))} mg THC im Bestand</div>` : ''}
+              <div class="small faint">${[
+                mg > 0 ? `≈ ${fmtNum(Math.round(mg))} mg THC im Bestand` : null,
+                s.pricePerGram != null ? `${fmtEur(s.pricePerGram)}/g · Wert ${fmtEur(s.grams * s.pricePerGram)}` : null,
+              ].filter(Boolean).join(' · ')}</div>
             </div>
+            ${effectTags(s, { limit: 8 })}
             ${owner ? html`<div class="row small">${avatar(owner, { size: 'sm' })}<span>${owner.id === me().id ? html`Gehört <strong>dir</strong>` : html`Gehört zu <strong>${owner.name}</strong>`}</span></div>` : ''}
             ${s.notes ? html`<div class="bubble">${s.notes}</div>` : ''}
             ${s.archived ? html`<div class="hint-box">${icon('archive')}<div>Diese Sorte ist archiviert. Nachfüllen holt sie zurück in den Bestand.</div></div>` : ''}

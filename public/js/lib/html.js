@@ -44,6 +44,9 @@ export const fmtG = (n) => `${nf2.format(n ?? 0)} g`;
 export const fmtPct = (n) => (n === null || n === undefined ? '–' : `${nf1.format(n)} %`);
 export const fmtInt = (n) => nf0.format(n ?? 0);
 
+const eur = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+export const fmtEur = (n) => eur.format(n ?? 0);
+
 /** Menge THC in mg: Gramm × THC-% × 10. */
 export const thcMg = (grams, thc) => (thc ? grams * thc * 10 : 0);
 

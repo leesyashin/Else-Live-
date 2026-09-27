@@ -106,6 +106,23 @@ export function jointThcMg(j) {
 
 export const jointStrainNames = (j) => j.components.map((c) => strain(c.strainId)?.name ?? 'Unbekannt').join(' + ');
 
+/** Kosten eines Joints in Euro – null, wenn für keine Sorte ein Preis hinterlegt ist. */
+export function jointCost(j) {
+  let known = false;
+  let sum = 0;
+  for (const c of j.components) {
+    const price = strain(c.strainId)?.pricePerGram;
+    if (price == null) continue;
+    known = true;
+    sum += c.grams * price;
+  }
+  return known ? sum : null;
+}
+
+/** Wert des aktuellen Bestands (nur Sorten mit Preis). */
+export const stockValue = () =>
+  activeStrains().reduce((sum, s) => (s.pricePerGram == null ? sum : sum + s.grams * s.pricePerGram), 0);
+
 export const requestsNewest = () => [...(S()?.requests ?? [])].sort(newestFirst);
 
 const isOpen = (r) => r.status === 'open' || r.status === 'accepted';

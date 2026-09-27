@@ -50,7 +50,7 @@ const css = (
 const script = bundle.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 
 const page = `<title>Else Live</title>
-<meta name="theme-color" content="#060a09" />
+<meta name="theme-color" content="#070e09" />
 <style>
 ${css}
 </style>

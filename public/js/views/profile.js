@@ -62,21 +62,22 @@ function pushCard() {
 
   return html`
     <section class="card glass stack">
-      <div class="row"><h2 class="strong grow">${icon('bell', { size: 18, className: 'inline' })} Benachrichtigungen</h2></div>
+      <div class="row"><h2 class="card-title grow">${icon('bell', { size: 18 })} Benachrichtigungen</h2></div>
       ${main}
       <div class="stack" style="gap:8px">
         ${switchRow('joints', 'Neue Joints', 'Wenn jemand einen Joint gerollt hat', m.notify?.joints !== false)}
         ${switchRow('requests', 'Anfragen', 'Wenn dich jemand bittet zu rollen – und Antworten auf deine Anfragen', m.notify?.requests !== false)}
         ${switchRow('rotation', 'Rotation', '„Du bist dran“, angezündet, neue Plätze bei deinen Joints', m.notify?.rotation !== false)}
+        ${switchRow('stock', 'Bestand', 'Wenn eine deiner Sorten knapp oder leer wird', m.notify?.stock !== false)}
       </div>
     </section>`;
 }
 
-function listEditor(key, title, hint, items) {
+function listEditor(key, iconName, title, hint, items) {
   return html`
     <div class="stack" style="gap:10px">
       <div>
-        <div class="strong">${title}</div>
+        <div class="strong">${icon(iconName, { size: 16, className: 'inline' })} ${title}</div>
         <div class="tiny faint">${hint}</div>
       </div>
       <div class="tag-list">
@@ -130,7 +131,7 @@ export function profileView() {
 
       <section class="card glass stack">
         <div class="row">
-          <h2 class="strong grow">${icon('users', { size: 18, className: 'inline' })} ${s.groupName}</h2>
+          <h2 class="card-title grow">${icon('users', { size: 18 })} ${s.groupName}</h2>
           <button type="button" class="btn btn--ghost btn--sm" data-click="edit-group">${icon('pencil', { size: 15 })} Name</button>
         </div>
         <div class="stack" style="gap:8px">
@@ -153,9 +154,9 @@ export function profileView() {
       </section>
 
       <section class="card glass stack stack--lg">
-        <h2 class="strong">${icon('settings', { size: 18, className: 'inline' })} Listen & Regeln</h2>
-        ${listEditor('tobaccos', 'Tabak', 'Auswahl beim Joint-Eintrag („Pur“ gibt es immer)', s.tobaccos ?? [])}
-        ${listEditor('filters', 'Aktivkohlefilter', 'Marken/Größen, die ihr benutzt', s.filters ?? [])}
+        <h2 class="card-title">${icon('settings', { size: 18 })} Listen & Regeln</h2>
+        ${listEditor('tobaccos', 'leaf', 'Tabak', 'Auswahl beim Joint-Eintrag („Pur“ gibt es immer)', s.tobaccos ?? [])}
+        ${listEditor('filters', 'carbon-filter', 'Aktivkohlefilter', 'Marken/Größen, die ihr benutzt', s.filters ?? [])}
         ${stepperRow('rotation-size', 'Plätze in der Rotation', 'Platz 1 hat immer, wer gerollt hat', s.rotationSize)}
         ${stepperRow('low-stock', 'Warnschwelle Bestand', 'Ab hier gilt eine Sorte als „wird knapp“', fmtG(s.lowStockGrams))}
       </section>

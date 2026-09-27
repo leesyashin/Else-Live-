@@ -21,16 +21,16 @@ export function seedDemo() {
   db.settings.inviteCode = 'ELSE24';
   db.settings.groupName = 'Else Live';
 
-  const vincent = D.createMember(db, { name: 'Vincent', emoji: '🦊', color: '#34d399' });
-  const lisa = D.createMember(db, { name: 'Lisa', emoji: '🌸', color: '#f472b6' });
-  const jonas = D.createMember(db, { name: 'Jonas', emoji: '🎧', color: '#818cf8' });
-  const mia = D.createMember(db, { name: 'Mia', emoji: '🌙', color: '#22d3ee' });
+  const vincent = D.createMember(db, { name: 'Vincent', emoji: '🦊', color: '#86d45f' });
+  const lisa = D.createMember(db, { name: 'Lisa', emoji: '🌸', color: '#e59ab5' });
+  const jonas = D.createMember(db, { name: 'Jonas', emoji: '🎧', color: '#6fa8c7' });
+  const mia = D.createMember(db, { name: 'Mia', emoji: '🌙', color: '#e3a73d' });
   const as = (m) => D.createContext(db, m);
 
-  const amnesia = D.createStrain(as(vincent), { name: 'Amnesia Haze', type: 'sativa', thc: 22, cbd: 0.5, grams: 10, producer: 'Aurora' });
-  const pedanios = D.createStrain(as(lisa), { name: 'Pedanios 22/1', type: 'indica', thc: 22, cbd: 1, grams: 5, producer: 'Apotheke am Markt' });
-  const gelato = D.createStrain(as(jonas), { name: 'Gelato', type: 'hybrid', thc: 25.5, cbd: 0.1, grams: 2.5 });
-  const pinkKush = D.createStrain(as(mia), { name: 'Pink Kush', type: 'indica', thc: 20, cbd: 0.3, grams: 5, producer: 'Bedrocan', notes: 'Eher für abends, sehr entspannend.' });
+  const amnesia = D.createStrain(as(vincent), { name: 'Amnesia Haze', type: 'sativa', thc: 22, cbd: 0.5, grams: 10, producer: 'Aurora', pricePerGram: 8.9, effects: ['Aktivierend', 'Stimmungsaufhellend', 'Kreativ'] });
+  const pedanios = D.createStrain(as(lisa), { name: 'Pedanios 22/1', type: 'indica', thc: 22, cbd: 1, grams: 5, producer: 'Apotheke am Markt', pricePerGram: 9.5, effects: ['Entspannend', 'Schmerzlindernd'] });
+  const gelato = D.createStrain(as(jonas), { name: 'Gelato', type: 'hybrid', thc: 25.5, cbd: 0.1, grams: 2.5, pricePerGram: 10.5, effects: ['Entspannend', 'Appetitanregend'] });
+  const pinkKush = D.createStrain(as(mia), { name: 'Pink Kush', type: 'indica', thc: 20, cbd: 0.3, grams: 5, producer: 'Bedrocan', pricePerGram: 7.9, effects: ['Schlaffördernd', 'Entspannend', 'Schmerzlindernd'], notes: 'Eher für abends.' });
 
   // Wann etwas passiert ist: id → Zeitpunkt
   const times = new Map();

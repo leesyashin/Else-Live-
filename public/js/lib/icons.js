@@ -1,11 +1,12 @@
-// Icons aus Lucide (https://lucide.dev, ISC-Lizenz), als SVG-Innenleben eingebettet.
-// Aufruf: icon("leaf") → <svg>…</svg>
+// Icons: Lucide (https://lucide.dev, ISC-Lizenz) plus eigene Cannabis-Icons im
+// gleichen Stil (24er-Raster, 2px Strich). Aufruf: icon("joint") → <svg>…</svg>
 
 import { raw } from "./html.js";
 
-const PATHS = {
+const LUCIDE = {
   "house": "<path d=\"M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8\" /><path d=\"M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\" />",
   "leaf": "<path d=\"M11 20a10 10 0 0010-10 25.9 25.9 0 00-1.04-7.281 1 1 0 00-1.755-.325C15.833 5.5 13 5.5 9.8 6.1A7 7 0 0011 20\" /><path d=\"M2 21a5 5 0 012.911-4.544C7.613 15.212 8.351 15.24 11 13\" />",
+  "cannabis": "<path d=\"M12 22v-4\" /><path d=\"M7 12c-1.5 0-4.5 1.5-5 3 3.5 1.5 6 1 6 1-1.5 1.5-2 3.5-2 5 2.5 0 4.5-1.5 6-3 1.5 1.5 3.5 3 6 3 0-1.5-.5-3.5-2-5 0 0 2.5.5 6-1-.5-1.5-3.5-3-5-3 1.5-1 4-4 4-6-2.5 0-5.5 1.5-7 3 0-2.5-.5-5-2-7-1.5 2-2 4.5-2 7-1.5-1.5-4.5-3-7-3 0 2 2.5 5 4 6\" />",
   "cigarette": "<path d=\"M17 12H3a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h14\" /><path d=\"M18 8c0-2.5-2-2.5-2-5\" /><path d=\"M21 16a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1\" /><path d=\"M22 8c0-2.5-2-2.5-2-5\" /><path d=\"M7 12v4\" />",
   "flame": "<path d=\"M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4\" />",
   "send": "<path d=\"M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z\" /><path d=\"m21.854 2.147-10.94 10.939\" />",
@@ -50,10 +51,29 @@ const PATHS = {
   "skip-forward": "<path d=\"M21 4v16\" /><path d=\"M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z\" />",
   "wind": "<path d=\"M12.8 19.6A2 2 0 1 0 14 16H2\" /><path d=\"M17.5 8a2.5 2.5 0 1 1 2 4H2\" /><path d=\"M9.8 4.4A2 2 0 1 1 11 8H2\" />",
   "droplet": "<path d=\"M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z\" />",
+  "chart-column": "<path d=\"M3 3v16a2 2 0 0 0 2 2h16\" /><path d=\"M18 17V9\" /><path d=\"M13 17V5\" /><path d=\"M8 17v-3\" />",
+  "trophy": "<path d=\"M10 14.66V17a1 1 0 0 1-1 1 2 2 0 0 0-2 2v2\" /><path d=\"M14 14.66V17a1 1 0 0 0 1 1 2 2 0 0 1 2 2v2\" /><path d=\"M17.916 10H19.5A2.5 2.5 0 0 0 22 7.5V5a1 1 0 0 0-1-1h-3\" /><path d=\"M4 22h16\" /><path d=\"M6 9a6 6 0 0 0 12 0V3a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1z\" /><path d=\"M6.084 10H4.5A2.5 2.5 0 0 1 2 7.5V5a1 1 0 0 1 1-1h3\" />",
+  "euro": "<path d=\"M4 10h12\" /><path d=\"M4 14h9\" /><path d=\"M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2\" />",
+  "wallet": "<path d=\"M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1\" /><path d=\"M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4\" />",
+  "arrow-up-down": "<path d=\"m21 16-4 4-4-4\" /><path d=\"M17 20V4\" /><path d=\"m3 8 4-4 4 4\" /><path d=\"M7 4v16\" />",
+  "calendar-days": "<path d=\"M8 2v3\" /><path d=\"M16 2v3\" /><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\" /><path d=\"M3 9h18\" /><path d=\"M8 13h.01\" /><path d=\"M12 13h.01\" /><path d=\"M16 13h.01\" /><path d=\"M8 17h.01\" /><path d=\"M12 17h.01\" /><path d=\"M16 17h.01\" />",
+  "timer": "<line x1=\"10\" x2=\"14\" y1=\"2\" y2=\"2\" /><line x1=\"12\" x2=\"15\" y1=\"14\" y2=\"11\" /><circle cx=\"12\" cy=\"14\" r=\"8\" />",
+  "heart-pulse": "<path d=\"M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5\" /><path d=\"M3.22 13H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27\" />",
+};
+
+const CUSTOM = {
+  // Gerollter Joint (Kegelform) mit Filter-Tip und Rauch
+  joint: "<path d=\"M5.5 20.5 3.5 18.5 13 6c2-1 4.2-1.6 6-1 .6 1.8 0 4-1 6Z\" /><path d=\"m5.3 16.7 2 2\" /><path d=\"M20.5 2.5c.7.7.7 1.6 0 2.3\" /><path d=\"M22 5.5c.5.5.5 1.2 0 1.7\" />",
+  // Aktivkohlefilter: Röhrchen mit Keramik-Kappen und Kohle-Körnern
+  "carbon-filter": "<rect x=\"2.5\" y=\"8\" width=\"19\" height=\"8\" rx=\"4\" /><path d=\"M7 8v8\" /><path d=\"M17 8v8\" /><path d=\"M10 12h.01\" /><path d=\"M12 12h.01\" /><path d=\"M14 12h.01\" />",
+  // Vorratsglas
+  jar: "<path d=\"M8 2h8v3H8z\" /><path d=\"M7 5h10a1 1 0 0 1 1 1v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1Z\" /><path d=\"M12 10.5c-1.6 1.2-2 3.3-1.1 5.2 1.9-.3 3.1-1.7 3.1-3.6\" />",
+  // Feuerzeug
+  lighter: "<rect x=\"7\" y=\"10\" width=\"10\" height=\"12\" rx=\"2\" /><path d=\"M9 10V7h4l2 3\" /><path d=\"M11.5 2c1.2 1 1.6 2.4.5 3.5\" />",
 };
 
 export function icon(name, { size = 20, className = "" } = {}) {
-  const body = PATHS[name] ?? "";
+  const body = CUSTOM[name] ?? LUCIDE[name] ?? "";
   return raw(
     `<svg class="icon ${className}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`,
   );

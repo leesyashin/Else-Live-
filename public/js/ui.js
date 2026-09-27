@@ -168,9 +168,10 @@ export function confirmDialog({ title, message, confirmLabel = 'OK', danger = fa
 // ---------------------------------------------------------------------------
 // Toasts
 
-const TONE_ICONS = { info: 'bell', success: 'circle-check', error: 'triangle-alert' };
+const TONE_ICONS = { info: 'bell', success: 'circle-check', error: 'triangle-alert', stock: 'jar' };
 
-export function toast({ title, body, tone = 'info', url, timeout = 5000 }) {
+/** action: { label, onClick } – z. B. „Rückgängig“. */
+export function toast({ title, body, tone = 'info', url, action, timeout = 5000 }) {
   const box = document.getElementById('toasts');
   const el = document.createElement('div');
   el.className = `toast toast--${tone}`;
@@ -179,14 +180,21 @@ export function toast({ title, body, tone = 'info', url, timeout = 5000 }) {
     <div class="grow">
       <div class="toast__title">${title}</div>
       ${body ? html`<div class="toast__body">${body}</div>` : ''}
-    </div>`;
+    </div>
+    ${action ? html`<button type="button" class="toast__action" data-toast-action>${action.label}</button>` : ''}`;
   const dismiss = () => {
     if (el.classList.contains('is-leaving')) return;
     el.classList.add('is-leaving');
     setTimeout(() => el.remove(), 280);
   };
-  el.addEventListener('click', () => {
-    if (url) router.open(url);
+  el.addEventListener('click', (event) => {
+    if (event.target.closest('[data-toast-action]')) {
+      Promise.resolve()
+        .then(() => action.onClick())
+        .catch(showError);
+    } else if (url) {
+      router.open(url);
+    }
     dismiss();
   });
   box.prepend(el);

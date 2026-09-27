@@ -14,9 +14,25 @@ export const DEFAULT_SETTINGS = {
 
 export const STRAIN_TYPES = ['sativa', 'indica', 'hybrid'];
 
+// Wirkungen, die sich einer Sorte zuordnen lassen (Mehrfachauswahl).
+export const STRAIN_EFFECTS = [
+  'Entspannend',
+  'Aktivierend',
+  'Schmerzlindernd',
+  'Schlaffördernd',
+  'Appetitanregend',
+  'Stimmungsaufhellend',
+  'Fokus',
+  'Kreativ',
+];
+
+// Brennt ein Joint länger als das, gilt er automatisch als aufgeraucht.
+export const AUTO_FINISH_HOURS = 3;
+
+// Natürliche, erdige Töne – passend zum grünen Look.
 export const MEMBER_COLORS = [
-  '#34d399', '#22d3ee', '#818cf8', '#c084fc',
-  '#f472b6', '#fb923c', '#facc15', '#a3e635',
+  '#86d45f', '#4fb38a', '#b6cf5e', '#e3a73d',
+  '#e07b5a', '#e59ab5', '#6fa8c7', '#c7b89a',
 ];
 
 export const MEMBER_EMOJIS = [

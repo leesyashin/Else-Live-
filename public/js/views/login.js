@@ -127,7 +127,7 @@ export function renderLogin() {
   root().innerHTML = html`
     <main class="login">
       <div class="login__card glass">
-        <div class="login__logo">${icon('leaf', { size: 36 })}</div>
+        <div class="login__logo">${icon('cannabis', { size: 40 })}</div>
         <h1 class="login__title">Else Live</h1>
         <p class="login__sub">${store.meta?.setup ? 'Willkommen! Lass uns eure Gruppe einrichten.' : 'Eure gemeinsame Übersicht – live.'}</p>
         ${steps[L.step]()}

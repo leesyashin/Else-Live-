@@ -210,3 +210,45 @@ describe('Einstellungen & Mitglieder', () => {
     assert.equal(state.me.hasPin, true);
   });
 });
+
+describe('Preis, Wirkung, Warnungen', () => {
+  it('speichert Preis pro Gramm und nur bekannte Wirkungen', () => {
+    const { as, vincent } = setup();
+    const s = D.createStrain(as(vincent), {
+      name: 'Pink Kush',
+      grams: 5,
+      pricePerGram: '9,49',
+      effects: ['Entspannend', 'Schlaffördernd', 'Quatsch'],
+    });
+    assert.equal(s.pricePerGram, 9.49);
+    assert.deepEqual(s.effects, ['Entspannend', 'Schlaffördernd']);
+    assert.throws(() => D.updateStrain(as(vincent), s.id, { pricePerGram: -1 }), /Preis/);
+  });
+
+  it('warnt die Besitzer:in, wenn eine Sorte knapp oder leer wird', () => {
+    const { db, vincent, lisa, gelato } = setup(); // Gelato gehört Lisa, 2,5 g, Schwelle 2 g
+    const first = D.createContext(db, vincent);
+    D.createJoint(first, { components: [{ strainId: gelato.id, grams: 0.3 }] });
+    assert.equal(first.notifications.filter((n) => n.pref === 'stock').length, 0, '2,2 g ist noch nicht knapp');
+
+    const second = D.createContext(db, vincent);
+    D.createJoint(second, { components: [{ strainId: gelato.id, grams: 0.4 }] });
+    const warn = second.notifications.find((n) => n.pref === 'stock');
+    assert.deepEqual(warn.to, [lisa.id]);
+    assert.match(warn.title, /wird knapp/);
+
+    const third = D.createContext(db, vincent);
+    D.createJoint(third, { components: [{ strainId: gelato.id, grams: 1.8 }] });
+    assert.match(third.notifications.find((n) => n.pref === 'stock').title, /leer/);
+  });
+
+  it('beendet vergessene Joints automatisch', () => {
+    const { db, as, vincent, amnesia } = setup();
+    const j = D.createJoint(as(vincent), { components: [{ strainId: amnesia.id, grams: 0.5 }] });
+    D.lightJoint(as(vincent), j.id);
+    assert.equal(D.autoFinishJoints(db, Date.now() + 60 * 60 * 1000), 0);
+    assert.equal(D.autoFinishJoints(db, Date.now() + 4 * 60 * 60 * 1000), 1);
+    assert.equal(j.status, 'done');
+    assert.equal(db.activity.at(-1).type, 'joint_auto_done');
+  });
+});

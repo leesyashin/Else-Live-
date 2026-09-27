@@ -8,12 +8,13 @@ Eure gemeinsame, private Übersicht über medizinisches Cannabis in der Gruppe �
 
 | Bereich | Was geht |
 | --- | --- |
-| **Bestand** | Sorten mit Name, Typ (Sativa/Indica/Hybrid), THC-%, CBD-%, Menge, Hersteller/Apotheke, Besitzer:in und Notiz. Füllstandsbalken, Warnung „wird knapp“, Nachfüllen, Korrigieren, Archiv, Verlauf jeder Buchung. |
-| **Joint gerollt** | Sorte(n) und Menge frei wählbar (Schnellwahl 0,2 – 1 g, Stepper, beliebige Eingabe mit Komma), Mischungen aus mehreren Sorten, Tabak (oder „pur“), Aktivkohlefilter ja/nein + Marke, Notiz. Der Bestand wird automatisch abgezogen, geschätzte THC-Menge in mg wird angezeigt. |
-| **Rotation** | Wer rollt, ist #1. Alle anderen sichern sich Platz #2 bis #5 (einstellbar bis 12). „Anzünden“ → „Weitergeben“: Die nächste Person bekommt „Du bist dran!“. |
+| **Bestand** | Sorten mit Name, Typ (Sativa/Indica/Hybrid), THC-%, CBD-%, Menge, Wirkung (z. B. entspannend, schmerzlindernd), Preis pro Gramm, Hersteller/Apotheke, Besitzer:in und Notiz. Füllstandsbalken, Warnung „wird knapp“, Bestandswert, Sortieren nach Menge/Name/THC, Nachfüllen, Korrigieren, Archiv, Verlauf jeder Buchung. |
+| **Joint gerollt** | Sorte(n) und Menge frei wählbar (Schnellwahl 0,2 – 1 g, Stepper, beliebige Eingabe mit Komma), Mischungen aus mehreren Sorten, Tabak (oder „pur“), Aktivkohlefilter ja/nein + Marke, Notiz. Der Bestand wird automatisch abgezogen, geschätzte THC-Menge (mg) und Kosten werden angezeigt. Direkt danach lässt sich der Eintrag mit „Rückgängig“ zurücknehmen. |
+| **Rotation** | Wer rollt, ist #1. Alle anderen sichern sich Platz #2 bis #5 (einstellbar bis 12). „Anzünden“ → „Weitergeben“: Die nächste Person bekommt „Du bist dran!“. Joints, die nach 3 Stunden noch „brennen“, werden automatisch beendet. |
 | **Anfragen** | Eine Person (oder alle) bitten, mal wieder einen zu rollen – optional mit Wunschsorte und -menge. Annehmen, ablehnen, zurückziehen, oder direkt „Jetzt rollen“: Der Joint wird mit der Anfrage verknüpft und die anfragende Person bekommt automatisch Platz #2. |
-| **Push** | Web-Push bei neuen Joints, Anfragen, Rotation und „Du bist dran“. Pro Person einzeln abschaltbar. Zusätzlich live In-App-Hinweise für alle, die die App gerade offen haben. |
-| **Übersicht** | Gesamtbestand, Joints heute/7 Tage, offene Anfragen, aktive Joints, Verbrauchsdiagramm der letzten 7 Tage, knappe Sorten, Aktivitäts-Feed, wer gerade online ist. |
+| **Push** | Web-Push bei neuen Joints, Anfragen, Rotation, „Du bist dran“ und wenn eine eigene Sorte knapp oder leer wird. Pro Person einzeln abschaltbar. Zusätzlich live In-App-Hinweise für alle, die die App gerade offen haben. |
+| **Übersicht** | Gesamtbestand mit allen Sorten auf einen Blick, „Du bist dran!“-Hinweis, Joints heute/7 Tage, offene Anfragen, aktive Joints, Verbrauchsdiagramm der letzten 7 Tage, Aktivitäts-Feed, wer gerade online ist. |
+| **Statistik** | Für 7 Tage, 30 Tage oder alles: Anzahl, Gramm, Ø pro Joint, THC, Kosten, wer am meisten rollt, meistgerauchte Sorten, Anteil mit Tabak/Aktivkohlefilter, beliebteste Marken, typische Uhrzeit. |
 | **Gruppe** | Beitritt per Gruppencode oder Einladungslink, Profile mit Emoji, Farbe und optionaler PIN. Tabak- und Filterlisten in der App bearbeitbar. |
 
 ## Schnellstart

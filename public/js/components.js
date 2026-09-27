@@ -1,9 +1,10 @@
 // Wiederverwendbare Darstellungen: Avatare, Karten für Joints, Sorten und Anfragen.
 
-import { fmtG, fmtNum, fmtPct, html, relTime } from './lib/html.js';
+import { fmtEur, fmtG, fmtNum, fmtPct, html, relTime } from './lib/html.js';
 import { icon } from './lib/icons.js';
 import {
   isOnline,
+  jointCost,
   jointStrainNames,
   jointThcMg,
   me,
@@ -17,25 +18,15 @@ export const TYPE_LABELS = { sativa: 'Sativa', indica: 'Indica', hybrid: 'Hybrid
 
 export function avatar(m, { size = '', online } = {}) {
   const cls = size ? `avatar avatar--${size}` : 'avatar';
-  if (!m) return html`<span class="${cls}" style="--c:#6b7280" aria-hidden="true">?</span>`;
+  if (!m) return html`<span class="${cls}" style="--c:#7d8a78" aria-hidden="true">?</span>`;
   const on = online ?? isOnline(m.id);
   return html`<span class="${cls}" style="--c:${m.color}" data-online="${on}" aria-hidden="true">${m.emoji}</span>`;
 }
 
 export const nameOf = (id) => (id === me()?.id ? 'Du' : member(id)?.name ?? 'Jemand');
+const isMe = (id) => id === me()?.id;
 
-export function typeBadge(type) {
-  if (!type) return '';
-  return html`<span class="badge"><span class="type-dot" data-type="${type}"></span>${TYPE_LABELS[type]}</span>`;
-}
-
-export function thcBadges(s) {
-  return html`
-    ${s.thc !== null && s.thc !== undefined ? html`<span class="badge">THC ${fmtPct(s.thc)}</span>` : ''}
-    ${s.cbd !== null && s.cbd !== undefined ? html`<span class="badge">CBD ${fmtPct(s.cbd)}</span>` : ''}`;
-}
-
-export function emptyState({ iconName = 'leaf', title, text, action }) {
+export function emptyState({ iconName = 'cannabis', title, text, action }) {
   return html`
     <div class="card glass empty">
       <div class="empty__icon">${icon(iconName, { size: 26 })}</div>
@@ -43,6 +34,31 @@ export function emptyState({ iconName = 'leaf', title, text, action }) {
       ${text ? html`<p class="empty__text">${text}</p>` : ''}
       ${action ?? ''}
     </div>`;
+}
+
+/** Kleine Zeile mit Icons und Trennpunkten: [["leaf", "Pueblo"], …] */
+export function metaLine(items, { className = '' } = {}) {
+  const parts = items.filter(Boolean);
+  if (!parts.length) return '';
+  return html`
+    <div class="meta-line ${className}">
+      ${parts.map(([ic, text]) => html`<span class="meta-line__item">${icon(ic, { size: 15 })}<span>${text}</span></span>`)}
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Sorte
+
+/** Cannabis-Blatt in der Farbe des Typs. */
+export function strainMark(s, { size = 'md' } = {}) {
+  return html`<span class="strain-mark strain-mark--${size}" data-type="${s?.type ?? ''}" aria-hidden="true">${icon('cannabis', { size: size === 'sm' ? 16 : 22 })}</span>`;
+}
+
+export function strainFacts(s) {
+  const bits = [s.type ? TYPE_LABELS[s.type] : null];
+  if (s.thc != null) bits.push(`THC ${fmtPct(s.thc)}`);
+  if (s.cbd != null) bits.push(`CBD ${fmtPct(s.cbd)}`);
+  return bits.filter(Boolean).join(' · ');
 }
 
 export function levelStatus(s) {
@@ -62,31 +78,53 @@ export function stockMeter(s, { large = false } = {}) {
     </div>`;
 }
 
-// ---------------------------------------------------------------------------
-// Sorte
+export function effectTags(s, { limit = 3 } = {}) {
+  const list = s.effects ?? [];
+  if (!list.length) return '';
+  const shown = list.slice(0, limit);
+  return html`
+    <div class="effect-tags">
+      ${shown.map((e) => html`<span class="effect-tag">${e}</span>`)}
+      ${list.length > limit ? html`<span class="effect-tag effect-tag--more">+${list.length - limit}</span>` : ''}
+    </div>`;
+}
 
 export function strainCard(s) {
   const owner = member(s.ownerId);
   return html`
     <article class="card glass strain-card card--interactive" data-click="open-strain" data-strain="${s.id}">
       <div class="strain-card__top">
+        ${strainMark(s)}
         <div class="grow">
           <h3 class="strain-card__name">${s.name}</h3>
-          <div class="row row--wrap" style="gap:6px;margin-top:8px">${typeBadge(s.type)} ${thcBadges(s)}</div>
+          <p class="small muted">${strainFacts(s) || 'Keine Angaben'}</p>
         </div>
         <div class="strain-card__grams">
           <div class="strain-card__value">${fmtNum(s.grams)}<span class="small muted"> g</span></div>
-          <div style="margin-top:6px">${levelStatus(s)}</div>
+          ${levelStatus(s)}
         </div>
       </div>
       ${stockMeter(s)}
+      ${effectTags(s)}
       <div class="row small faint">
         ${owner ? html`${avatar(owner, { size: 'xs', online: false })}<span class="ellipsis">${nameOf(owner.id)}</span>` : ''}
         ${s.producer ? html`<span class="ellipsis">· ${s.producer}</span>` : ''}
         <span class="grow"></span>
-        <span class="num">${s.refillLevel > 0 ? `von ${fmtG(s.refillLevel)}` : ''}</span>
+        ${s.pricePerGram != null ? html`<span class="num">${fmtEur(s.pricePerGram)}/g</span>` : ''}
       </div>
     </article>`;
+}
+
+/** Kompakte Zeile für die Übersicht. */
+export function stockRow(s) {
+  const level = stockLevel(s);
+  return html`
+    <button type="button" class="stock-row" data-click="open-strain" data-strain="${s.id}">
+      ${strainMark(s, { size: 'sm' })}
+      <span class="stock-row__name ellipsis">${s.name}</span>
+      <span class="stock-row__meter">${stockMeter(s)}</span>
+      <span class="stock-row__grams num" data-level="${level}">${fmtG(s.grams)}</span>
+    </button>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,11 +164,10 @@ export function rotationRow(j) {
     const turn = j.status === 'lit' && j.turn === p;
     const past = j.status === 'done' || (j.status === 'lit' && p < j.turn);
     if (entry) {
-      const m = member(entry.memberId);
       slots.push(html`
         <div class="slot-wrap" role="listitem">
           <div class="slot" data-me="${entry.memberId === myId}" data-turn="${turn}" data-past="${past}">
-            ${avatar(m, { online: false })}<span class="slot__pos">${p}</span>
+            ${avatar(member(entry.memberId), { online: false })}<span class="slot__pos">${p}</span>
           </div>
           <span class="slot-name">${nameOf(entry.memberId)}</span>
         </div>`);
@@ -152,15 +189,15 @@ export function rotationRow(j) {
   return html`<div class="rotation" role="list" aria-label="Rotation">${slots}</div>`;
 }
 
-export function jointFacts(j) {
+export function jointMeta(j) {
   const thc = jointThcMg(j);
-  return html`
-    <div class="joint-card__meta">
-      <span class="chip">${icon('wind')} ${j.tobacco ?? 'Pur, ohne Tabak'}</span>
-      <span class="chip">${icon(j.carbonFilter ? 'shield-check' : 'x')}
-        ${j.carbonFilter ? j.filterBrand ?? 'Aktivkohlefilter' : 'Ohne Aktivkohlefilter'}</span>
-      ${thc > 0 ? html`<span class="chip">${icon('droplet')} ≈ ${fmtNum(Math.round(thc))} mg THC</span>` : ''}
-    </div>`;
+  const cost = jointCost(j);
+  return metaLine([
+    j.tobacco ? ['leaf', j.tobacco] : ['cannabis', 'Pur'],
+    j.carbonFilter ? ['carbon-filter', j.filterBrand ?? 'Aktivkohlefilter'] : ['x', 'Ohne Aktivkohle'],
+    thc > 0 ? ['droplet', `≈ ${fmtNum(Math.round(thc))} mg THC`] : null,
+    cost != null ? ['euro', fmtEur(cost)] : null,
+  ]);
 }
 
 function jointActions(j) {
@@ -172,7 +209,7 @@ function jointActions(j) {
   const buttons = [];
 
   if (j.status === 'ready') {
-    buttons.push(html`<button type="button" class="btn btn--fire btn--sm" data-click="light-joint" data-joint="${j.id}">${icon('flame', { size: 16 })} Anzünden</button>`);
+    buttons.push(html`<button type="button" class="btn btn--fire btn--sm" data-click="light-joint" data-joint="${j.id}">${icon('lighter', { size: 16 })} Anzünden</button>`);
     if (!mine && free) {
       buttons.push(html`<button type="button" class="btn btn--primary btn--sm" data-click="claim-slot" data-joint="${j.id}" data-position="${free}">${icon('user-plus', { size: 16 })} Platz #${free} sichern</button>`);
     }
@@ -191,35 +228,36 @@ function turnBanner(j) {
   if (j.status !== 'lit') return '';
   const holder = j.rotation.find((r) => r.position === j.turn);
   if (!holder) return '';
-  if (holder.memberId === me()?.id) {
+  if (isMe(holder.memberId)) {
     return html`<div class="turn-banner">${icon('flame', { size: 18 })} Du bist dran! Danach weitergeben.</div>`;
   }
   return html`<div class="turn-banner">${icon('flame', { size: 18 })} Gerade bei ${member(holder.memberId)?.name ?? 'jemandem'} (#${j.turn})</div>`;
 }
 
 export function jointCard(j, { detail = false } = {}) {
-  const roller = member(j.rolledBy);
   const firstStrain = strain(j.components[0]?.strainId);
   const mixed = j.components.length > 1;
   const cls = detail ? 'card glass joint-card' : 'card glass joint-card card--interactive';
   return html`
     <article class="${cls}" data-status="${j.status}" ${detail ? '' : html`data-click="open-joint" data-joint="${j.id}"`}>
       <div class="joint-card__head">
-        ${avatar(roller, { size: 'sm' })}
+        ${avatar(member(j.rolledBy), { size: 'sm' })}
         <div class="grow">
-          <div class="strong ellipsis">${nameOf(j.rolledBy)} ${j.rolledBy === me()?.id ? 'hast' : 'hat'} gerollt</div>
+          <div class="strong ellipsis">${nameOf(j.rolledBy)} ${isMe(j.rolledBy) ? 'hast' : 'hat'} gerollt</div>
           <div class="tiny faint">${relTime(j.createdAt)}${j.requestId ? ' · auf Anfrage' : ''}</div>
         </div>
         ${jointStatus(j)}
       </div>
-      <div class="row" style="align-items:flex-end;gap:14px">
-        <div class="joint-card__grams">${fmtNum(j.grams)}<span class="hero__unit" style="font-size:18px">g</span></div>
+      <div class="joint-card__main">
+        <span class="joint-card__icon" aria-hidden="true">${icon('joint', { size: 26 })}</span>
         <div class="grow">
           <div class="joint-card__strain ellipsis">${jointStrainNames(j)}</div>
-          <div class="small muted">${mixed ? `Mischung aus ${j.components.length} Sorten` : firstStrain?.thc != null ? `${fmtPct(firstStrain.thc)} THC` : ''}</div>
+          <div class="small muted">${mixed ? `Mischung aus ${j.components.length} Sorten` : firstStrain ? strainFacts(firstStrain) : ''}</div>
         </div>
+        <div class="joint-card__grams">${fmtNum(j.grams)}<span>g</span></div>
       </div>
-      ${jointFacts(j)}
+      ${jointMeta(j)}
+      ${j.note && !detail ? html`<p class="joint-card__note">„${j.note}“</p>` : ''}
       ${turnBanner(j)}
       ${rotationRow(j)}
       ${jointActions(j)}
@@ -252,7 +290,7 @@ export function requestCard(r) {
   const buttons = [];
 
   if (open && incoming) {
-    buttons.push(html`<button type="button" class="btn btn--primary btn--sm" data-click="fulfil-request" data-request="${r.id}">${icon('cigarette', { size: 16 })} Jetzt rollen</button>`);
+    buttons.push(html`<button type="button" class="btn btn--primary btn--sm" data-click="fulfil-request" data-request="${r.id}">${icon('joint', { size: 16 })} Jetzt rollen</button>`);
     if (r.status === 'open') {
       buttons.push(html`<button type="button" class="btn btn--glass btn--sm" data-click="accept-request" data-request="${r.id}">${icon('check', { size: 16 })} Mach ich</button>`);
     }
@@ -262,7 +300,7 @@ export function requestCard(r) {
   } else if (open && r.fromId === myId) {
     buttons.push(html`<button type="button" class="btn btn--ghost btn--sm" data-click="cancel-request" data-request="${r.id}">${icon('undo-2', { size: 16 })} Zurückziehen</button>`);
   } else if (r.status === 'done' && r.jointId) {
-    buttons.push(html`<button type="button" class="btn btn--glass btn--sm" data-click="open-joint" data-joint="${r.jointId}">${icon('cigarette', { size: 16 })} Zum Joint</button>`);
+    buttons.push(html`<button type="button" class="btn btn--glass btn--sm" data-click="open-joint" data-joint="${r.jointId}">${icon('joint', { size: 16 })} Zum Joint</button>`);
   }
 
   const acceptedBy = r.status === 'accepted' && r.handledBy ? nameOf(r.handledBy) : null;
@@ -279,13 +317,12 @@ export function requestCard(r) {
         ${requestStatus(r)}
       </div>
       ${r.message ? html`<div class="bubble">${r.message}</div>` : ''}
-      ${wishedStrain || r.grams ? html`
-        <div class="row row--wrap" style="gap:6px">
-          <span class="small faint">Wunsch:</span>
-          ${r.grams ? html`<span class="chip">${icon('scale')} ${fmtG(r.grams)}</span>` : ''}
-          ${wishedStrain ? html`<span class="chip">${icon('leaf')} ${wishedStrain.name}</span>` : ''}
-        </div>` : ''}
-      <div class="tiny faint">${relTime(r.createdAt)}${acceptedBy ? ` · ${acceptedBy} ${r.handledBy === myId ? 'hast' : 'hat'} zugesagt` : ''}</div>
+      ${metaLine([
+        r.grams ? ['scale', `Wunsch: ${fmtG(r.grams)}`] : null,
+        wishedStrain ? ['cannabis', wishedStrain.name] : null,
+        ['clock', relTime(r.createdAt)],
+        acceptedBy ? ['check', `${acceptedBy} ${r.handledBy === myId ? 'hast' : 'hat'} zugesagt`] : null,
+      ])}
       ${buttons.length ? html`<div class="joint-card__actions">${buttons}</div>` : ''}
     </article>`;
 }
@@ -293,26 +330,26 @@ export function requestCard(r) {
 // ---------------------------------------------------------------------------
 // Aktivitäts-Feed
 
-const isMe = (id) => id === me()?.id;
 const subject = (id) => (isMe(id) ? 'Du' : member(id)?.name ?? 'Jemand');
 const accusative = (id) => (isMe(id) ? 'dich' : member(id)?.name ?? 'jemanden');
 /** „Du hast …“ / „Lisa hat …“ – Verb passend zur Person. */
 const says = (id, du, er, rest) => `${subject(id)} ${isMe(id) ? du : er} ${rest}`;
 
 const ACTIVITY = {
-  member_joined: ['user-plus', 'violet', (a) => says(a.actorId, 'bist', 'ist', 'der Gruppe beigetreten')],
-  strain_added: ['leaf', 'accent', (a) => says(a.actorId, 'hast', 'hat', `${a.strainName} eingetragen (${fmtG(a.grams)})`)],
-  strain_restocked: ['package', 'accent', (a) => says(a.actorId, 'hast', 'hat', `${a.strainName} aufgefüllt (+${fmtG(a.grams)})`)],
-  strain_corrected: ['pencil', '', (a) => says(a.actorId, 'hast', 'hat', `den Bestand von ${a.strainName} korrigiert (${a.grams > 0 ? '+' : ''}${fmtG(a.grams)})`)],
+  member_joined: ['user-plus', 'amber', (a) => says(a.actorId, 'bist', 'ist', 'der Gruppe beigetreten')],
+  strain_added: ['cannabis', 'accent', (a) => says(a.actorId, 'hast', 'hat', `${a.strainName} eingetragen (${fmtG(a.grams)})`)],
+  strain_restocked: ['jar', 'accent', (a) => says(a.actorId, 'hast', 'hat', `${a.strainName} aufgefüllt (+${fmtG(a.grams)})`)],
+  strain_corrected: ['scale', '', (a) => says(a.actorId, 'hast', 'hat', `den Bestand von ${a.strainName} korrigiert (${a.grams > 0 ? '+' : ''}${fmtG(a.grams)})`)],
   strain_archived: ['archive', '', (a) => says(a.actorId, 'hast', 'hat', `${a.strainName} archiviert`)],
   strain_removed: ['trash-2', '', (a) => says(a.actorId, 'hast', 'hat', `${a.strainName} entfernt`)],
-  joint_rolled: ['cigarette', 'accent', (a) => says(a.actorId, 'hast', 'hat', `gerollt: ${fmtG(a.grams)} ${a.summary}`)],
+  joint_rolled: ['joint', 'accent', (a) => says(a.actorId, 'hast', 'hat', `gerollt: ${fmtG(a.grams)} ${a.summary}`)],
   joint_lit: ['flame', 'fire', (a) => says(a.actorId, 'hast', 'hat', 'einen Joint angezündet')],
   joint_passed: ['skip-forward', 'fire', (a) => says(a.actorId, 'hast', 'hat', `an ${accusative(a.toId)} weitergegeben (#${a.position})`)],
   joint_done: ['check', '', (a) => says(a.actorId, 'hast', 'hat', 'einen Joint als aufgeraucht markiert')],
+  joint_auto_done: ['timer', '', () => 'Ein Joint wurde nach ein paar Stunden automatisch beendet'],
   joint_deleted: ['undo-2', '', (a) => says(a.actorId, 'hast', 'hat', `einen Joint-Eintrag gelöscht (${fmtG(a.grams)} zurückgebucht)`)],
-  rotation_joined: ['repeat', 'violet', (a) => says(a.actorId, 'bist', 'ist', `#${a.position} in der Rotation`)],
-  request_created: ['hand-heart', 'violet', (a) =>
+  rotation_joined: ['repeat', 'amber', (a) => says(a.actorId, 'bist', 'ist', `#${a.position} in der Rotation`)],
+  request_created: ['hand-heart', 'amber', (a) =>
     a.toId ? says(a.actorId, 'fragst', 'fragt', `${accusative(a.toId)}, ob gerollt wird`) : says(a.actorId, 'suchst', 'sucht', 'jemanden, der rollt')],
   request_accepted: ['check', 'accent', (a) => says(a.actorId, 'rollst', 'rollt', `für ${accusative(a.toId)}`)],
   request_declined: ['x', '', (a) => says(a.actorId, 'kannst', 'kann', `gerade nicht für ${accusative(a.toId)} rollen`)],

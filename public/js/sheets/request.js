@@ -34,7 +34,7 @@ export function openRequestForm({ toId = null } = {}) {
           </section>
 
           <section class="sheet-section">
-            <h3 class="sheet-section__title">${icon('leaf')} Wunsch <span style="text-transform:none;letter-spacing:0;font-weight:500">(optional)</span></h3>
+            <h3 class="sheet-section__title">${icon('cannabis')} Wunsch <span style="text-transform:none;letter-spacing:0;font-weight:500">(optional)</span></h3>
             <select class="select" name="strainId" aria-label="Wunschsorte">
               <option value="">Sorte egal</option>
               ${activeStrains().filter((s) => s.grams > 0).map((s) => html`<option value="${s.id}">${s.name} · ${fmtG(s.grams)} da</option>`)}
