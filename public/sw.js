@@ -1,7 +1,7 @@
 // Service Worker: Push-Benachrichtigungen + Offline-Cache für die App-Hülle.
 
-const CACHE = 'else-live-v2';
-const SHELL = ['/', '/index.html', '/css/app.css', '/js/app.js', '/fonts/inter-latin-wght.woff2', '/icons/icon.svg'];
+const CACHE = 'else-live-v3';
+const SHELL = ['/', '/index.html', '/css/app.css', '/js/app.js', '/fonts/manrope-latin-wght.woff2', '/icons/icon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

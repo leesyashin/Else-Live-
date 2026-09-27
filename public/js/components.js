@@ -121,8 +121,10 @@ export function stockRow(s) {
   return html`
     <button type="button" class="stock-row" data-click="open-strain" data-strain="${s.id}">
       ${strainMark(s, { size: 'sm' })}
-      <span class="stock-row__name ellipsis">${s.name}</span>
-      <span class="stock-row__meter">${stockMeter(s)}</span>
+      <span class="stock-row__body">
+        <span class="stock-row__name ellipsis">${s.name}</span>
+        ${stockMeter(s)}
+      </span>
       <span class="stock-row__grams num" data-level="${level}">${fmtG(s.grams)}</span>
     </button>`;
 }

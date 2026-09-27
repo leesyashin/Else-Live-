@@ -91,7 +91,7 @@ export function openRollSheet({ requestId = null } = {}) {
   function rowHtml(row, i) {
     const g = parseNum(row.gramsText);
     return html`
-      <div class="card card--tight stack" style="gap:12px;background:rgba(0,0,0,0.16);border:1px solid var(--stroke)">
+      <div class="well stack" style="gap:12px">
         <div class="row">
           <select class="select grow" data-change="strain" data-row="${i}" aria-label="Sorte">
             ${available().map(

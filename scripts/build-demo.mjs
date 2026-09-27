@@ -41,11 +41,11 @@ const bundle = await build({
   plugins: [demoSwap],
 });
 
-const font = await readFile(path.join(root, 'public/fonts/inter-latin-wght.woff2'));
+const font = await readFile(path.join(root, 'public/fonts/manrope-latin-wght.woff2'));
 const css = (
   (await readFile(path.join(root, 'public/css/app.css'), 'utf8')) +
   (await readFile(path.join(root, 'public/css/demo.css'), 'utf8'))
-).replace("url('/fonts/inter-latin-wght.woff2')", `url(data:font/woff2;base64,${font.toString('base64')})`);
+).replace("url('/fonts/manrope-latin-wght.woff2')", `url(data:font/woff2;base64,${font.toString('base64')})`);
 
 const script = bundle.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 

@@ -1,6 +1,6 @@
 # 🌿 Else Live
 
-Eure gemeinsame, private Übersicht über medizinisches Cannabis in der Gruppe – live auf allen Geräten, im Glassmorphism-Design, installierbar als App (PWA) mit Push-Benachrichtigungen.
+Eure gemeinsame, private Übersicht über medizinisches Cannabis in der Gruppe – live auf allen Geräten, im „Soft Glass“-Design (Neumorphismus trifft Glassmorphismus), installierbar als App (PWA) mit Push-Benachrichtigungen.
 
 > Prototyp für den privaten Gebrauch innerhalb einer geschlossenen Gruppe. Keine kommerzielle oder öffentliche Nutzung.
 
@@ -80,7 +80,7 @@ In der App unter **Profil → Listen & Regeln** lassen sich Tabaksorten und Akti
 ## Technik
 
 - **Server:** Node.js + Express 5, Daten als JSON-Datei (atomar geschrieben), Live-Updates über Server-Sent Events, Web-Push mit VAPID (`web-push`).
-- **Frontend:** Vanilla-JavaScript-Module ohne Build-Schritt, PWA mit Service Worker, Inter als lokal eingebundene Schrift (keine externen Anfragen), Icons von [Lucide](https://lucide.dev).
+- **Frontend:** Vanilla-JavaScript-Module ohne Build-Schritt, PWA mit Service Worker, Designstil „Soft Glass“ (Neumorphismus + Glassmorphismus), Manrope als lokal eingebundene Schrift (keine externen Anfragen), Icons von [Lucide](https://lucide.dev) plus eigene Cannabis-Icons.
 - **Sicherheit:** Gruppencode als Zugang, optionale PIN pro Profil (scrypt-Hash), Sitzungs-Token (nur als Hash gespeichert), Sperre bei zu vielen Fehlversuchen, strikte Content-Security-Policy.
 
 ```
