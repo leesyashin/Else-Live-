@@ -2,11 +2,22 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { drawOffice } from '../hooks/art'
-import { cloudRecords, parseSessionList, sameSession, snapshotDocId, trimSession, versionIn } from '../hooks/cloud'
+import type { CloudSession } from '../hooks/cloud'
+import {
+  cloudRecords,
+  deliveryOf,
+  parseSessionList,
+  pullRequestIn,
+  sameSession,
+  snapshotDocId,
+  trimSession,
+  versionIn,
+} from '../hooks/cloud'
 import {
   bossMessage,
   buildOffice,
   describeTool,
+  moodLabel,
   moodOf,
   pickName,
   resolveRecipient,
@@ -277,6 +288,23 @@ test('the drawing fits the engine and escapes what sessions wrote', () => {
   expect(svg).not.toContain('<script>')
 })
 
+test('a visitor who just arrived walks in, and a ready PR shows on the screen', () => {
+  const office = buildOffice(
+    [
+      record('sess-ben-0002', 'Ben', { status: 'frage', question: 'Welche Farbe?' }),
+      record('sess-mia-0003', 'Mia', { status: 'fertig', pr: 'PR #8' }),
+    ],
+    START,
+    5 * MINUTE,
+    undefined,
+    12 * 60,
+  )
+  expect(drawOffice(office, true, ['sess-ben-0002'])).toContain('<set attributeName="opacity"')
+  expect(drawOffice(office)).not.toContain('<set attributeName="opacity"')
+  expect(drawOffice(office)).toContain('PR #8')
+  expect(drawOffice(office, false)).not.toContain('<animate')
+})
+
 const CLOUD_LIST = {
   ccr: {
     data: [
@@ -332,9 +360,15 @@ test('in the cloud the office reads the session list and answers through it', as
   const files = new Map<string, string>()
   const clock = world(on, files, { CLAUDE_CODE_REMOTE_SESSION_ID: 'cse_01SELF' })
   const sentTo: string[] = []
+  const askedGithub: string[] = []
   on('mcp.call', ($, e) => {
     if (e.tool === 'list_sessions') {
       return { value: { content: [{ type: 'text', text: WRAPPED }], isError: false } }
+    }
+    if (e.tool === 'list_pull_requests') {
+      askedGithub.push(`${String(e.args.owner)}/${String(e.args.repo)} ${String(e.args.head)}`)
+
+      return { value: { content: [{ type: 'text', text: '[{"number":7,"state":"open","merged":false}]' }], isError: false } }
     }
     sentTo.push(`${String(e.args.session_id)}: ${String(e.args.message)}`)
 
@@ -343,6 +377,7 @@ test('in the cloud the office reads the session list and answers through it', as
 
   await $.session.start(START_EVENT)
   const listed = JSON.stringify(await $.tool.call({ tool: 'mcp__buero__kollegen' }))
+  expect(askedGithub).toEqual(['leesyashin/Else-Live- leesyashin:claude/buero'])
   expect(listed).toContain('in deiner Claude-Code-Cloud')
   expect(listed).toContain('session_01BLOCKED')
   expect(listed).not.toContain('session_01SELF')
@@ -375,6 +410,72 @@ test('in the cloud the office reads the session list and answers through it', as
   await desktop.input({ key: 'nachricht', text: 'Ja, stell um.' })
   expect(sentTo[1]).toBe(`session_01BLOCKED: ${bossMessage('Ja, stell um.')}`)
   await desktop.unmount()
+})
+
+function finished(id: string, said: string, patch: Partial<CloudSession> = {}): CloudSession {
+  return {
+    id,
+    title: id,
+    status_bucket: 'SESSION_STATUS_BUCKET_COMPLETED',
+    created_at: '2026-10-18T09:00:00Z',
+    updated_at: '2026-10-18T11:00:00Z',
+    post_turn_summary: { status_category: 'completed', status_detail: said },
+    ...patch,
+  }
+}
+
+test('sessions merged into main leave the office, ready PRs stay until they are', () => {
+  const said = (text: string) => deliveryOf(finished('session_x', text)).state
+  expect(said('PR #2 merged to main; büro mod, page, setup script in')).toBe('gemergt')
+  expect(said('PR #25 squash-merged to main; Pages deployed, game live')).toBe('gemergt')
+  expect(said('PR auf main per Merge-Commit 53c14c2 gemergt; Live-Seite nicht geprüft')).toBe('gemergt')
+  expect(said('PR #3 als Merge-Commit in main übernommen')).toBe('gemergt')
+  expect(said('Pages-Deploy von PR #23 durchgelaufen; Domain genannt')).toBe('gemergt')
+  expect(said('Draft-PR #8 erstellt, CI grün')).toBe('pr')
+  expect(said('PR #4 ready to merge into main')).toBe('pr')
+  expect(said('PR #4 noch nicht in main gemergt')).toBe('pr')
+  expect(said('merged main into the branch, PR #6 updated')).toBe('pr')
+  expect(said('gave the Pages URL; latest main deployed successfully')).toBe('gemergt')
+  expect(said('PR #9 offen; main deploy unberührt')).toBe('pr')
+  expect(said('Opus prompt rewritten; PR-branch workflow')).toBe('ohne')
+  expect(deliveryOf(finished('session_x', 'PR #12 offen'))).toEqual({ state: 'pr', pr: 'PR #12' })
+
+  const sessions = [
+    finished('session_01MERGED', 'PR #2 merged to main'),
+    finished('session_01OPEN', 'Draft-PR #8 erstellt', { updated_at: '2026-10-10T11:00:00Z' }),
+    finished('session_01READ', 'Link geschickt'),
+    finished('session_01UNREAD', 'Antwort geschrieben', { unread: true }),
+    finished('session_01AGAIN', 'PR #2 merged to main', { status_bucket: 'SESSION_STATUS_BUCKET_WORKING' }),
+  ]
+  const records = cloudRecords(sessions, START)
+  expect(records.map(one => one.id)).toEqual(['session_01OPEN', 'session_01UNREAD', 'session_01AGAIN'])
+  expect(records[0]?.status).toBe('fertig')
+  expect(records[0]?.pr).toBe('PR #8')
+  expect(records[1]?.pr).toBeUndefined()
+  expect(records[2]?.status).toBe('arbeitet')
+  expect(records[2]?.pr).toBeUndefined()
+  expect(moodLabel({ mood: 'fertig', pr: 'PR #8' })).toBe('PR #8 bereit zum Mergen')
+})
+
+test("what GitHub reports about a session's own PR beats its summary", () => {
+  expect(pullRequestIn('[{"number":3,"state":"open","merged":false,"html_url":"https://x/pull/3"}]')).toEqual({
+    number: 3,
+    state: 'open',
+    url: 'https://x/pull/3',
+  })
+  // GitHub lists a merged PR as closed, with the time of its merge
+  expect(pullRequestIn('[{"number":2,"state":"closed","merged":false,"merged_at":"2026-10-18T19:21:29Z"}]')?.state).toBe('merged')
+  expect(pullRequestIn('[{"number":4,"state":"closed"},{"number":5,"state":"open"}]')?.number).toBe(5)
+  expect(pullRequestIn('[]')).toBeUndefined()
+
+  const silent = finished('session_01SILENT', 'Büro-Seite neu veröffentlicht')
+  const merged = finished('session_01DONE', 'Draft-PR #9 erstellt')
+  const reports = new Map([
+    ['cse_01SILENT', { number: 3, state: 'open' as const }],
+    ['cse_01DONE', { number: 9, state: 'merged' as const }],
+  ])
+  const records = cloudRecords([silent, merged], START, reports)
+  expect(records.map(one => `${one.id} ${one.pr ?? ''}`)).toEqual(['session_01SILENT PR #3'])
 })
 
 test('a snapshot keeps what the office draws and finds its version', () => {

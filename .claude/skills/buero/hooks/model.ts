@@ -66,6 +66,11 @@ export const MOOD_COLOR: Record<Mood, string> = {
   weg: '#757575',
 }
 
+/** A mood in words; a finished cloud session with an open pull request says so. */
+export function moodLabel(view: { mood: Mood; pr?: string }): string {
+  return view.mood === 'fertig' && view.pr !== undefined ? `${view.pr} bereit zum Mergen` : MOOD_LABEL[view.mood]
+}
+
 /** FNV-1a, so a session keeps its look across reloads and machines. */
 export function hash(text: string): number {
   let h = 2166136261
@@ -238,6 +243,7 @@ export function workerOf(
     isSelf: record.id === selfId,
     link: record.link,
     usage: record.usage,
+    pr: record.pr,
   }
 }
 
@@ -309,7 +315,7 @@ export function colleaguesText(
 
     return (
       `- ${record.name} (Session-ID ${record.id})\n  Projekt: ${place(record)}\n` +
-      `  Status: ${MOOD_LABEL[mood]}${task}${doing}${agents}`
+      `  Status: ${moodLabel({ mood, pr: record.pr })}${task}${doing}${agents}`
     )
   })
 

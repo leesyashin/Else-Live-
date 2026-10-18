@@ -38,6 +38,7 @@
     color-scheme: dark;
   }
 
+  [hidden] { display: none !important; }
   body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.45; }
   .app {
     max-width: 1240px; margin: 0 auto;
@@ -77,6 +78,7 @@
   .stage .worker { cursor: pointer; }
   .stage .worker:hover { filter: brightness(1.08); }
   .stage .worker.is-selected { filter: drop-shadow(0 0 2px #ffe066) drop-shadow(0 0 1px #000); }
+  .stale { margin: 0; padding: 8px 12px; background: var(--accent-soft); color: var(--ink); border-bottom: 3px solid var(--wait); font-size: 14px; }
   .notice {
     position: absolute; left: 50%; top: 58%; transform: translate(-50%, -50%);
     width: min(88%, 420px); margin: 0; padding: 14px 16px; display: grid; gap: 10px;
@@ -145,6 +147,7 @@
 
   <main class="layout">
     <figure class="stage" id="stageWrap">
+      <p class="stale" id="stale" hidden></p>
       <div id="stage"></div>
       <div class="notice" id="notice">
         <span id="noticeText">Ich verbinde mich mit deinen Sessions …</span>
@@ -203,7 +206,7 @@
 <script>
   const Office = (() => {
     /*__OFFICE_LIB__*/
-    return { buildOffice, drawOffice, describeOffice, cloudRecords, parseSessionList, clip, MOOD_LABEL, MOOD_COLOR };
+    return { buildOffice, drawOffice, describeOffice, cloudRecords, parseSessionList, clip, moodLabel, MOOD_COLOR };
   })();
 
   (() => {
@@ -216,7 +219,7 @@
     const ASKABLE = new Set(['approval_required', 'not_in_manifest', 'consent_required']);
     const SETTINGS = new Set(['blocked_by_policy', 'needs_reauth', 'server_not_connected', 'server_not_found']);
     const NO_MCP = new Set(['not_granted', 'capability_disabled', 'capability_removed']);
-    const LABEL = { ...Office.MOOD_LABEL, frage: 'wartet auf dich' };
+    const labelOf = worker => (worker.mood === 'frage' ? 'wartet auf dich' : Office.moodLabel(worker));
     const ORDER = { frage: 0, freigabe: 0, haengt: 1, fehler: 1, arbeitet: 2, neu: 3, fertig: 4, weg: 5 };
     const el = id => document.getElementById(id);
     const reduceMotion = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)').matches : false;
@@ -227,10 +230,13 @@
     const state = {
       mcp: null,
       connector: { sessions: null, at: null, problem: null },
-      snapshot: { sessions: null, at: null, writer: null, isEmpty: false, problem: null },
+      snapshot: { sessions: null, at: null, writer: null, reports: new Map(), isEmpty: false, problem: null },
       selected: null,
       letters: [],
       office: null,
+      // who sat in the boss office at the last drawing; null before the first
+      visitors: null,
+      drawn: '',
     };
 
     function sessionsOf(result) {
@@ -263,7 +269,7 @@
       // does not turn every working session into a sleeping one
       const asOf = data.source === 'snapshot' ? data.at : Date.now();
       const now = Date.now();
-      const records = Office.cloudRecords(data.sessions, asOf).map(record => ({
+      const records = Office.cloudRecords(data.sessions, asOf, state.snapshot.reports).map(record => ({
         ...record,
         heartbeat: asOf,
         sent: state.letters
@@ -273,10 +279,26 @@
       return Office.buildOffice(records, asOf, STUCK_MS, undefined, minutesOf(now));
     }
 
+    // Visitors who were not in the boss office at the last drawing walk in
+    // from the door; the first drawing seats everyone straight away.
+    function arrivals(office) {
+      const now = office.workers.filter(worker => worker.mood === 'frage' || worker.mood === 'freigabe').map(worker => worker.id);
+      const before = state.visitors;
+      state.visitors = new Set(now);
+      return before === null ? [] : now.filter(id => !before.has(id));
+    }
+
     function renderStage() {
       const office = state.office || { workers: [], messages: [], clockMinutes: minutesOf(Date.now()) };
       const stage = el('stage');
-      stage.innerHTML = Office.drawOffice(office, !reduceMotion);
+      const markup = Office.drawOffice(office, !reduceMotion, state.office ? arrivals(office) : [], Infinity);
+      // the same drawing again keeps running instead of starting its animations over
+      if (markup === state.drawn) {
+        markSelected();
+        return;
+      }
+      state.drawn = markup;
+      stage.innerHTML = markup;
       const svg = stage.querySelector('svg');
       if (svg) {
         svg.setAttribute('role', 'img');
@@ -334,12 +356,12 @@
       const all = [...workers()].sort((a, b) => (ORDER[a.mood] ?? 9) - (ORDER[b.mood] ?? 9) || a.name.localeCompare(b.name));
       const waiting = all.filter(worker => worker.mood === 'frage' || worker.mood === 'freigabe');
       el('waitingPanel').hidden = waiting.length === 0;
-      el('waitingList').replaceChildren(...waiting.map(worker => rowFor(worker, Office.clip(worker.question || LABEL[worker.mood], 160))));
-      el('roster').replaceChildren(...all.map(worker => rowFor(worker, Office.clip(`${LABEL[worker.mood]} · ${worker.task}`, 120))));
+      el('waitingList').replaceChildren(...waiting.map(worker => rowFor(worker, Office.clip(worker.question || labelOf(worker), 160))));
+      el('roster').replaceChildren(...all.map(worker => rowFor(worker, Office.clip(`${labelOf(worker)} · ${worker.task}`, 120))));
       el('rosterEmpty').hidden = all.length > 0;
       el('rosterEmpty').textContent = state.office === null
         ? 'Sobald deine Sessions geladen sind, stehen sie hier.'
-        : 'Gerade ist keine Session aktiv oder am letzten Tag gelaufen.';
+        : 'Gerade arbeitet keine Session, keine wartet auf dich und kein PR aufs Mergen.';
     }
 
     function since(minutes) {
@@ -355,7 +377,7 @@
       if (worker === undefined) return;
       const canSend = state.mcp !== null && state.connector.sessions !== null;
       el('dName').textContent = worker.name;
-      el('dPill').textContent = LABEL[worker.mood];
+      el('dPill').textContent = labelOf(worker);
       el('dPill').style.background = Office.MOOD_COLOR[worker.mood];
       el('dTask').textContent = worker.task || 'Ohne Titel';
       el('dAsk').hidden = !worker.question;
@@ -393,6 +415,16 @@
       live.textContent = age > STALE_MS
         ? `Stand ${clock(data.at)} · seitdem keine Session mit Büro-Mod aktiv`
         : `Stand ${clock(data.at)} · über eine Session`;
+    }
+
+    // An old stored list shows sessions as they were then, so say so on the office itself.
+    function renderStale() {
+      const data = current();
+      const isStale = data !== null && data.source === 'snapshot' && Date.now() - data.at > STALE_MS;
+      el('stale').hidden = !isStale;
+      el('stale').textContent = isStale
+        ? `So sah es um ${clock(data.at)} aus. Seitdem lief keine Cloud-Session mit der Büro-Mod, die den Stand auffrischt. Was danach passiert ist, siehst du, sobald wieder eine läuft.`
+        : '';
     }
 
     function problemText(code, message) {
@@ -440,6 +472,7 @@
       renderLists();
       renderDetail();
       renderLive();
+      renderStale();
       renderNotice();
       markSelected();
     }
@@ -471,13 +504,20 @@
       renderAll();
     }
 
+    // The newest stored list draws the office; every session's own document
+    // adds what GitHub told it about its pull request.
     function onSnapshot(snapshot) {
-      const doc = snapshot.docs[0];
-      const data = doc && doc.exists ? doc.data() : undefined;
-      if (!data || !Array.isArray(data.sessions)) {
-        state.snapshot = { sessions: null, at: null, writer: null, isEmpty: true, problem: null };
+      const docs = snapshot.docs.filter(doc => doc.exists).map(doc => doc.data()).filter(Boolean);
+      const reports = new Map();
+      for (const data of docs) {
+        const pr = data.pr;
+        if (typeof data.writer === 'string' && pr && typeof pr.number === 'number' && !reports.has(data.writer)) reports.set(data.writer, pr);
+      }
+      const data = docs.find(one => Array.isArray(one.sessions));
+      if (!data) {
+        state.snapshot = { sessions: null, at: null, writer: null, reports, isEmpty: true, problem: null };
       } else {
-        state.snapshot = { sessions: data.sessions, at: Number(data.writtenAt) || Date.now(), writer: data.writer || null, isEmpty: false, problem: null };
+        state.snapshot = { sessions: data.sessions, at: Number(data.writtenAt) || Date.now(), writer: data.writer || null, reports, isEmpty: false, problem: null };
       }
       renderAll();
     }
@@ -563,7 +603,7 @@
     async function start() {
       const [mcp, db] = await Promise.all([use('mcp'), use('db')]);
       if (db) {
-        db.collection('buero').orderBy('writtenAt', 'desc').limit(1).onSnapshot(onSnapshot, error => {
+        db.collection('buero').orderBy('writtenAt', 'desc').limit(30).onSnapshot(onSnapshot, error => {
           state.snapshot.problem = (error && error.code) || 'unavailable';
           renderAll();
         });
