@@ -78,6 +78,7 @@
   .stage .worker { cursor: pointer; }
   .stage .worker:hover { filter: brightness(1.08); }
   .stage .worker.is-selected { filter: drop-shadow(0 0 2px #ffe066) drop-shadow(0 0 1px #000); }
+  .stale { margin: 0; padding: 8px 12px; background: var(--accent-soft); color: var(--ink); border-bottom: 3px solid var(--wait); font-size: 14px; }
   .notice {
     position: absolute; left: 50%; top: 58%; transform: translate(-50%, -50%);
     width: min(88%, 420px); margin: 0; padding: 14px 16px; display: grid; gap: 10px;
@@ -146,6 +147,7 @@
 
   <main class="layout">
     <figure class="stage" id="stageWrap">
+      <p class="stale" id="stale" hidden></p>
       <div id="stage"></div>
       <div class="notice" id="notice">
         <span id="noticeText">Ich verbinde mich mit deinen Sessions …</span>
@@ -228,7 +230,7 @@
     const state = {
       mcp: null,
       connector: { sessions: null, at: null, problem: null },
-      snapshot: { sessions: null, at: null, writer: null, isEmpty: false, problem: null },
+      snapshot: { sessions: null, at: null, writer: null, reports: new Map(), isEmpty: false, problem: null },
       selected: null,
       letters: [],
       office: null,
@@ -267,7 +269,7 @@
       // does not turn every working session into a sleeping one
       const asOf = data.source === 'snapshot' ? data.at : Date.now();
       const now = Date.now();
-      const records = Office.cloudRecords(data.sessions, asOf).map(record => ({
+      const records = Office.cloudRecords(data.sessions, asOf, state.snapshot.reports).map(record => ({
         ...record,
         heartbeat: asOf,
         sent: state.letters
@@ -415,6 +417,16 @@
         : `Stand ${clock(data.at)} · über eine Session`;
     }
 
+    // An old stored list shows sessions as they were then, so say so on the office itself.
+    function renderStale() {
+      const data = current();
+      const isStale = data !== null && data.source === 'snapshot' && Date.now() - data.at > STALE_MS;
+      el('stale').hidden = !isStale;
+      el('stale').textContent = isStale
+        ? `So sah es um ${clock(data.at)} aus. Seitdem lief keine Cloud-Session mit der Büro-Mod, die den Stand auffrischt. Was danach passiert ist, siehst du, sobald wieder eine läuft.`
+        : '';
+    }
+
     function problemText(code, message) {
       switch (code) {
         case 'no_mcp': return 'Hier kann die Seite deine Sessions nicht lesen. Öffne sie in claude.ai oder in der Claude-App.';
@@ -460,6 +472,7 @@
       renderLists();
       renderDetail();
       renderLive();
+      renderStale();
       renderNotice();
       markSelected();
     }
@@ -491,13 +504,20 @@
       renderAll();
     }
 
+    // The newest stored list draws the office; every session's own document
+    // adds what GitHub told it about its pull request.
     function onSnapshot(snapshot) {
-      const doc = snapshot.docs[0];
-      const data = doc && doc.exists ? doc.data() : undefined;
-      if (!data || !Array.isArray(data.sessions)) {
-        state.snapshot = { sessions: null, at: null, writer: null, isEmpty: true, problem: null };
+      const docs = snapshot.docs.filter(doc => doc.exists).map(doc => doc.data()).filter(Boolean);
+      const reports = new Map();
+      for (const data of docs) {
+        const pr = data.pr;
+        if (typeof data.writer === 'string' && pr && typeof pr.number === 'number' && !reports.has(data.writer)) reports.set(data.writer, pr);
+      }
+      const data = docs.find(one => Array.isArray(one.sessions));
+      if (!data) {
+        state.snapshot = { sessions: null, at: null, writer: null, reports, isEmpty: true, problem: null };
       } else {
-        state.snapshot = { sessions: data.sessions, at: Number(data.writtenAt) || Date.now(), writer: data.writer || null, isEmpty: false, problem: null };
+        state.snapshot = { sessions: data.sessions, at: Number(data.writtenAt) || Date.now(), writer: data.writer || null, reports, isEmpty: false, problem: null };
       }
       renderAll();
     }
@@ -583,7 +603,7 @@
     async function start() {
       const [mcp, db] = await Promise.all([use('mcp'), use('db')]);
       if (db) {
-        db.collection('buero').orderBy('writtenAt', 'desc').limit(1).onSnapshot(onSnapshot, error => {
+        db.collection('buero').orderBy('writtenAt', 'desc').limit(30).onSnapshot(onSnapshot, error => {
           state.snapshot.problem = (error && error.code) || 'unavailable';
           renderAll();
         });

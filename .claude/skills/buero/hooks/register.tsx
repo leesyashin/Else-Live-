@@ -7,10 +7,12 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { OfficeView, SessionRecord, Status, WorkerView } from '../types'
 import { describeOffice, drawOffice } from './art'
-import type { CloudSession } from './cloud'
+import type { CloudSession, OwnPr } from './cloud'
 import {
   CLOUD_SERVER,
+  branchOf,
   cloudRecords,
+  pullRequestIn,
   parseSessionList,
   sameSession,
   snapshotDocId,
@@ -47,6 +49,9 @@ const CLOUD_EVERY_MS = 10_000
 const OFFICE_URL = 'https://claude.ai/artifact/94pH1R4YMfQgxPUeghXbiK'
 /** A session writes the session list there at most this often. */
 const FEED_EVERY_MS = 60_000
+/** GitHub is asked about this session's own pull request at most this often. */
+const PR_EVERY_MS = 60_000
+const GITHUB_SERVER = 'github'
 /** An ask that is still open after this long is a permission card for the person. */
 const ASK_SETTLE_MS = 1500
 const LIVE_AGENT = new Set(['pending', 'running', 'waiting', 'idle'])
@@ -81,6 +86,9 @@ let lastFeed = ''
 let isFeeding = false
 /** Why the cloud's list could not be read last time, for the kollegen tool. */
 let cloudError: string | undefined
+/** This session's own pull request, as GitHub last reported it. */
+let ownPr: OwnPr | undefined
+let ownPrAt = 0
 
 async function safe($: $, label: string, work: () => Promise<void>): Promise<void> {
   try {
@@ -221,7 +229,9 @@ async function cloudList($: $, now: number): Promise<SessionRecord[] | undefined
     if (sessions.length === 0) {
       throw new Error(`keine Sessions in der Antwort: ${clip(text, 200)}`)
     }
-    cloudCache = { at: now, sessions, records: cloudRecords(sessions, now) }
+    await checkOwnPr($, sessions, now)
+    const reports = new Map(ownPr === undefined ? [] : [[cloudSelf, ownPr] as const])
+    cloudCache = { at: now, sessions, records: cloudRecords(sessions, now, reports) }
     cloudError = undefined
   } catch (error) {
     cloudError = clip(String(error), 300)
@@ -229,6 +239,33 @@ async function cloudList($: $, now: number): Promise<SessionRecord[] | undefined
   }
 
   return cloudCache?.records
+}
+
+/**
+ * Asks GitHub about the pull request of this session's branch, so the office
+ * knows it is waiting for the merge or merged, whatever the summary says.
+ */
+async function checkOwnPr($: $, sessions: readonly CloudSession[], now: number): Promise<void> {
+  const place = branchOf(sessions.find(session => sameSession(session.id ?? '', cloudSelf)))
+  if (place === undefined || now - ownPrAt < PR_EVERY_MS) {
+    return
+  }
+  ownPrAt = now
+  try {
+    const answer = await $.mcp.call(GITHUB_SERVER, 'list_pull_requests', {
+      owner: place.owner,
+      repo: place.repo,
+      head: `${place.owner}:${place.branch}`,
+      state: 'all',
+      perPage: 5,
+      fields: ['number', 'state', 'merged', 'merged_at', 'html_url'],
+    })
+    if (!answer.isError) {
+      ownPr = pullRequestIn(textOf(answer)) ?? ownPr
+    }
+  } catch (error) {
+    $.ui.log(`buero: list_pull_requests: ${String(error)}`, { to: 'debug' })
+  }
 }
 
 /** Everyone in the office: the cloud's sessions, or the files of this PC. */
@@ -295,12 +332,12 @@ async function feed($: $): Promise<void> {
       return
     }
     const trimmed = sessions.map(trimSession)
-    const signature = JSON.stringify(trimmed)
+    const signature = JSON.stringify([trimmed, ownPr])
     if (signature === lastFeed) {
       return
     }
     const docId = snapshotDocId(cloudSelf)
-    const data = { writtenAt: now, writer: cloudSelf, sessions: trimmed }
+    const data = { writtenAt: now, writer: cloudSelf, sessions: trimmed, ...(ownPr === undefined ? {} : { pr: ownPr }) }
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const ran = await $.tool.call(artifactWrite(docId, data, feedVersion) as never)
       const text = String((ran as { text?: unknown; deny?: unknown }).text ?? (ran as { deny?: unknown }).deny ?? '')

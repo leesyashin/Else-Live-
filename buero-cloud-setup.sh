@@ -47,10 +47,12 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { OfficeView, SessionRecord, Status, WorkerView } from '../types'
 import { describeOffice, drawOffice } from './art'
-import type { CloudSession } from './cloud'
+import type { CloudSession, OwnPr } from './cloud'
 import {
   CLOUD_SERVER,
+  branchOf,
   cloudRecords,
+  pullRequestIn,
   parseSessionList,
   sameSession,
   snapshotDocId,
@@ -87,6 +89,9 @@ const CLOUD_EVERY_MS = 10_000
 const OFFICE_URL = 'https://claude.ai/artifact/94pH1R4YMfQgxPUeghXbiK'
 /** A session writes the session list there at most this often. */
 const FEED_EVERY_MS = 60_000
+/** GitHub is asked about this session's own pull request at most this often. */
+const PR_EVERY_MS = 60_000
+const GITHUB_SERVER = 'github'
 /** An ask that is still open after this long is a permission card for the person. */
 const ASK_SETTLE_MS = 1500
 const LIVE_AGENT = new Set(['pending', 'running', 'waiting', 'idle'])
@@ -121,6 +126,9 @@ let lastFeed = ''
 let isFeeding = false
 /** Why the cloud's list could not be read last time, for the kollegen tool. */
 let cloudError: string | undefined
+/** This session's own pull request, as GitHub last reported it. */
+let ownPr: OwnPr | undefined
+let ownPrAt = 0
 
 async function safe($: $, label: string, work: () => Promise<void>): Promise<void> {
   try {
@@ -261,7 +269,9 @@ async function cloudList($: $, now: number): Promise<SessionRecord[] | undefined
     if (sessions.length === 0) {
       throw new Error(`keine Sessions in der Antwort: ${clip(text, 200)}`)
     }
-    cloudCache = { at: now, sessions, records: cloudRecords(sessions, now) }
+    await checkOwnPr($, sessions, now)
+    const reports = new Map(ownPr === undefined ? [] : [[cloudSelf, ownPr] as const])
+    cloudCache = { at: now, sessions, records: cloudRecords(sessions, now, reports) }
     cloudError = undefined
   } catch (error) {
     cloudError = clip(String(error), 300)
@@ -269,6 +279,33 @@ async function cloudList($: $, now: number): Promise<SessionRecord[] | undefined
   }
 
   return cloudCache?.records
+}
+
+/**
+ * Asks GitHub about the pull request of this session's branch, so the office
+ * knows it is waiting for the merge or merged, whatever the summary says.
+ */
+async function checkOwnPr($: $, sessions: readonly CloudSession[], now: number): Promise<void> {
+  const place = branchOf(sessions.find(session => sameSession(session.id ?? '', cloudSelf)))
+  if (place === undefined || now - ownPrAt < PR_EVERY_MS) {
+    return
+  }
+  ownPrAt = now
+  try {
+    const answer = await $.mcp.call(GITHUB_SERVER, 'list_pull_requests', {
+      owner: place.owner,
+      repo: place.repo,
+      head: `${place.owner}:${place.branch}`,
+      state: 'all',
+      perPage: 5,
+      fields: ['number', 'state', 'merged', 'merged_at', 'html_url'],
+    })
+    if (!answer.isError) {
+      ownPr = pullRequestIn(textOf(answer)) ?? ownPr
+    }
+  } catch (error) {
+    $.ui.log(`buero: list_pull_requests: ${String(error)}`, { to: 'debug' })
+  }
 }
 
 /** Everyone in the office: the cloud's sessions, or the files of this PC. */
@@ -335,12 +372,12 @@ async function feed($: $): Promise<void> {
       return
     }
     const trimmed = sessions.map(trimSession)
-    const signature = JSON.stringify(trimmed)
+    const signature = JSON.stringify([trimmed, ownPr])
     if (signature === lastFeed) {
       return
     }
     const docId = snapshotDocId(cloudSelf)
-    const data = { writtenAt: now, writer: cloudSelf, sessions: trimmed }
+    const data = { writtenAt: now, writer: cloudSelf, sessions: trimmed, ...(ownPr === undefined ? {} : { pr: ownPr }) }
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const ran = await $.tool.call(artifactWrite(docId, data, feedVersion) as never)
       const text = String((ran as { text?: unknown; deny?: unknown }).text ?? (ran as { deny?: unknown }).deny ?? '')
@@ -2680,6 +2717,55 @@ const STATUS_BY_BUCKET: Readonly<Record<string, Status>> = {
  */
 export type Delivery = { state: 'gemergt' } | { state: 'pr'; pr: string } | { state: 'ohne' }
 
+/** A session's own pull request as GitHub reports it: what a session with the mod writes about itself. */
+export type OwnPr = { number: number; state: 'open' | 'merged' | 'closed'; url?: string }
+
+/** The newest pull request in a `list_pull_requests` answer; a merged one is closed with a merge time. */
+export function pullRequestIn(text: string): OwnPr | undefined {
+  const start = text.indexOf('[')
+  const end = text.lastIndexOf(']')
+  if (start < 0 || end <= start) {
+    return undefined
+  }
+  try {
+    const list = JSON.parse(text.slice(start, end + 1)) as { number?: unknown; state?: unknown; merged_at?: unknown; merged?: unknown; html_url?: unknown }[]
+    const newest = list
+      .filter(one => typeof one.number === 'number')
+      .sort((a, b) => (b.number as number) - (a.number as number))[0]
+    if (newest === undefined) {
+      return undefined
+    }
+    const isMerged = newest.merged === true || (typeof newest.merged_at === 'string' && newest.merged_at !== '')
+    const url = typeof newest.html_url === 'string' ? newest.html_url : undefined
+
+    return { number: newest.number as number, state: isMerged ? 'merged' : newest.state === 'open' ? 'open' : 'closed', url }
+  } catch {
+    return undefined
+  }
+}
+
+/** Where a session's work goes: its repository and branch, the head of its pull request. */
+export function branchOf(session: CloudSession | undefined): { owner: string; repo: string; branch: string } | undefined {
+  const info = session?.session_context?.outcomes?.[0]?.git_repository?.git_info
+  const [owner, repo] = (info?.repo ?? '').split('/')
+  const branch = info?.branches?.[0]
+
+  return owner && repo && branch ? { owner, repo, branch } : undefined
+}
+
+/** The reports sessions wrote about their own pull request, found by session id. */
+export type PrReports = ReadonlyMap<string, OwnPr>
+
+function reportFor(reports: PrReports, id: string): OwnPr | undefined {
+  for (const [reporter, pr] of reports) {
+    if (sameSession(reporter, id)) {
+      return pr
+    }
+  }
+
+  return undefined
+}
+
 const MERGED: readonly RegExp[] = [
   // "PR #2 merged to main", "squash-merged into main"
   /\bmerged\b.{0,30}?\b(?:to|into|in|on|onto)\s+(?:the\s+)?(?:main|master)\b/,
@@ -2698,12 +2784,19 @@ const PR_NAMED = /\b(?:pr|pull[- ]?request)\s*#\s*(\d+)/
 // "Draft-PR", "PR erstellt", not "PR-Branch-Workflow"
 const PR_SAID = /\b(?:draft-?pr|pull[- ]?requests?)\b|\bprs?\b(?![-/])/
 
-export function deliveryOf(session: CloudSession): Delivery {
+/** What GitHub says about the session's own pull request wins; otherwise the summary decides. */
+export function deliveryOf(session: CloudSession, own?: OwnPr): Delivery {
   const summary = session.post_turn_summary ?? session.external_metadata?.post_turn_summary
   const said = [summary?.status_detail, summary?.recent_action].filter(Boolean).join('. ').toLowerCase()
   const clauses = said.split(/[;,!?\n]|\.(?:\s|$)|\s[–—-]\s/)
-  if (clauses.some(clause => !HEDGED.test(clause) && MERGED.some(pattern => pattern.test(clause)))) {
+  if (own?.state === 'merged' || clauses.some(clause => !HEDGED.test(clause) && MERGED.some(pattern => pattern.test(clause)))) {
     return { state: 'gemergt' }
+  }
+  if (own?.state === 'open') {
+    return { state: 'pr', pr: `PR #${own.number}` }
+  }
+  if (own?.state === 'closed') {
+    return { state: 'ohne' }
   }
   const named = PR_NAMED.exec(said)?.[1]
   if (named !== undefined) {
@@ -2793,9 +2886,9 @@ function isShown(session: CloudSession, delivery: Delivery, now: number): boolea
 }
 
 /** The sessions worth a desk, oldest first: see isShown. */
-export function cloudRecords(sessions: readonly CloudSession[], now: number): SessionRecord[] {
+export function cloudRecords(sessions: readonly CloudSession[], now: number, reports: PrReports = new Map()): SessionRecord[] {
   const shown = sessions
-    .map(session => ({ session, delivery: deliveryOf(session) }))
+    .map(session => ({ session, delivery: deliveryOf(session, reportFor(reports, session.id ?? '')) }))
     .filter(({ session, delivery }) => isShown(session, delivery, now))
     .sort((a, b) => time(a.session.created_at, 0) - time(b.session.created_at, 0))
   const taken: string[] = []

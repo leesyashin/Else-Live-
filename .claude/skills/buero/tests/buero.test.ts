@@ -3,7 +3,16 @@ import type { On } from 'claude-code'
 
 import { drawOffice } from '../hooks/art'
 import type { CloudSession } from '../hooks/cloud'
-import { cloudRecords, deliveryOf, parseSessionList, sameSession, snapshotDocId, trimSession, versionIn } from '../hooks/cloud'
+import {
+  cloudRecords,
+  deliveryOf,
+  parseSessionList,
+  pullRequestIn,
+  sameSession,
+  snapshotDocId,
+  trimSession,
+  versionIn,
+} from '../hooks/cloud'
 import {
   bossMessage,
   buildOffice,
@@ -351,9 +360,15 @@ test('in the cloud the office reads the session list and answers through it', as
   const files = new Map<string, string>()
   const clock = world(on, files, { CLAUDE_CODE_REMOTE_SESSION_ID: 'cse_01SELF' })
   const sentTo: string[] = []
+  const askedGithub: string[] = []
   on('mcp.call', ($, e) => {
     if (e.tool === 'list_sessions') {
       return { value: { content: [{ type: 'text', text: WRAPPED }], isError: false } }
+    }
+    if (e.tool === 'list_pull_requests') {
+      askedGithub.push(`${String(e.args.owner)}/${String(e.args.repo)} ${String(e.args.head)}`)
+
+      return { value: { content: [{ type: 'text', text: '[{"number":7,"state":"open","merged":false}]' }], isError: false } }
     }
     sentTo.push(`${String(e.args.session_id)}: ${String(e.args.message)}`)
 
@@ -362,6 +377,7 @@ test('in the cloud the office reads the session list and answers through it', as
 
   await $.session.start(START_EVENT)
   const listed = JSON.stringify(await $.tool.call({ tool: 'mcp__buero__kollegen' }))
+  expect(askedGithub).toEqual(['leesyashin/Else-Live- leesyashin:claude/buero'])
   expect(listed).toContain('in deiner Claude-Code-Cloud')
   expect(listed).toContain('session_01BLOCKED')
   expect(listed).not.toContain('session_01SELF')
@@ -439,6 +455,27 @@ test('sessions merged into main leave the office, ready PRs stay until they are'
   expect(records[2]?.status).toBe('arbeitet')
   expect(records[2]?.pr).toBeUndefined()
   expect(moodLabel({ mood: 'fertig', pr: 'PR #8' })).toBe('PR #8 bereit zum Mergen')
+})
+
+test("what GitHub reports about a session's own PR beats its summary", () => {
+  expect(pullRequestIn('[{"number":3,"state":"open","merged":false,"html_url":"https://x/pull/3"}]')).toEqual({
+    number: 3,
+    state: 'open',
+    url: 'https://x/pull/3',
+  })
+  // GitHub lists a merged PR as closed, with the time of its merge
+  expect(pullRequestIn('[{"number":2,"state":"closed","merged":false,"merged_at":"2026-10-18T19:21:29Z"}]')?.state).toBe('merged')
+  expect(pullRequestIn('[{"number":4,"state":"closed"},{"number":5,"state":"open"}]')?.number).toBe(5)
+  expect(pullRequestIn('[]')).toBeUndefined()
+
+  const silent = finished('session_01SILENT', 'Büro-Seite neu veröffentlicht')
+  const merged = finished('session_01DONE', 'Draft-PR #9 erstellt')
+  const reports = new Map([
+    ['cse_01SILENT', { number: 3, state: 'open' as const }],
+    ['cse_01DONE', { number: 9, state: 'merged' as const }],
+  ])
+  const records = cloudRecords([silent, merged], START, reports)
+  expect(records.map(one => `${one.id} ${one.pr ?? ''}`)).toEqual(['session_01SILENT PR #3'])
 })
 
 test('a snapshot keeps what the office draws and finds its version', () => {

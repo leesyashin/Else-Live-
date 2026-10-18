@@ -52,6 +52,55 @@ const STATUS_BY_BUCKET: Readonly<Record<string, Status>> = {
  */
 export type Delivery = { state: 'gemergt' } | { state: 'pr'; pr: string } | { state: 'ohne' }
 
+/** A session's own pull request as GitHub reports it: what a session with the mod writes about itself. */
+export type OwnPr = { number: number; state: 'open' | 'merged' | 'closed'; url?: string }
+
+/** The newest pull request in a `list_pull_requests` answer; a merged one is closed with a merge time. */
+export function pullRequestIn(text: string): OwnPr | undefined {
+  const start = text.indexOf('[')
+  const end = text.lastIndexOf(']')
+  if (start < 0 || end <= start) {
+    return undefined
+  }
+  try {
+    const list = JSON.parse(text.slice(start, end + 1)) as { number?: unknown; state?: unknown; merged_at?: unknown; merged?: unknown; html_url?: unknown }[]
+    const newest = list
+      .filter(one => typeof one.number === 'number')
+      .sort((a, b) => (b.number as number) - (a.number as number))[0]
+    if (newest === undefined) {
+      return undefined
+    }
+    const isMerged = newest.merged === true || (typeof newest.merged_at === 'string' && newest.merged_at !== '')
+    const url = typeof newest.html_url === 'string' ? newest.html_url : undefined
+
+    return { number: newest.number as number, state: isMerged ? 'merged' : newest.state === 'open' ? 'open' : 'closed', url }
+  } catch {
+    return undefined
+  }
+}
+
+/** Where a session's work goes: its repository and branch, the head of its pull request. */
+export function branchOf(session: CloudSession | undefined): { owner: string; repo: string; branch: string } | undefined {
+  const info = session?.session_context?.outcomes?.[0]?.git_repository?.git_info
+  const [owner, repo] = (info?.repo ?? '').split('/')
+  const branch = info?.branches?.[0]
+
+  return owner && repo && branch ? { owner, repo, branch } : undefined
+}
+
+/** The reports sessions wrote about their own pull request, found by session id. */
+export type PrReports = ReadonlyMap<string, OwnPr>
+
+function reportFor(reports: PrReports, id: string): OwnPr | undefined {
+  for (const [reporter, pr] of reports) {
+    if (sameSession(reporter, id)) {
+      return pr
+    }
+  }
+
+  return undefined
+}
+
 const MERGED: readonly RegExp[] = [
   // "PR #2 merged to main", "squash-merged into main"
   /\bmerged\b.{0,30}?\b(?:to|into|in|on|onto)\s+(?:the\s+)?(?:main|master)\b/,
@@ -70,12 +119,19 @@ const PR_NAMED = /\b(?:pr|pull[- ]?request)\s*#\s*(\d+)/
 // "Draft-PR", "PR erstellt", not "PR-Branch-Workflow"
 const PR_SAID = /\b(?:draft-?pr|pull[- ]?requests?)\b|\bprs?\b(?![-/])/
 
-export function deliveryOf(session: CloudSession): Delivery {
+/** What GitHub says about the session's own pull request wins; otherwise the summary decides. */
+export function deliveryOf(session: CloudSession, own?: OwnPr): Delivery {
   const summary = session.post_turn_summary ?? session.external_metadata?.post_turn_summary
   const said = [summary?.status_detail, summary?.recent_action].filter(Boolean).join('. ').toLowerCase()
   const clauses = said.split(/[;,!?\n]|\.(?:\s|$)|\s[–—-]\s/)
-  if (clauses.some(clause => !HEDGED.test(clause) && MERGED.some(pattern => pattern.test(clause)))) {
+  if (own?.state === 'merged' || clauses.some(clause => !HEDGED.test(clause) && MERGED.some(pattern => pattern.test(clause)))) {
     return { state: 'gemergt' }
+  }
+  if (own?.state === 'open') {
+    return { state: 'pr', pr: `PR #${own.number}` }
+  }
+  if (own?.state === 'closed') {
+    return { state: 'ohne' }
   }
   const named = PR_NAMED.exec(said)?.[1]
   if (named !== undefined) {
@@ -165,9 +221,9 @@ function isShown(session: CloudSession, delivery: Delivery, now: number): boolea
 }
 
 /** The sessions worth a desk, oldest first: see isShown. */
-export function cloudRecords(sessions: readonly CloudSession[], now: number): SessionRecord[] {
+export function cloudRecords(sessions: readonly CloudSession[], now: number, reports: PrReports = new Map()): SessionRecord[] {
   const shown = sessions
-    .map(session => ({ session, delivery: deliveryOf(session) }))
+    .map(session => ({ session, delivery: deliveryOf(session, reportFor(reports, session.id ?? '')) }))
     .filter(({ session, delivery }) => isShown(session, delivery, now))
     .sort((a, b) => time(a.session.created_at, 0) - time(b.session.created_at, 0))
   const taken: string[] = []
