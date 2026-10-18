@@ -1,80 +1,83 @@
 # Büro – deine Claude Code Sessions als Pixel-Art-Büro
 
-![Vorschau](vorschau.png)
+![Dein Cloud-Büro](vorschau-cloud.png)
 
-Jede Claude-Code-Session auf deinem PC ist ein Mitarbeiter an einem Schreibtisch.
-Seine Agents stehen als Praktikanten daneben. Hat jemand eine Frage oder braucht
-eine Freigabe, geht er ins **Chefbüro** zu dir. Die Sessions können sich außerdem
-gegenseitig kurze Nachrichten schicken. Im Büro fliegen die dann als Briefe von
-Tisch zu Tisch.
+Jede Claude-Code-Session ist ein Mitarbeiter an einem Schreibtisch. Wer auf
+dich wartet, steht im **Chefbüro**. Die Sessions können sich außerdem
+gegenseitig kurze Nachrichten schicken.
 
-## Installieren
+## In der Cloud (claude.ai/code, Desktop-App, iPhone)
 
-Das Repository ist privat. Dein PC muss deshalb bei GitHub angemeldet sein, z. B.
-über Git für Windows mit dem Git Credential Manager oder über `gh auth login` und
-danach `gh auth setup-git`.
+**Einmal einrichten:**
 
-**In der Desktop-App:** Klicke auf **+** neben dem Eingabefeld, dann auf
-**Plugins** und **Add marketplace**. Gib `leesyashin/Else-Live-` ein und klicke
-danach bei **buero** auf **Add plugin**.
+1. Öffne irgendeine Cloud-Session und klicke in der Titelleiste auf das Umgebungsmenü, dann auf **Bearbeiten**.
+2. Kopiere den kompletten Inhalt von [`buero-cloud-setup.sh`](../../../buero-cloud-setup.sh) in das Feld **Setup-Skript**. Steht dort schon etwas, häng ihn unten an. Dann speichern.
+3. Starte eine **neue** Session. Ab jetzt hat jede neue Cloud-Session dieser Umgebung die Mod. Bereits laufende Sessions bekommen sie erst, wenn ihr Container neu aufgebaut wird.
 
-**Im Terminal:**
+Das Setup-Skript schreibt die Mod nach `~/.claude/skills/buero`. Von dort lädt
+Claude Code sie in jeder Session, egal auf welchem Repo.
 
-```
-/plugin install buero --marketplace leesyashin/Else-Live-
-```
+**Benutzen:** Tippe in einer Session `/buero`. Das Büro zeigt deine
+Cloud-Sessions, die gerade arbeiten oder auf dich warten, und alle, die am
+letzten Tag aktiv waren. Es aktualisiert sich alle 10 Sekunden.
 
-Bestätige mit `y` und wähle den Bereich *user*. Dann läuft das Büro in jeder
-neuen Session.
+- Wartet eine Session auf dich, steht sie im Chefbüro. Oben im Fenster steht, was sie braucht.
+- Ein Klick auf einen Mitarbeiter zeigt Auftrag, Repo, Branch, letzte Zusammenfassung, Kontext und Kosten. Dort findest du außerdem den Link **Session öffnen** und ein Feld für eine Nachricht. Die iPhone-App zeigt noch keine Eingabefelder, der Link funktioniert dort aber.
+- Eine Nachricht aus dem Büro kommt bei der Session als **Nachricht einer anderen Session** an, nicht als deine eigene Eingabe. Für einfache Antworten („Ja, mach Variante B“) reicht das. Freigaben, Moduswechsel oder Heikles erledigst du in der Session selbst.
 
-## Benutzen
+**Nach Änderungen an der Mod:** Führe `scripts/make-cloud-setup.sh` aus und füge
+das neue `buero-cloud-setup.sh` wieder ins Setup-Skript ein.
 
-- `/buero` öffnet das Büro als Fenster. Du kannst es in jeder Session öffnen, alle sehen dasselbe Büro.
-- Ein Klick auf einen Mitarbeiter (unter dem Bild) zeigt Auftrag, aktuelle Tätigkeit, Frage, Agents und Ordner.
-- In der Detailansicht kannst du dem Mitarbeiter eine Nachricht schicken.
-- Fährst du in der Desktop-App mit der Maus über eine Figur, erscheint ein Tooltip mit den Details.
+## Auf dem PC (lokale Sessions)
 
-| Im Büro | Bedeutung |
-| --- | --- |
-| tippt am Rechner, Code läuft über den Bildschirm | arbeitet |
-| hat sich mit Kaffee zu dir umgedreht, grüner Haken | fertig, wartet auf deinen nächsten Auftrag |
-| steht im Chefbüro mit **?** | hat eine Frage an dich |
-| steht im Chefbüro mit **OK?** | braucht eine Freigabe |
-| schläft am Tisch (Zzz) | hängt: 5 Min. keine Aktivität während eines Auftrags |
-| roter Bildschirm, **!** | Fehler beim Modell-Aufruf |
-| leerer Stuhl, schwarzer Bildschirm, blasses Namensschild | Session geschlossen oder nicht erreichbar |
+Hier liest das Büro die Sessions auf deinem Rechner, inklusive ihrer Agents
+als Praktikanten und Freigabe-Anfragen.
 
-Antworten und Freigaben gibst du weiterhin im Fenster der jeweiligen Session. Das
-Büro zeigt dir nur, *wo* jemand wartet.
+![Lokales Büro](vorschau.png)
+
+Das Repository ist privat. Dein PC muss deshalb bei GitHub angemeldet sein,
+z. B. über Git für Windows.
+
+- **Desktop-App:** Klicke auf **+** neben dem Eingabefeld, dann auf **Plugins** und **Add marketplace**. Gib `leesyashin/Else-Live-` ein und klicke bei **buero** auf **Add plugin**.
+- **Terminal:** `/plugin install buero --marketplace leesyashin/Else-Live-`
+
+## Was die Figuren bedeuten
+
+| Im Büro | Cloud | PC |
+| --- | --- | --- |
+| tippt, Code läuft über den Bildschirm | arbeitet | arbeitet |
+| mit Kaffee zu dir umgedreht, grüner Haken | fertig oder bereit zur Durchsicht | fertig, wartet auf deinen nächsten Auftrag |
+| steht im Chefbüro mit **?** | wartet auf dich | hat eine Frage |
+| steht im Chefbüro mit **OK?** | – | braucht eine Freigabe |
+| schläft am Tisch (Zzz) | arbeitet, aber seit 5 Min. nichts Neues | 5 Min. keine Aktivität während eines Auftrags |
+| roter Bildschirm, **!** | fehlgeschlagen | Fehler beim Modell-Aufruf |
+
+In der Desktop-App zeigt ein Tooltip über jeder Figur die Details.
 
 ## Absprache zwischen den Sessions
 
-Jede Session bekommt zwei Werkzeuge:
-
-- `kollegen` zeigt, welche anderen Sessions gerade woran arbeiten.
-- `nachricht` schickt einem Kollegen eine kurze Nachricht.
-
-Die Sessions sind angewiesen, das nur zu nutzen, wenn es echte Arbeit spart, und
-höchstens **5 Nachrichten pro Stunde** zu schicken. Das Limit gilt auch für das
-eingebaute SendMessage an andere Sessions. Nachrichten innerhalb des eigenen Teams
-einer Session zählen nicht.
+Jede Session mit der Mod bekommt zwei Werkzeuge: `kollegen` zeigt, wer gerade
+woran arbeitet, und `nachricht` schickt einem Kollegen eine kurze Nachricht.
+Die Sessions sind angewiesen, das nur zu nutzen, wenn es echte Arbeit spart,
+und höchstens **5 Nachrichten pro Stunde** zu schicken. Das Limit gilt auch für
+das eingebaute `send_message` der Cloud und für SendMessage an andere Sessions.
+Nachrichten innerhalb des eigenen Teams einer Session zählen nicht.
 
 ## Einstellungen
 
-Unter `/config` findest du zwei Einstellungen:
-
-- **Nachrichten pro Stunde** (Standard 5)
-- **Hängt nach Minuten** (Standard 5)
+Standardmäßig gelten **5 Nachrichten pro Stunde** und **„hängt“ nach 5 Minuten**.
+Auf dem PC kannst du beides unter `/config` ändern.
 
 ## Was du wissen solltest
 
-- Das Büro zeigt die Sessions **auf diesem PC**. Cloud-Sessions (claude.ai/code, Handy-App) laufen in eigenen Containern und erscheinen hier noch nicht.
-- Jede Session schreibt ihren Status in `~/.claude/buero/sessions/<session-id>.json`, unter Windows `%USERPROFILE%\.claude\buero\sessions`. Darin stehen Projektname, Ordner und die ersten 300 Zeichen deines letzten Auftrags. Die Dateien bleiben auf deinem Rechner.
-- Die Mod nutzt die neue Mod-Schnittstelle von Claude Code. Sie braucht eine aktuelle Version (gebaut mit 2.1.302).
+- In der Cloud siehst du keine Agents fremder Sessions, nur die der Session, in der das Büro offen ist.
+- Auf dem PC schreibt jede Session ihren Status nach `~/.claude/buero/sessions/<session-id>.json`. Darin stehen Projektname, Ordner und die ersten 300 Zeichen deines letzten Auftrags. Die Dateien bleiben auf deinem Rechner.
+- Die Mod nutzt die neue Mod-Schnittstelle von Claude Code. Gebaut und getestet wurde sie mit Version 2.1.302.
 
 ## Entwickeln
 
 ```
-claude plugin validate buero
-claude plugin test buero
+claude plugin validate .claude/skills/buero
+claude plugin test .claude/skills/buero
+scripts/make-cloud-setup.sh
 ```
