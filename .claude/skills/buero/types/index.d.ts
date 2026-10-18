@@ -51,6 +51,8 @@ export type SessionRecord = {
   link?: string
   /** Context and cost, as the cloud reports them. */
   usage?: string
+  /** A finished cloud session's pull request that still waits for its merge (`PR #12`). */
+  pr?: string
 }
 
 export type WorkerView = {
@@ -73,6 +75,7 @@ export type WorkerView = {
   isSelf: boolean
   link?: string
   usage?: string
+  pr?: string
 }
 
 export type MessageView = {

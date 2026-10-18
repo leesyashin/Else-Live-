@@ -21,7 +21,6 @@ import {
   GONE_MS,
   HEARTBEAT_MS,
   MOOD_ICON,
-  MOOD_LABEL,
   baseName,
   bossMessage,
   buildOffice,
@@ -31,6 +30,7 @@ import {
   describeTool,
   isActive,
   limitText,
+  moodLabel,
   moodOf,
   pickName,
   resolveRecipient,
@@ -772,7 +772,7 @@ export const register: Register = (on, options) => {
             {visitors.map(worker => (
               <Button key={`chef:${worker.id}`} plain onPress={choose(worker.id)}>
                 {`${MOOD_ICON[worker.mood]} ${worker.name} (${worker.project}): `}
-                <Text dimColor>{clip(worker.question ?? MOOD_LABEL[worker.mood], 90)}</Text>
+                <Text dimColor>{clip(worker.question ?? moodLabel(worker), 90)}</Text>
               </Button>
             ))}
           </Box>
@@ -791,7 +791,7 @@ export const register: Register = (on, options) => {
         ) : (
           <Box flexDirection="column" borderStyle="round" paddingX={1}>
             <Text bold>{`${MOOD_ICON[chosen.mood]} ${chosen.name} · ${chosen.project}`}</Text>
-            <Text>{`${MOOD_LABEL[chosen.mood]}, seit ${chosen.minutesInMood} Min.`}</Text>
+            <Text>{`${moodLabel(chosen)}, seit ${chosen.minutesInMood} Min.`}</Text>
             {chosen.task !== '' && <Text>{`Auftrag: ${clip(chosen.task, 300)}`}</Text>}
             {chosen.activity !== '' && <Text dimColor>{`Gerade: ${chosen.activity}`}</Text>}
             {chosen.question !== undefined && <Text color="#f08c00">{`Frage: ${chosen.question}`}</Text>}
@@ -844,7 +844,7 @@ function statusLine(worker: WorkerView): string {
   const agents = worker.agents.length === 0 ? '' : ` · ${worker.agents.length} Agents`
   const doing = worker.mood === 'arbeitet' || worker.mood === 'haengt' ? ` · ${worker.activity}` : ''
 
-  return clip(`${MOOD_LABEL[worker.mood]}${since}${agents}${doing}`, 110)
+  return clip(`${moodLabel(worker)}${since}${agents}${doing}`, 110)
 }
 
 function questionOf(tool: string, input: Record<string, unknown>): string {

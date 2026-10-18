@@ -2,11 +2,13 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { drawOffice } from '../hooks/art'
-import { cloudRecords, parseSessionList, sameSession, snapshotDocId, trimSession, versionIn } from '../hooks/cloud'
+import type { CloudSession } from '../hooks/cloud'
+import { cloudRecords, deliveryOf, parseSessionList, sameSession, snapshotDocId, trimSession, versionIn } from '../hooks/cloud'
 import {
   bossMessage,
   buildOffice,
   describeTool,
+  moodLabel,
   moodOf,
   pickName,
   resolveRecipient,
@@ -277,6 +279,23 @@ test('the drawing fits the engine and escapes what sessions wrote', () => {
   expect(svg).not.toContain('<script>')
 })
 
+test('a visitor who just arrived walks in, and a ready PR shows on the screen', () => {
+  const office = buildOffice(
+    [
+      record('sess-ben-0002', 'Ben', { status: 'frage', question: 'Welche Farbe?' }),
+      record('sess-mia-0003', 'Mia', { status: 'fertig', pr: 'PR #8' }),
+    ],
+    START,
+    5 * MINUTE,
+    undefined,
+    12 * 60,
+  )
+  expect(drawOffice(office, true, ['sess-ben-0002'])).toContain('<set attributeName="opacity"')
+  expect(drawOffice(office)).not.toContain('<set attributeName="opacity"')
+  expect(drawOffice(office)).toContain('PR #8')
+  expect(drawOffice(office, false)).not.toContain('<animate')
+})
+
 const CLOUD_LIST = {
   ccr: {
     data: [
@@ -375,6 +394,51 @@ test('in the cloud the office reads the session list and answers through it', as
   await desktop.input({ key: 'nachricht', text: 'Ja, stell um.' })
   expect(sentTo[1]).toBe(`session_01BLOCKED: ${bossMessage('Ja, stell um.')}`)
   await desktop.unmount()
+})
+
+function finished(id: string, said: string, patch: Partial<CloudSession> = {}): CloudSession {
+  return {
+    id,
+    title: id,
+    status_bucket: 'SESSION_STATUS_BUCKET_COMPLETED',
+    created_at: '2026-10-18T09:00:00Z',
+    updated_at: '2026-10-18T11:00:00Z',
+    post_turn_summary: { status_category: 'completed', status_detail: said },
+    ...patch,
+  }
+}
+
+test('sessions merged into main leave the office, ready PRs stay until they are', () => {
+  const said = (text: string) => deliveryOf(finished('session_x', text)).state
+  expect(said('PR #2 merged to main; büro mod, page, setup script in')).toBe('gemergt')
+  expect(said('PR #25 squash-merged to main; Pages deployed, game live')).toBe('gemergt')
+  expect(said('PR auf main per Merge-Commit 53c14c2 gemergt; Live-Seite nicht geprüft')).toBe('gemergt')
+  expect(said('PR #3 als Merge-Commit in main übernommen')).toBe('gemergt')
+  expect(said('Pages-Deploy von PR #23 durchgelaufen; Domain genannt')).toBe('gemergt')
+  expect(said('Draft-PR #8 erstellt, CI grün')).toBe('pr')
+  expect(said('PR #4 ready to merge into main')).toBe('pr')
+  expect(said('PR #4 noch nicht in main gemergt')).toBe('pr')
+  expect(said('merged main into the branch, PR #6 updated')).toBe('pr')
+  expect(said('gave the Pages URL; latest main deployed successfully')).toBe('gemergt')
+  expect(said('PR #9 offen; main deploy unberührt')).toBe('pr')
+  expect(said('Opus prompt rewritten; PR-branch workflow')).toBe('ohne')
+  expect(deliveryOf(finished('session_x', 'PR #12 offen'))).toEqual({ state: 'pr', pr: 'PR #12' })
+
+  const sessions = [
+    finished('session_01MERGED', 'PR #2 merged to main'),
+    finished('session_01OPEN', 'Draft-PR #8 erstellt', { updated_at: '2026-10-10T11:00:00Z' }),
+    finished('session_01READ', 'Link geschickt'),
+    finished('session_01UNREAD', 'Antwort geschrieben', { unread: true }),
+    finished('session_01AGAIN', 'PR #2 merged to main', { status_bucket: 'SESSION_STATUS_BUCKET_WORKING' }),
+  ]
+  const records = cloudRecords(sessions, START)
+  expect(records.map(one => one.id)).toEqual(['session_01OPEN', 'session_01UNREAD', 'session_01AGAIN'])
+  expect(records[0]?.status).toBe('fertig')
+  expect(records[0]?.pr).toBe('PR #8')
+  expect(records[1]?.pr).toBeUndefined()
+  expect(records[2]?.status).toBe('arbeitet')
+  expect(records[2]?.pr).toBeUndefined()
+  expect(moodLabel({ mood: 'fertig', pr: 'PR #8' })).toBe('PR #8 bereit zum Mergen')
 })
 
 test('a snapshot keeps what the office draws and finds its version', () => {

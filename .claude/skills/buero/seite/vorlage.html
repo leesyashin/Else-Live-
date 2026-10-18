@@ -38,6 +38,7 @@
     color-scheme: dark;
   }
 
+  [hidden] { display: none !important; }
   body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.45; }
   .app {
     max-width: 1240px; margin: 0 auto;
@@ -203,7 +204,7 @@
 <script>
   const Office = (() => {
     /*__OFFICE_LIB__*/
-    return { buildOffice, drawOffice, describeOffice, cloudRecords, parseSessionList, clip, MOOD_LABEL, MOOD_COLOR };
+    return { buildOffice, drawOffice, describeOffice, cloudRecords, parseSessionList, clip, moodLabel, MOOD_COLOR };
   })();
 
   (() => {
@@ -216,7 +217,7 @@
     const ASKABLE = new Set(['approval_required', 'not_in_manifest', 'consent_required']);
     const SETTINGS = new Set(['blocked_by_policy', 'needs_reauth', 'server_not_connected', 'server_not_found']);
     const NO_MCP = new Set(['not_granted', 'capability_disabled', 'capability_removed']);
-    const LABEL = { ...Office.MOOD_LABEL, frage: 'wartet auf dich' };
+    const labelOf = worker => (worker.mood === 'frage' ? 'wartet auf dich' : Office.moodLabel(worker));
     const ORDER = { frage: 0, freigabe: 0, haengt: 1, fehler: 1, arbeitet: 2, neu: 3, fertig: 4, weg: 5 };
     const el = id => document.getElementById(id);
     const reduceMotion = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)').matches : false;
@@ -231,6 +232,9 @@
       selected: null,
       letters: [],
       office: null,
+      // who sat in the boss office at the last drawing; null before the first
+      visitors: null,
+      drawn: '',
     };
 
     function sessionsOf(result) {
@@ -273,10 +277,26 @@
       return Office.buildOffice(records, asOf, STUCK_MS, undefined, minutesOf(now));
     }
 
+    // Visitors who were not in the boss office at the last drawing walk in
+    // from the door; the first drawing seats everyone straight away.
+    function arrivals(office) {
+      const now = office.workers.filter(worker => worker.mood === 'frage' || worker.mood === 'freigabe').map(worker => worker.id);
+      const before = state.visitors;
+      state.visitors = new Set(now);
+      return before === null ? [] : now.filter(id => !before.has(id));
+    }
+
     function renderStage() {
       const office = state.office || { workers: [], messages: [], clockMinutes: minutesOf(Date.now()) };
       const stage = el('stage');
-      stage.innerHTML = Office.drawOffice(office, !reduceMotion);
+      const markup = Office.drawOffice(office, !reduceMotion, state.office ? arrivals(office) : [], Infinity);
+      // the same drawing again keeps running instead of starting its animations over
+      if (markup === state.drawn) {
+        markSelected();
+        return;
+      }
+      state.drawn = markup;
+      stage.innerHTML = markup;
       const svg = stage.querySelector('svg');
       if (svg) {
         svg.setAttribute('role', 'img');
@@ -334,12 +354,12 @@
       const all = [...workers()].sort((a, b) => (ORDER[a.mood] ?? 9) - (ORDER[b.mood] ?? 9) || a.name.localeCompare(b.name));
       const waiting = all.filter(worker => worker.mood === 'frage' || worker.mood === 'freigabe');
       el('waitingPanel').hidden = waiting.length === 0;
-      el('waitingList').replaceChildren(...waiting.map(worker => rowFor(worker, Office.clip(worker.question || LABEL[worker.mood], 160))));
-      el('roster').replaceChildren(...all.map(worker => rowFor(worker, Office.clip(`${LABEL[worker.mood]} · ${worker.task}`, 120))));
+      el('waitingList').replaceChildren(...waiting.map(worker => rowFor(worker, Office.clip(worker.question || labelOf(worker), 160))));
+      el('roster').replaceChildren(...all.map(worker => rowFor(worker, Office.clip(`${labelOf(worker)} · ${worker.task}`, 120))));
       el('rosterEmpty').hidden = all.length > 0;
       el('rosterEmpty').textContent = state.office === null
         ? 'Sobald deine Sessions geladen sind, stehen sie hier.'
-        : 'Gerade ist keine Session aktiv oder am letzten Tag gelaufen.';
+        : 'Gerade arbeitet keine Session, keine wartet auf dich und kein PR aufs Mergen.';
     }
 
     function since(minutes) {
@@ -355,7 +375,7 @@
       if (worker === undefined) return;
       const canSend = state.mcp !== null && state.connector.sessions !== null;
       el('dName').textContent = worker.name;
-      el('dPill').textContent = LABEL[worker.mood];
+      el('dPill').textContent = labelOf(worker);
       el('dPill').style.background = Office.MOOD_COLOR[worker.mood];
       el('dTask').textContent = worker.task || 'Ohne Titel';
       el('dAsk').hidden = !worker.question;
