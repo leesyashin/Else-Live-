@@ -6,7 +6,22 @@ Jede Claude-Code-Session ist ein Mitarbeiter an einem Schreibtisch. Wer auf
 dich wartet, steht im **Chefbüro**. Die Sessions können sich außerdem
 gegenseitig kurze Nachrichten schicken.
 
-## In der Cloud (claude.ai/code, Desktop-App, iPhone)
+## Am einfachsten: die Büro-Seite
+
+**[Claude-Büro öffnen](https://claude.ai/artifact/94pH1R4YMfQgxPUeghXbiK)**. Die Seite läuft in der Desktop-App, im
+Browser und auf dem iPhone. Sie liest deine Cloud-Sessions live über den
+Connector „Claude Code Remote“ und fragt beim ersten Öffnen einmal nach deiner
+Erlaubnis. Ein Klick auf eine Figur zeigt die Details, dort kannst du der
+Session auch eine Nachricht schicken.
+
+Die Seite wird aus `seite/vorlage.html` und dem Zeichen-Code der Mod gebaut:
+`node scripts/build-office-page.mjs`.
+
+## Als Mod in Cloud-Sessions (Fenster in der Session)
+
+Die Desktop-App zeigt Mod-Fenster in Cloud-Sessions derzeit nicht an
+(„no surface is attached“). Die Werkzeuge `kollegen` und `nachricht` und das
+Nachrichtenlimit wirken dort trotzdem.
 
 **Einmal einrichten:**
 

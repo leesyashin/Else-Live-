@@ -1401,14 +1401,14 @@ function background(height: number, office: OfficeView): string {
     tiles.join('') +
     rect(0, 0, 296, WALL_H, '#efe8da') +
     rect(0, WALL_H - 4, 296, 4, '#b9ab92') +
-    window(22) +
-    window(112) +
+    officeWindow(22) +
+    officeWindow(112) +
     noticeBoard(office.messages.length) +
     kitchen()
   )
 }
 
-function window(x: number): string {
+function officeWindow(x: number): string {
   return (
     rect(x, 7, 62, 28, '#ffffff') +
     rect(x + 3, 10, 56, 22, '#9fd3f5') +
@@ -1503,7 +1503,7 @@ function bossOffice(office: OfficeView, visitors: readonly WorkerView[]): string
       worker.question === undefined ? '' : `: ${worker.question}`
     }`
     out +=
-      `<g><title>${escapeXml(tip)}</title>` +
+      `<g data-worker="${escapeXml(worker.id)}" class="worker"><title>${escapeXml(tip)}</title>` +
       sprite(STAND, paletteOf(worker), at.x, at.y) +
       bubble(at.x - 2, at.y - 22, isPermission ? 'OK?' : '?', isPermission ? '#ffe066' : '#ffb84d', '#222', true) +
       text(at.x + 12, at.y + 50, clip(worker.name, 7), 8, '#ffffff', ' text-anchor="middle" font-weight="bold"') +
@@ -1765,7 +1765,7 @@ export function drawOffice(office: OfficeView, isAnimated = true): string {
     const origin = deskOrigin(i)
     const view = atDesks[i] as WorkerView | undefined
     const mood = view?.mood ?? 'leer'
-    desks += view === undefined ? '' : `<g>${tooltip(view)}`
+    desks += view === undefined ? '' : `<g data-worker="${escapeXml(view.id)}" class="worker">${tooltip(view)}`
     desks += desk(origin.x, origin.y, mood, hash(view?.id ?? `desk${i}`))
     if (view !== undefined) {
       desks += worker(origin.x, origin.y, view) + interns(origin.x, origin.y, view)
