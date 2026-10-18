@@ -7,7 +7,16 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { OfficeView, SessionRecord, Status, WorkerView } from '../types'
 import { describeOffice, drawOffice } from './art'
-import { CLOUD_SERVER, cloudRecords, parseSessionList, sameSession } from './cloud'
+import type { CloudSession } from './cloud'
+import {
+  CLOUD_SERVER,
+  cloudRecords,
+  parseSessionList,
+  sameSession,
+  snapshotDocId,
+  trimSession,
+  versionIn,
+} from './cloud'
 import {
   GONE_MS,
   HEARTBEAT_MS,
@@ -34,6 +43,10 @@ const PANE = 'buero'
 const READ_EVERY_MS = 3000
 /** The cloud's session list is asked at most this often. */
 const CLOUD_EVERY_MS = 10_000
+/** The office page whose database the cloud sessions feed. */
+const OFFICE_URL = 'https://claude.ai/artifact/94pH1R4YMfQgxPUeghXbiK'
+/** A session writes the session list there at most this often. */
+const FEED_EVERY_MS = 60_000
 /** An ask that is still open after this long is a permission card for the person. */
 const ASK_SETTLE_MS = 1500
 const LIVE_AGENT = new Set(['pending', 'running', 'waiting', 'idle'])
@@ -61,7 +74,11 @@ let resumeStatus: Status = 'arbeitet'
 const lastGood = new Map<string, SessionRecord>()
 /** This session's id in the cloud (`cse_…`); empty on a PC. */
 let cloudSelf = ''
-let cloudCache: { at: number; records: SessionRecord[] } | undefined
+let cloudCache: { at: number; sessions: CloudSession[]; records: SessionRecord[] } | undefined
+let feeder: Timer | undefined
+let feedVersion: number | undefined
+let lastFeed = ''
+let isFeeding = false
 /** Why the cloud's list could not be read last time, for the kollegen tool. */
 let cloudError: string | undefined
 
@@ -204,7 +221,7 @@ async function cloudList($: $, now: number): Promise<SessionRecord[] | undefined
     if (sessions.length === 0) {
       throw new Error(`keine Sessions in der Antwort: ${clip(text, 200)}`)
     }
-    cloudCache = { at: now, records: cloudRecords(sessions, now) }
+    cloudCache = { at: now, sessions, records: cloudRecords(sessions, now) }
     cloudError = undefined
   } catch (error) {
     cloudError = clip(String(error), 300)
@@ -247,6 +264,63 @@ async function deliver($: $, sessionId: string, text: string): Promise<string | 
   const sent = await $.session.send({ to: { sessionId }, text })
 
   return sent.isDelivered ? undefined : sent.reason
+}
+
+function artifactWrite(docId: string, data: Record<string, unknown>, ifVersion: number | undefined) {
+  return {
+    tool: 'ArtifactData',
+    action: 'set',
+    url: OFFICE_URL,
+    collection: 'buero',
+    doc_id: docId,
+    data,
+    ...(ifVersion === undefined ? {} : { if_version: ifVersion }),
+  }
+}
+
+/**
+ * Writes the cloud's session list into the office page's database, so the
+ * page shows it without a connector of its own; only when it changed.
+ */
+async function feed($: $): Promise<void> {
+  if (cloudSelf === '' || isFeeding) {
+    return
+  }
+  isFeeding = true
+  try {
+    const now = await $.clock.now()
+    await cloudList($, now)
+    const sessions = cloudCache?.sessions
+    if (sessions === undefined) {
+      return
+    }
+    const trimmed = sessions.map(trimSession)
+    const signature = JSON.stringify(trimmed)
+    if (signature === lastFeed) {
+      return
+    }
+    const docId = snapshotDocId(cloudSelf)
+    const data = { writtenAt: now, writer: cloudSelf, sessions: trimmed }
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const ran = await $.tool.call(artifactWrite(docId, data, feedVersion) as never)
+      const text = String((ran as { text?: unknown; deny?: unknown }).text ?? (ran as { deny?: unknown }).deny ?? '')
+      if (/committed/i.test(text)) {
+        feedVersion = versionIn(text)
+        lastFeed = signature
+
+        return
+      }
+      // the document exists from an earlier run, or moved on: take its version
+      feedVersion = versionIn(text)
+      if (feedVersion === undefined) {
+        throw new Error(clip(text, 200))
+      }
+    }
+  } catch (error) {
+    $.ui.log(`buero: feed: ${String(error)}`, { to: 'debug' })
+  } finally {
+    isFeeding = false
+  }
 }
 
 /** Takes this session's desk: a new record, or the one a reload left behind. */
@@ -386,6 +460,11 @@ export const register: Register = (on, options) => {
       await join($)
       heartbeat?.cancel()
       heartbeat = $.clock.every(HEARTBEAT_MS, () => void beat($))
+      feeder?.cancel()
+      if (cloudSelf !== '') {
+        feeder = $.clock.every(FEED_EVERY_MS, () => void feed($))
+        $.clock.after(5000, () => void feed($))
+      }
       if ((await $.ui.panes()).some(pane => pane.id === PANE)) {
         startReader($)
       }

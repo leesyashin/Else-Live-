@@ -53,6 +53,7 @@
   .live::before { content: ""; width: 8px; height: 8px; background: var(--muted); }
   .live[data-state="live"]::before { background: var(--work); }
   .live[data-state="problem"]::before { background: var(--bad); }
+  .live[data-state="stale"]::before { background: var(--wait); }
   @media (prefers-reduced-motion: no-preference) {
     .live[data-state="live"]::before { animation: blink 2s steps(2) infinite; }
   }
@@ -175,16 +176,19 @@
           <dt>Verbrauch</dt><dd class="data" id="dUsage"></dd>
         </dl>
         <a class="open-link" id="dLink" href="https://claude.ai/code" target="_blank" rel="noopener">Session öffnen ↗</a>
-        <form class="compose" id="compose">
+        <form class="compose" id="compose" hidden>
           <label for="message" id="messageLabel">Nachricht</label>
           <textarea id="message" name="message" placeholder="z. B. Ja, nimm Variante B."></textarea>
           <div class="actions">
             <button class="btn" id="send" type="submit">Senden</button>
-            <button class="btn quiet" id="close" type="button">Schließen</button>
           </div>
           <p class="result" id="sendResult" hidden></p>
           <p class="hint">Die Nachricht startet in der Session eine neue Runde. Freigaben und Moduswechsel machst du in der Session selbst.</p>
         </form>
+        <p class="hint" id="noCompose">Antworten kannst du über „Session öffnen“. Direkt aus dem Büro geht es, sobald die Seite Claude Code Remote nutzen darf.</p>
+        <div class="actions">
+          <button class="btn quiet" id="close" type="button">Schließen</button>
+        </div>
       </section>
 
       <section class="panel">
@@ -566,6 +570,38 @@
                 usage: usageOf(session),
             };
         });
+    }
+    /** The fields of a session the office draws: what a snapshot keeps of it. */
+    function trimSession(session) {
+        const outcome = session.session_context?.outcomes?.[0]?.git_repository?.git_info;
+        const source = session.session_context?.sources?.[0]?.git_repository?.url;
+        const summary = session.post_turn_summary ?? session.external_metadata?.post_turn_summary;
+        return {
+            id: session.id,
+            title: session.title,
+            session_status: session.session_status,
+            status_bucket: session.status_bucket,
+            created_at: session.created_at,
+            updated_at: session.updated_at,
+            session_context: {
+                outcomes: outcome === undefined ? [] : [{ git_repository: { git_info: { repo: outcome.repo, branches: outcome.branches?.slice(0, 1) } } }],
+                sources: source === undefined ? [] : [{ git_repository: { url: source } }],
+            },
+            post_turn_summary: summary,
+            external_metadata: {
+                context_usage: session.external_metadata?.context_usage,
+                usage: { cost_usd: session.external_metadata?.usage?.cost_usd },
+            },
+        };
+    }
+    /** The document a session keeps its latest snapshot in: one per session. */
+    function snapshotDocId(sessionId) {
+        return `snap-${sessionId.slice(sessionId.indexOf('_') + 1).replace(/[^A-Za-z0-9_-]/g, '')}`;
+    }
+    /** The version a database write answered or refused with, if it names one. */
+    function versionIn(text) {
+        const match = /version\D{0,20}(\d+)/i.exec(text);
+        return match === null ? undefined : Number(match[1]);
     }
     
     // Draws the office as one pixel-art SVG. Pure: an OfficeView in, markup out.
@@ -1080,6 +1116,7 @@
     const SERVER = 'Claude Code Remote';
     const LIST_INPUT = { mine: true, limit: 25 };
     const STUCK_MS = 5 * 60 * 1000;
+    const STALE_MS = 5 * 60 * 1000;
     const LETTER_MS = 90 * 1000;
     const DENIALS = new Set(['needs_reauth', 'server_not_connected', 'server_not_found', 'blocked_by_policy', 'approval_required', 'not_in_manifest', 'selection_required', 'consent_required']);
     const ASKABLE = new Set(['approval_required', 'not_in_manifest', 'consent_required']);
@@ -1090,7 +1127,17 @@
     const el = id => document.getElementById(id);
     const reduceMotion = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)').matches : false;
 
-    const state = { mcp: null, records: null, updatedAt: null, problem: null, selected: null, letters: [], office: null };
+    // Two sources of the session list: the connector, asked by this page, and
+    // the snapshot a cloud session with the Büro mod writes into this page's
+    // database. The connector wins while it answers.
+    const state = {
+      mcp: null,
+      connector: { sessions: null, at: null, problem: null },
+      snapshot: { sessions: null, at: null, writer: null, isEmpty: false, problem: null },
+      selected: null,
+      letters: [],
+      office: null,
+    };
 
     function sessionsOf(result) {
       const payload = result && result.payload;
@@ -1104,25 +1151,36 @@
       return Office.parseSessionList(text);
     }
 
-    function minutesNow(now) {
-      const date = new Date(now);
+    function current() {
+      if (state.connector.sessions !== null) return { sessions: state.connector.sessions, at: state.connector.at, source: 'connector' };
+      if (state.snapshot.sessions !== null) return { sessions: state.snapshot.sessions, at: state.snapshot.at, source: 'snapshot' };
+      return null;
+    }
+
+    function minutesOf(time) {
+      const date = new Date(time);
       return date.getHours() * 60 + date.getMinutes();
     }
 
     function buildOffice() {
+      const data = current();
+      if (data === null) return null;
+      // moods are read at the time the list was taken, so an old snapshot
+      // does not turn every working session into a sleeping one
+      const asOf = data.source === 'snapshot' ? data.at : Date.now();
       const now = Date.now();
-      const records = (state.records || []).map(record => ({
+      const records = Office.cloudRecords(data.sessions, asOf).map(record => ({
         ...record,
-        heartbeat: now,
+        heartbeat: asOf,
         sent: state.letters
           .filter(letter => letter.toId === record.id && now - letter.at < LETTER_MS)
-          .map(letter => ({ at: letter.at, to: letter.toId, toId: letter.toId, text: letter.text, counts: false, fromBoss: true })),
+          .map(letter => ({ at: asOf, to: letter.toId, toId: letter.toId, text: letter.text, counts: false, fromBoss: true })),
       }));
-      return Office.buildOffice(records, now, STUCK_MS, undefined, minutesNow(now));
+      return Office.buildOffice(records, asOf, STUCK_MS, undefined, minutesOf(now));
     }
 
     function renderStage() {
-      const office = state.office || { workers: [], messages: [], clockMinutes: minutesNow(Date.now()) };
+      const office = state.office || { workers: [], messages: [], clockMinutes: minutesOf(Date.now()) };
       const stage = el('stage');
       stage.innerHTML = Office.drawOffice(office, !reduceMotion);
       const svg = stage.querySelector('svg');
@@ -1151,7 +1209,7 @@
     }
 
     function renderChips() {
-      const hasData = state.records !== null;
+      const hasData = state.office !== null;
       el('countWork').textContent = hasData ? count(['arbeitet']) : '–';
       el('countWait').textContent = hasData ? count(['frage', 'freigabe']) : '–';
       el('countDone').textContent = hasData ? count(['fertig']) : '–';
@@ -1185,7 +1243,7 @@
       el('waitingList').replaceChildren(...waiting.map(worker => rowFor(worker, Office.clip(worker.question || LABEL[worker.mood], 160))));
       el('roster').replaceChildren(...all.map(worker => rowFor(worker, Office.clip(`${LABEL[worker.mood]} · ${worker.task}`, 120))));
       el('rosterEmpty').hidden = all.length > 0;
-      el('rosterEmpty').textContent = state.records === null
+      el('rosterEmpty').textContent = state.office === null
         ? 'Sobald deine Sessions geladen sind, stehen sie hier.'
         : 'Gerade ist keine Session aktiv oder am letzten Tag gelaufen.';
     }
@@ -1201,6 +1259,7 @@
       const worker = workers().find(one => one.id === state.selected);
       el('detail').hidden = worker === undefined;
       if (worker === undefined) return;
+      const canSend = state.mcp !== null && state.connector.sessions !== null;
       el('dName').textContent = worker.name;
       el('dPill').textContent = LABEL[worker.mood];
       el('dPill').style.background = Office.MOOD_COLOR[worker.mood];
@@ -1213,21 +1272,33 @@
       el('dUsage').textContent = worker.usage || '–';
       el('dLink').href = worker.link || 'https://claude.ai/code';
       el('messageLabel').textContent = `Nachricht an ${worker.name}`;
+      el('compose').hidden = !canSend;
+      el('noCompose').hidden = canSend;
+    }
+
+    function clock(time) {
+      return new Date(time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
     }
 
     function renderLive() {
       const live = el('live');
-      if (state.problem && state.records === null) {
-        live.dataset.state = 'problem';
-        live.textContent = 'keine Verbindung';
-      } else if (state.updatedAt) {
-        live.dataset.state = state.problem ? 'problem' : 'live';
-        const time = new Date(state.updatedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        live.textContent = `live · Stand ${time}`;
-      } else {
-        live.dataset.state = 'wait';
-        live.textContent = 'verbinde …';
+      const data = current();
+      if (data === null) {
+        const failed = state.connector.problem && (state.snapshot.isEmpty || state.snapshot.problem);
+        live.dataset.state = failed ? 'problem' : 'wait';
+        live.textContent = failed ? 'kein Stand' : 'verbinde …';
+        return;
       }
+      if (data.source === 'connector') {
+        live.dataset.state = state.connector.problem ? 'problem' : 'live';
+        live.textContent = `live · Stand ${clock(data.at)}`;
+        return;
+      }
+      const age = Date.now() - data.at;
+      live.dataset.state = age > STALE_MS ? 'stale' : 'live';
+      live.textContent = age > STALE_MS
+        ? `Stand ${clock(data.at)} · seitdem keine Session mit Büro-Mod aktiv`
+        : `Stand ${clock(data.at)} · über eine Session`;
     }
 
     function problemText(code, message) {
@@ -1240,8 +1311,8 @@
         case 'not_in_manifest':
         case 'consent_required': return 'Die Seite braucht deine Erlaubnis, deine Sessions zu lesen.';
         case 'selection_required': return 'Du hast Claude Code Remote mehrfach verbunden. Wähle in claude.ai aus, welches die Seite nutzen soll.';
-        case 'blocked_by_policy': return 'Claude Code Remote lässt die Seite deine Sessions noch nicht lesen. Klick auf „Berechtigungen öffnen“ und schalte Claude Code Remote mit list_sessions und send_message für diese Seite ein.';
-        case 'perms_unavailable': return 'Das Berechtigungsfenster ließ sich hier nicht öffnen. Öffne oben links das Menü neben „Claude-Büro“ und dort die Berechtigungen, oder nutze die Connector-Einstellungen.';
+        case 'blocked_by_policy': return 'Claude Code Remote lässt die Seite deine Sessions nicht direkt lesen.';
+        case 'perms_unavailable': return 'Das Berechtigungsfenster ließ sich hier nicht öffnen. Öffne oben links das Menü neben „Claude-Büro“ und dort die Berechtigungen.';
         case 'tool_error': return `Claude Code Remote meldet einen Fehler: ${Office.clip(message || '', 160)}`;
         case 'server_unavailable':
         case 'upstream_error':
@@ -1252,13 +1323,16 @@
 
     function renderNotice() {
       const notice = el('notice');
-      if (state.records !== null && !DENIALS.has(state.problem || '')) {
+      if (current() !== null) {
         notice.hidden = true;
         return;
       }
       notice.hidden = false;
-      el('noticeText').textContent = state.problem ? problemText(state.problem.code || state.problem, state.problem.message) : 'Ich verbinde mich mit deinen Sessions …';
-      const code = state.problem ? state.problem.code || state.problem : '';
+      const code = state.connector.problem ? state.connector.problem.code : '';
+      const waitingForSnapshot = 'Den Stand liefert sonst eine Cloud-Session mit der Büro-Mod: Sobald eine läuft, erscheint er hier innerhalb einer Minute.';
+      el('noticeText').textContent = code === ''
+        ? 'Ich verbinde mich mit deinen Sessions …'
+        : `${problemText(code, state.connector.problem.message)} ${waitingForSnapshot}`;
       el('perms').hidden = !(ASKABLE.has(code) || SETTINGS.has(code));
       el('allow').hidden = !ASKABLE.has(code);
       el('connectors').hidden = !(SETTINGS.has(code) || code === 'perms_unavailable');
@@ -1266,7 +1340,7 @@
     }
 
     function renderAll() {
-      state.office = state.records === null ? null : buildOffice();
+      state.office = buildOffice();
       renderStage();
       renderChips();
       renderLists();
@@ -1287,9 +1361,7 @@
     }
 
     function accept(result) {
-      state.records = Office.cloudRecords(sessionsOf(result), Date.now());
-      state.updatedAt = (result.cache && result.cache.storedAt) || Date.now();
-      state.problem = null;
+      state.connector = { sessions: sessionsOf(result), at: (result.cache && result.cache.storedAt) || Date.now(), problem: null };
       renderAll();
     }
 
@@ -1299,11 +1371,19 @@
         return;
       }
       const error = event.error || { code: 'upstream_error' };
-      if (NO_MCP.has(error.code)) {
-        state.problem = { code: 'no_mcp' };
+      const code = NO_MCP.has(error.code) ? 'no_mcp' : error.code;
+      state.connector.problem = { code, message: error.message };
+      if (DENIALS.has(code) || code === 'no_mcp') state.connector.sessions = null;
+      renderAll();
+    }
+
+    function onSnapshot(snapshot) {
+      const doc = snapshot.docs[0];
+      const data = doc && doc.exists ? doc.data() : undefined;
+      if (!data || !Array.isArray(data.sessions)) {
+        state.snapshot = { sessions: null, at: null, writer: null, isEmpty: true, problem: null };
       } else {
-        state.problem = { code: error.code, message: error.message };
-        if (DENIALS.has(error.code)) state.records = null;
+        state.snapshot = { sessions: data.sessions, at: Number(data.writtenAt) || Date.now(), writer: data.writer || null, isEmpty: false, problem: null };
       }
       renderAll();
     }
@@ -1314,7 +1394,7 @@
       try {
         accept(await state.mcp.callTool(SERVER, 'list_sessions', LIST_INPUT));
       } catch (error) {
-        state.problem = { code: (error && error.code) || 'upstream_error', message: error && error.message };
+        state.connector.problem = { code: (error && error.code) || 'upstream_error', message: error && error.message };
         renderAll();
       } finally {
         button.disabled = false;
@@ -1329,7 +1409,7 @@
         if (!permissions) throw new Error('unavailable');
         await permissions.manage();
       } catch (error) {
-        state.problem = { code: 'perms_unavailable' };
+        state.connector.problem = { code: 'perms_unavailable' };
         renderAll();
         button.disabled = false;
         return;
@@ -1361,11 +1441,9 @@
         result.dataset.tone = 'bad';
         result.textContent = code === 'server_unavailable' || code === 'upstream_error'
           ? 'Unklar, ob die Nachricht angekommen ist. Schau in der Session nach, bevor du sie noch einmal schickst.'
-          : code === 'approval_required' || code === 'not_in_manifest' || code === 'consent_required'
-            ? 'Zum Senden brauchst du die Erlaubnis für diese Seite. Klick noch einmal auf Senden und erlaube es.'
-            : code === 'tool_error'
-              ? `Nicht zugestellt: ${Office.clip((error && error.message) || '', 160)}`
-              : problemText(code, error && error.message);
+          : code === 'tool_error'
+            ? `Nicht zugestellt: ${Office.clip((error && error.message) || '', 160)}`
+            : `${problemText(code, error && error.message)} Antworte bis dahin über „Session öffnen“.`;
       } finally {
         button.disabled = false;
       }
@@ -1379,20 +1457,32 @@
     el('compose').addEventListener('submit', send);
     el('allow').addEventListener('click', allow);
     el('perms').addEventListener('click', openPermissions);
-    setInterval(() => { if (state.records !== null) renderAll(); }, 60 * 1000);
+    setInterval(() => { if (current() !== null) renderAll(); }, 60 * 1000);
 
     renderAll();
 
-    async function start() {
+    async function use(name) {
       const claude = window.claude;
-      const mcp = claude && claude.use ? await claude.use('mcp').catch(() => null) : null;
-      if (!mcp) {
-        state.problem = { code: 'no_mcp' };
-        renderAll();
-        return;
+      return claude && claude.use ? claude.use(name).catch(() => null) : null;
+    }
+
+    async function start() {
+      const [mcp, db] = await Promise.all([use('mcp'), use('db')]);
+      if (db) {
+        db.collection('buero').orderBy('writtenAt', 'desc').limit(1).onSnapshot(onSnapshot, error => {
+          state.snapshot.problem = (error && error.code) || 'unavailable';
+          renderAll();
+        });
+      } else {
+        state.snapshot.problem = 'unavailable';
       }
-      state.mcp = mcp;
-      mcp.watchTool(SERVER, 'list_sessions', LIST_INPUT, onWatch, { refetchInterval: 30 * 1000, cache: { staleTime: 15 * 1000 } });
+      if (mcp) {
+        state.mcp = mcp;
+        mcp.watchTool(SERVER, 'list_sessions', LIST_INPUT, onWatch, { refetchInterval: 30 * 1000, cache: { staleTime: 15 * 1000 } });
+      } else {
+        state.connector.problem = { code: 'no_mcp' };
+      }
+      renderAll();
     }
     start();
   })();

@@ -14,6 +14,13 @@ Connector „Claude Code Remote“ und fragt beim ersten Öffnen einmal nach dei
 Erlaubnis. Ein Klick auf eine Figur zeigt die Details, dort kannst du der
 Session auch eine Nachricht schicken.
 
+**Woher die Seite ihre Daten hat:** Darf die Seite den Connector nutzen, liest
+sie selbst alle 30 Sekunden. Ist er gesperrt, liest sie den Stand, den jede
+Cloud-Session mit der Büro-Mod höchstens einmal pro Minute in den Speicher der
+Seite schreibt (über das Setup-Skript unten). Oben rechts steht, wie alt der
+Stand ist. Antworten direkt aus dem Büro gehen nur über den Connector; sonst
+nutzt du „Session öffnen“.
+
 Die Seite wird aus `seite/vorlage.html` und dem Zeichen-Code der Mod gebaut:
 `node scripts/build-office-page.mjs`.
 

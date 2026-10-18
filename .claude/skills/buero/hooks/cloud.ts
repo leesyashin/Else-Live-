@@ -147,3 +147,40 @@ export function cloudRecords(sessions: readonly CloudSession[], now: number): Se
     }
   })
 }
+
+/** The fields of a session the office draws: what a snapshot keeps of it. */
+export function trimSession(session: CloudSession): CloudSession {
+  const outcome = session.session_context?.outcomes?.[0]?.git_repository?.git_info
+  const source = session.session_context?.sources?.[0]?.git_repository?.url
+  const summary = session.post_turn_summary ?? session.external_metadata?.post_turn_summary
+
+  return {
+    id: session.id,
+    title: session.title,
+    session_status: session.session_status,
+    status_bucket: session.status_bucket,
+    created_at: session.created_at,
+    updated_at: session.updated_at,
+    session_context: {
+      outcomes: outcome === undefined ? [] : [{ git_repository: { git_info: { repo: outcome.repo, branches: outcome.branches?.slice(0, 1) } } }],
+      sources: source === undefined ? [] : [{ git_repository: { url: source } }],
+    },
+    post_turn_summary: summary,
+    external_metadata: {
+      context_usage: session.external_metadata?.context_usage,
+      usage: { cost_usd: session.external_metadata?.usage?.cost_usd },
+    },
+  }
+}
+
+/** The document a session keeps its latest snapshot in: one per session. */
+export function snapshotDocId(sessionId: string): string {
+  return `snap-${sessionId.slice(sessionId.indexOf('_') + 1).replace(/[^A-Za-z0-9_-]/g, '')}`
+}
+
+/** The version a database write answered or refused with, if it names one. */
+export function versionIn(text: string): number | undefined {
+  const match = /version\D{0,20}(\d+)/i.exec(text)
+
+  return match === null ? undefined : Number(match[1])
+}

@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { drawOffice } from '../hooks/art'
-import { cloudRecords, parseSessionList, sameSession } from '../hooks/cloud'
+import { cloudRecords, parseSessionList, sameSession, snapshotDocId, trimSession, versionIn } from '../hooks/cloud'
 import {
   bossMessage,
   buildOffice,
@@ -375,4 +375,15 @@ test('in the cloud the office reads the session list and answers through it', as
   await desktop.input({ key: 'nachricht', text: 'Ja, stell um.' })
   expect(sentTo[1]).toBe(`session_01BLOCKED: ${bossMessage('Ja, stell um.')}`)
   await desktop.unmount()
+})
+
+test('a snapshot keeps what the office draws and finds its version', () => {
+  const sessions = parseSessionList(WRAPPED)
+  const trimmed = sessions.map(trimSession)
+  expect(cloudRecords(trimmed, START)).toEqual(cloudRecords(sessions, START))
+  expect(JSON.stringify(trimmed).length).toBeLessThan(JSON.stringify(sessions).length + 400)
+  expect(snapshotDocId('cse_01RbX2kiFq')).toBe('snap-01RbX2kiFq')
+  expect(versionIn('Database set committed. The document is now at version 7.')).toBe(7)
+  expect(versionIn('refused: the document is at version 12; pass if_version')).toBe(12)
+  expect(versionIn('nothing here')).toBeUndefined()
 })
