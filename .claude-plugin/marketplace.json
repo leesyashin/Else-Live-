@@ -1,0 +1,14 @@
+{
+  "name": "else-live",
+  "owner": {
+    "name": "leesyashin"
+  },
+  "description": "Claude-Code-Mods von Else Live.",
+  "plugins": [
+    {
+      "name": "buero",
+      "source": "./buero",
+      "description": "Pixel-Art-Büro für Claude Code: Sessions als Mitarbeiter, Chefbüro für Fragen, Absprache zwischen Sessions."
+    }
+  ]
+}
