@@ -2,6 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { drawOffice } from '../hooks/art'
+import { cloudRecords, parseSessionList, sameSession } from '../hooks/cloud'
 import {
   bossMessage,
   buildOffice,
@@ -40,9 +41,9 @@ function record(id: string, name: string, patch: Partial<SessionRecord> = {}): S
 }
 
 /** The world beneath the mod: a clock, a home folder and files in memory. */
-function world(on: On, files: Map<string, string>) {
+function world(on: On, files: Map<string, string>, env: Readonly<Record<string, string>> = {}) {
   const clock = mock.clock(on, { now: START })
-  mock.env(on, { HOME })
+  mock.env(on, { HOME, ...env })
   on('session.id', () => ({ value: SELF }))
   on('session.root', () => ({ value: '/home/chef/code/Else-Live-' }))
   on('fs.read', ($, e) => {
@@ -274,4 +275,104 @@ test('the drawing fits the engine and escapes what sessions wrote', () => {
   expect(svg).toContain('CHEFBÜRO')
   expect(svg).toContain('+6 weitere')
   expect(svg).not.toContain('<script>')
+})
+
+const CLOUD_LIST = {
+  ccr: {
+    data: [
+      {
+        id: 'session_01SELF',
+        title: 'Büro bauen',
+        status_bucket: 'SESSION_STATUS_BUCKET_WORKING',
+        created_at: '2026-10-18T11:00:00Z',
+        updated_at: '2026-10-18T11:59:30Z',
+        session_context: { outcomes: [{ git_repository: { git_info: { repo: 'leesyashin/Else-Live-', branches: ['claude/buero'] } } }] },
+      },
+      {
+        id: 'session_01BLOCKED',
+        title: 'Repo aufräumen',
+        status_bucket: 'SESSION_STATUS_BUCKET_BLOCKED',
+        created_at: '2026-10-18T10:00:00Z',
+        updated_at: '2026-10-18T11:50:00Z',
+        session_context: { sources: [{ git_repository: { url: 'https://github.com/leesyashin/Acai' } }] },
+        post_turn_summary: { status_category: 'need_input', status_detail: 'wartet', needs_action: 'Bitte Modus umstellen' },
+        external_metadata: { context_usage: { max_tokens: 1000, used_tokens: 250 }, usage: { cost_usd: 1.5 } },
+      },
+      {
+        id: 'session_01OLD',
+        title: 'Altes Projekt',
+        status_bucket: 'SESSION_STATUS_BUCKET_COMPLETED',
+        created_at: '2026-10-10T10:00:00Z',
+        updated_at: '2026-10-10T11:00:00Z',
+      },
+    ],
+  },
+}
+const WRAPPED = `Another Claude session's record (JSON):\n${JSON.stringify(CLOUD_LIST)}\n</other-session>`
+
+test('cloud sessions become workers, the blocked one in the boss office', () => {
+  const sessions = parseSessionList(WRAPPED)
+  expect(sessions.length).toBe(3)
+  expect(sameSession('cse_01SELF', 'session_01SELF')).toBe(true)
+  expect(sameSession('', 'session_01SELF')).toBe(false)
+
+  const records = cloudRecords(sessions, START)
+  expect(records.map(one => one.id)).toEqual(['session_01BLOCKED', 'session_01SELF'])
+  const blocked = records[0]
+  expect(blocked?.status).toBe('frage')
+  expect(blocked?.question).toBe('Bitte Modus umstellen')
+  expect(blocked?.project).toBe('Acai')
+  expect(blocked?.usage).toBe('Kontext 25 % · 1.50 $')
+  expect(blocked?.link).toBe('https://claude.ai/code/session_01BLOCKED')
+  expect(records[1]?.cwd).toBe('Else-Live- · claude/buero')
+  expect(new Set(records.map(one => one.name)).size).toBe(2)
+})
+
+test('in the cloud the office reads the session list and answers through it', async ($, on) => {
+  const files = new Map<string, string>()
+  const clock = world(on, files, { CLAUDE_CODE_REMOTE_SESSION_ID: 'cse_01SELF' })
+  const sentTo: string[] = []
+  on('mcp.call', ($, e) => {
+    if (e.tool === 'list_sessions') {
+      return { value: { content: [{ type: 'text', text: WRAPPED }], isError: false } }
+    }
+    sentTo.push(`${String(e.args.session_id)}: ${String(e.args.message)}`)
+
+    return { value: { content: [{ type: 'text', text: 'ok' }], isError: false } }
+  })
+
+  await $.session.start(START_EVENT)
+  const listed = JSON.stringify(await $.tool.call({ tool: 'mcp__buero__kollegen' }))
+  expect(listed).toContain('in deiner Claude-Code-Cloud')
+  expect(listed).toContain('session_01BLOCKED')
+  expect(listed).not.toContain('session_01SELF')
+
+  const sent = JSON.stringify(await $.tool.call({ tool: 'mcp__buero__nachricht', an: 'session_01BLOCKED', text: 'Hast du kurz Zeit?' }))
+  expect(sent).toContain('Gesendet an')
+  expect(sentTo[0]).toContain('session_01BLOCKED: [Büro] Nachricht von Kollege')
+  expect(sentTo[0]).toContain('Session-ID session_01SELF')
+
+  await $.command.run({
+    command: 'buero',
+    args: '',
+    origin: { kind: 'composer' },
+    presentation: { isFullscreen: false, columns: 120 },
+  })
+  await clock.settle()
+  const props = {
+    title: 'Büro',
+    isFocused: false,
+    bodyColumns: 80,
+    placement: 'dock' as const,
+    scroll: { offset: 0, bodyRows: 40 },
+    view: {},
+  }
+  const desktop = await $.ui.mount({ plugin: 'buero', surface: 'desktop', component: 'Pane', requestId: 'buero', props })
+  expect((await desktop.find({ type: 'Text', text: /im Chefbüro/ }))?.text).toContain('1 im Chefbüro')
+  expect(await desktop.find({ key: 'w:session_01SELF' })).toBeDefined()
+  await desktop.press({ key: 'chef:session_01BLOCKED' })
+  expect(await desktop.find({ type: 'Link' })).toBeDefined()
+  await desktop.input({ key: 'nachricht', text: 'Ja, stell um.' })
+  expect(sentTo[1]).toBe(`session_01BLOCKED: ${bossMessage('Ja, stell um.')}`)
+  await desktop.unmount()
 })

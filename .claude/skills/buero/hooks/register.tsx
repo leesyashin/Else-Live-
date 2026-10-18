@@ -7,6 +7,7 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { OfficeView, SessionRecord, Status, WorkerView } from '../types'
 import { describeOffice, drawOffice } from './art'
+import { CLOUD_SERVER, cloudRecords, parseSessionList, sameSession } from './cloud'
 import {
   GONE_MS,
   HEARTBEAT_MS,
@@ -31,6 +32,8 @@ import {
 
 const PANE = 'buero'
 const READ_EVERY_MS = 3000
+/** The cloud's session list is asked at most this often. */
+const CLOUD_EVERY_MS = 10_000
 /** An ask that is still open after this long is a permission card for the person. */
 const ASK_SETTLE_MS = 1500
 const LIVE_AGENT = new Set(['pending', 'running', 'waiting', 'idle'])
@@ -56,6 +59,11 @@ let pendingAsk: string | undefined
 let resumeStatus: Status = 'arbeitet'
 /** The last record that parsed per file, for a read that meets a write. */
 const lastGood = new Map<string, SessionRecord>()
+/** This session's id in the cloud (`cse_…`); empty on a PC. */
+let cloudSelf = ''
+let cloudCache: { at: number; records: SessionRecord[] } | undefined
+/** Why the cloud's list could not be read last time, for the kollegen tool. */
+let cloudError: string | undefined
 
 async function safe($: $, label: string, work: () => Promise<void>): Promise<void> {
   try {
@@ -159,9 +167,92 @@ async function readRecords($: $, now: number): Promise<SessionRecord[]> {
   return [...found.filter(record => record.id !== mine.id), mine]
 }
 
+function where(): string {
+  return cloudSelf === '' ? 'auf diesem PC' : 'in deiner Claude-Code-Cloud'
+}
+
+function textOf(answer: { content: readonly unknown[] }): string {
+  return answer.content
+    .map(block => {
+      const text = (block as { text?: unknown }).text
+
+      return typeof text === 'string' ? text : ''
+    })
+    .join('\n')
+}
+
+/** The cloud's sessions, asked at most every CLOUD_EVERY_MS; undefined on a PC. */
+async function cloudList($: $, now: number): Promise<SessionRecord[] | undefined> {
+  if (cloudSelf === '') {
+    return undefined
+  }
+  if (cloudCache !== undefined && now - cloudCache.at < CLOUD_EVERY_MS) {
+    return cloudCache.records
+  }
+  try {
+    const answer = await $.mcp.call(CLOUD_SERVER, 'list_sessions', { mine: true, limit: 20 })
+    let text = textOf(answer)
+    if (answer.isError) {
+      throw new Error(clip(text, 200))
+    }
+    // a long answer is saved to a file and the text names it
+    const saved = /saved to (\S+\.(?:txt|json))/.exec(text)?.[1]
+    if (saved !== undefined) {
+      text = await $.fs.read(saved)
+    }
+    const sessions = parseSessionList(text)
+    if (sessions.length === 0) {
+      throw new Error(`keine Sessions in der Antwort: ${clip(text, 200)}`)
+    }
+    cloudCache = { at: now, records: cloudRecords(sessions, now) }
+    cloudError = undefined
+  } catch (error) {
+    cloudError = clip(String(error), 300)
+    $.ui.log(`buero: list_sessions: ${cloudError}`, { to: 'debug' })
+  }
+
+  return cloudCache?.records
+}
+
+/** Everyone in the office: the cloud's sessions, or the files of this PC. */
+async function officeRecords($: $, now: number): Promise<SessionRecord[]> {
+  const cloud = await cloudList($, now)
+  if (cloud === undefined) {
+    return readRecords($, now)
+  }
+  const mine = self
+
+  return cloud.map(record =>
+    mine !== undefined && sameSession(record.id, cloudSelf)
+      ? { ...record, agents: mine.agents, sent: mine.sent, receivedAt: mine.receivedAt, receivedText: mine.receivedText }
+      : record,
+  )
+}
+
+function selfIdIn(records: readonly SessionRecord[]): string | undefined {
+  return records.find(record => sameSession(record.id, cloudSelf))?.id ?? self?.id
+}
+
+/** Delivers a message to another session; resolves the reason when it was not. */
+async function deliver($: $, sessionId: string, text: string): Promise<string | undefined> {
+  if (cloudSelf !== '' && sessionId.startsWith('session_')) {
+    try {
+      const answer = await $.mcp.call(CLOUD_SERVER, 'send_message', { session_id: sessionId, message: text })
+
+      return answer.isError ? clip(textOf(answer), 200) || 'unbekannter Fehler' : undefined
+    } catch (error) {
+      return clip(String(error), 200)
+    }
+  }
+  const sent = await $.session.send({ to: { sessionId }, text })
+
+  return sent.isDelivered ? undefined : sent.reason
+}
+
 /** Takes this session's desk: a new record, or the one a reload left behind. */
 async function join($: $): Promise<void> {
   dir = await dataDir($)
+  cloudSelf = (await $.env.get('CLAUDE_CODE_REMOTE_SESSION_ID')) ?? ''
   const id = await $.session.id()
   file = `${dir}/sessions/${id}.json`
   const now = await $.clock.now()
@@ -215,9 +306,9 @@ async function beat($: $): Promise<void> {
 async function refresh($: $): Promise<void> {
   await safe($, 'refresh', async () => {
     const now = await $.clock.now()
-    const records = await readRecords($, now)
+    const records = await officeRecords($, now)
     const clock = new Date(now)
-    const view = buildOffice(records, now, stuckMs, self?.id, clock.getHours() * 60 + clock.getMinutes())
+    const view = buildOffice(records, now, stuckMs, selfIdIn(records), clock.getHours() * 60 + clock.getMinutes())
     const signature = JSON.stringify(view)
     if (signature === lastSignature) {
       return
@@ -240,8 +331,8 @@ async function sendFromBoss($: $, worker: WorkerView, body: string): Promise<voi
   if (trimmed === '') {
     return
   }
-  const sent = await $.session.send({ to: { sessionId: worker.id }, text: bossMessage(trimmed) })
-  if (sent.isDelivered && self !== undefined) {
+  const refused = await deliver($, worker.id, bossMessage(trimmed))
+  if (refused === undefined && self !== undefined) {
     const now = await $.clock.now()
     change({
       sent: withSent(self.sent, {
@@ -257,7 +348,7 @@ async function sendFromBoss($: $, worker: WorkerView, body: string): Promise<voi
   }
   await $.state.set(
     { plugin: 'buero', key: 'notice' },
-    sent.isDelivered ? `Nachricht an ${worker.name} gesendet.` : `Nicht zugestellt: ${sent.reason}`,
+    refused === undefined ? `Nachricht an ${worker.name} gesendet.` : `Nicht zugestellt: ${refused}`,
   )
   void refresh($)
 }
@@ -275,13 +366,13 @@ export const register: Register = (on, options) => {
       await $.tool.register({
         name: 'kollegen',
         description:
-          'Zeigt die anderen Claude-Code-Sessions auf diesem PC (Büro-Kollegen): Name, Session-ID, Projekt, Auftrag, Status.',
+          'Zeigt die anderen Claude-Code-Sessions (Büro-Kollegen): Name, Session-ID, Projekt, Auftrag, Status.',
         inputSchema: { type: 'object', properties: {} },
         isDeferred: false,
       })
       await $.tool.register({
         name: 'nachricht',
-        description: `Schickt einem Büro-Kollegen (einer anderen Claude-Code-Session auf diesem PC) eine kurze Nachricht. Höchstens ${perHour} pro Stunde; nur wenn es echte Arbeit spart.`,
+        description: `Schickt einem Büro-Kollegen (einer anderen Claude-Code-Session) eine kurze Nachricht. Höchstens ${perHour} pro Stunde; nur wenn es echte Arbeit spart.`,
         inputSchema: {
           type: 'object',
           properties: {
@@ -472,11 +563,36 @@ export const register: Register = (on, options) => {
     return sent
   })
 
+  // The cloud's own send_message counts toward the same hourly limit.
+  on('tool.call', { tool: 'mcp__claude-code-remote__send_message' }, async ($, e, next) => {
+    if (self === undefined) {
+      return next(e)
+    }
+    const now = await $.clock.now()
+    const budget = sendBudget(self.sent, now, perHour)
+    if (!budget.isAllowed) {
+      return { deny: limitText(perHour, budget.waitMinutes) }
+    }
+    const ran = await next(e)
+    const input = e as unknown as { session_id?: unknown; message?: unknown }
+    if (ran.deny === undefined && ran.isError !== true && self !== undefined && typeof input.session_id === 'string') {
+      const text = typeof input.message === 'string' ? input.message : ''
+      change({
+        sent: withSent(self.sent, { at: now, to: input.session_id, toId: input.session_id, text: clip(text, 200), counts: true }),
+      })
+      void save($)
+    }
+
+    return ran
+  })
+
   on('tool.call', { tool: 'mcp__buero__kollegen' }, async $ => {
     const now = await $.clock.now()
-    const records = await readRecords($, now)
+    const records = await officeRecords($, now)
 
-    return { result: colleaguesText(records, now, stuckMs, self?.id ?? '') }
+    const listed = colleaguesText(records, now, stuckMs, selfIdIn(records) ?? '', where())
+
+    return { result: cloudError === undefined ? listed : `${listed}\n\n(Cloud-Liste nicht lesbar: ${cloudError})` }
   })
 
   on('tool.call', { tool: 'mcp__buero__nachricht' }, async ($, e) => {
@@ -491,10 +607,12 @@ export const register: Register = (on, options) => {
       return { deny: 'Leere Nachricht: nichts gesendet.' }
     }
     const now = await $.clock.now()
-    const others = (await readRecords($, now)).filter(record => record.id !== sender.id && isActive(record, now))
+    const records = await officeRecords($, now)
+    const me = selfIdIn(records)
+    const others = records.filter(record => record.id !== me && isActive(record, now))
     const target = resolveRecipient(others, to)
     if (target === undefined) {
-      return { deny: `Kein Kollege "${to}" gefunden.\n${colleaguesText(others, now, stuckMs, sender.id)}` }
+      return { deny: `Kein Kollege "${to}" gefunden.\n${colleaguesText(others, now, stuckMs, me ?? '', where())}` }
     }
     if (moodOf(target, now, stuckMs) === 'weg') {
       return { deny: `${target.name} ist gerade nicht erreichbar.` }
@@ -503,12 +621,10 @@ export const register: Register = (on, options) => {
     if (!budget.isAllowed) {
       return { deny: limitText(perHour, budget.waitMinutes) }
     }
-    const sent = await $.session.send({
-      to: { sessionId: target.id },
-      text: colleagueMessage(sender, clip(body, 2000)),
-    })
-    if (!sent.isDelivered) {
-      return { deny: `Nicht zugestellt: ${sent.reason}` }
+    const asSeen = records.find(record => record.id === me) ?? sender
+    const refused = await deliver($, target.id, colleagueMessage(asSeen, clip(body, 2000)))
+    if (refused !== undefined) {
+      return { deny: `Nicht zugestellt: ${refused}` }
     }
     change({
       sent: withSent(sender.sent, { at: now, to: target.id, toId: target.id, text: clip(body, 200), counts: true }),
@@ -525,7 +641,7 @@ export const register: Register = (on, options) => {
     }
 
     return {
-      sections: [...composed.sections, { id: 'buero:team', text: teamPrompt(perHour), scope: 'session' as const }],
+      sections: [...composed.sections, { id: 'buero:team', text: teamPrompt(perHour, where()), scope: 'session' as const }],
     }
   })
 
@@ -550,7 +666,7 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const table = $.ui.resolve(e)
-    const { Box, Button, Text } = table
+    const { Box, Button, Link, Text } = table
     const view: OfficeView | null = await read($, office)
     const chosenId = await read($, selected)
     const said = await read($, notice)
@@ -604,9 +720,15 @@ export const register: Register = (on, options) => {
               <Text>{`Agents: ${chosen.agents.map(agent => `${agent.description || agent.type} (${agent.status})`).join(', ')}`}</Text>
             )}
             {chosen.mailText !== undefined && <Text dimColor>{`Post bekommen: ${clip(chosen.mailText, 160)}`}</Text>}
-            <Text dimColor>{`Ordner: ${chosen.cwd}`}</Text>
+            <Text dimColor>{`${chosen.link === undefined ? 'Ordner' : 'Repo'}: ${chosen.cwd}`}</Text>
+            {chosen.usage !== undefined && <Text dimColor>{chosen.usage}</Text>}
+            {chosen.link !== undefined && <Link href={chosen.link} label="Session öffnen" />}
             {(chosen.mood === 'frage' || chosen.mood === 'freigabe') && (
-              <Text dimColor>Antworten und Freigaben gibst du im Fenster dieser Session.</Text>
+              <Text dimColor>
+                {chosen.link === undefined
+                  ? 'Antworten und Freigaben gibst du im Fenster dieser Session.'
+                  : 'Antworte hier per Nachricht oder öffne die Session.'}
+              </Text>
             )}
             {Input !== undefined && !chosen.isSelf && chosen.mood !== 'weg' && (
               <Input

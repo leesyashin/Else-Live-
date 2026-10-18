@@ -47,6 +47,10 @@ export type SessionRecord = {
   sent: SentRecord[]
   receivedAt?: number
   receivedText?: string
+  /** Where the person opens the session (a cloud session's page). */
+  link?: string
+  /** Context and cost, as the cloud reports them. */
+  usage?: string
 }
 
 export type WorkerView = {
@@ -67,6 +71,8 @@ export type WorkerView = {
   hasMail: boolean
   mailText?: string
   isSelf: boolean
+  link?: string
+  usage?: string
 }
 
 export type MessageView = {

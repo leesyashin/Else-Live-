@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "buero",
-      "source": "./buero",
+      "source": "./.claude/skills/buero",
       "description": "Pixel-Art-Büro für Claude Code: Sessions als Mitarbeiter, Chefbüro für Fragen, Absprache zwischen Sessions."
     }
   ]
