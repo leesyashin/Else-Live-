@@ -148,8 +148,9 @@
       <div class="notice" id="notice">
         <span id="noticeText">Ich verbinde mich mit deinen Sessions …</span>
         <div class="actions" id="noticeActions" hidden>
-          <button class="btn" id="allow" type="button">Zugriff erlauben</button>
-          <a class="btn" id="connectors" href="https://claude.ai/customize/connectors" target="_blank" rel="noopener">Connector-Einstellungen öffnen ↗</a>
+          <button class="btn" id="perms" type="button">Berechtigungen öffnen</button>
+          <button class="btn quiet" id="allow" type="button">Zugriff erlauben</button>
+          <a class="btn quiet" id="connectors" href="https://claude.ai/customize/connectors" target="_blank" rel="noopener">Connector-Einstellungen ↗</a>
         </div>
       </div>
     </figure>
@@ -1239,7 +1240,8 @@
         case 'not_in_manifest':
         case 'consent_required': return 'Die Seite braucht deine Erlaubnis, deine Sessions zu lesen.';
         case 'selection_required': return 'Du hast Claude Code Remote mehrfach verbunden. Wähle in claude.ai aus, welches die Seite nutzen soll.';
-        case 'blocked_by_policy': return 'Claude Code Remote lässt die Seite deine Sessions noch nicht lesen. Öffne die Connector-Einstellungen, wähle Claude Code Remote und stell list_sessions und send_message auf „Erlaubt“. Danach öffne die Seite neu.';
+        case 'blocked_by_policy': return 'Claude Code Remote lässt die Seite deine Sessions noch nicht lesen. Klick auf „Berechtigungen öffnen“ und schalte Claude Code Remote mit list_sessions und send_message für diese Seite ein.';
+        case 'perms_unavailable': return 'Das Berechtigungsfenster ließ sich hier nicht öffnen. Öffne oben links das Menü neben „Claude-Büro“ und dort die Berechtigungen, oder nutze die Connector-Einstellungen.';
         case 'tool_error': return `Claude Code Remote meldet einen Fehler: ${Office.clip(message || '', 160)}`;
         case 'server_unavailable':
         case 'upstream_error':
@@ -1257,9 +1259,10 @@
       notice.hidden = false;
       el('noticeText').textContent = state.problem ? problemText(state.problem.code || state.problem, state.problem.message) : 'Ich verbinde mich mit deinen Sessions …';
       const code = state.problem ? state.problem.code || state.problem : '';
+      el('perms').hidden = !(ASKABLE.has(code) || SETTINGS.has(code));
       el('allow').hidden = !ASKABLE.has(code);
-      el('connectors').hidden = !SETTINGS.has(code);
-      el('noticeActions').hidden = el('allow').hidden && el('connectors').hidden;
+      el('connectors').hidden = !(SETTINGS.has(code) || code === 'perms_unavailable');
+      el('noticeActions').hidden = el('perms').hidden && el('allow').hidden && el('connectors').hidden;
     }
 
     function renderAll() {
@@ -1318,6 +1321,23 @@
       }
     }
 
+    async function openPermissions() {
+      const button = el('perms');
+      button.disabled = true;
+      try {
+        const permissions = window.claude && window.claude.use ? await window.claude.use('permissions').catch(() => null) : null;
+        if (!permissions) throw new Error('unavailable');
+        await permissions.manage();
+      } catch (error) {
+        state.problem = { code: 'perms_unavailable' };
+        renderAll();
+        button.disabled = false;
+        return;
+      }
+      button.disabled = false;
+      if (state.mcp) await allow();
+    }
+
     async function send(event) {
       event.preventDefault();
       const worker = workers().find(one => one.id === state.selected);
@@ -1358,6 +1378,7 @@
     el('close').addEventListener('click', () => select(state.selected));
     el('compose').addEventListener('submit', send);
     el('allow').addEventListener('click', allow);
+    el('perms').addEventListener('click', openPermissions);
     setInterval(() => { if (state.records !== null) renderAll(); }, 60 * 1000);
 
     renderAll();
