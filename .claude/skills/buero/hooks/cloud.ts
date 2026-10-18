@@ -91,7 +91,7 @@ export function branchOf(session: CloudSession | undefined): { owner: string; re
 /** The reports sessions wrote about their own pull request, found by session id. */
 export type PrReports = ReadonlyMap<string, OwnPr>
 
-function reportFor(reports: PrReports, id: string): OwnPr | undefined {
+export function reportFor(reports: PrReports, id: string): OwnPr | undefined {
   for (const [reporter, pr] of reports) {
     if (sameSession(reporter, id)) {
       return pr
@@ -289,16 +289,4 @@ export function trimSession(session: CloudSession): CloudSession {
       usage: { cost_usd: session.external_metadata?.usage?.cost_usd },
     },
   }
-}
-
-/** The document a session keeps its latest snapshot in: one per session. */
-export function snapshotDocId(sessionId: string): string {
-  return `snap-${sessionId.slice(sessionId.indexOf('_') + 1).replace(/[^A-Za-z0-9_-]/g, '')}`
-}
-
-/** The version a database write answered or refused with, if it names one. */
-export function versionIn(text: string): number | undefined {
-  const match = /version\D{0,20}(\d+)/i.exec(text)
-
-  return match === null ? undefined : Number(match[1])
 }

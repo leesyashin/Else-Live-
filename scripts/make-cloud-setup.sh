@@ -14,6 +14,7 @@ files=(
   hooks/model.ts
   hooks/art.ts
   hooks/cloud.ts
+  hooks/post.ts
   types/index.d.ts
 )
 

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const mod = join(root, '.claude/skills/buero')
-const sources = ['model', 'cloud', 'art']
+const sources = ['model', 'cloud', 'post', 'art']
 const out = mkdtempSync(join(tmpdir(), 'buero-page-'))
 
 try {

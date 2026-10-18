@@ -5,20 +5,43 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { OfficeView, SessionRecord, Status, WorkerView } from '../types'
+import type { EventKind, OfficeEvent, OfficeView, Post, SessionRecord, Status, WorkerView } from '../types'
 import { describeOffice, drawOffice } from './art'
 import type { CloudSession, OwnPr } from './cloud'
 import {
   CLOUD_SERVER,
   branchOf,
   cloudRecords,
+  deliveryOf,
   pullRequestIn,
   parseSessionList,
+  reportFor,
   sameSession,
-  snapshotDocId,
   trimSession,
-  versionIn,
 } from './cloud'
+import type { Doc, WriteOutcome } from './post'
+import {
+  LEASE_MS,
+  RENEW_MS,
+  carriedMessage,
+  dayOf,
+  docsIn,
+  eventKey,
+  eventsFrom,
+  eventsIn,
+  leaseOf,
+  logDocId,
+  mailFor,
+  mayLead,
+  newsFor,
+  postOf,
+  questionIn,
+  recentText,
+  repoOfSession,
+  tailOf,
+  writeOutcome,
+  KEEP_MS,
+} from './post'
 import {
   GONE_MS,
   HEARTBEAT_MS,
@@ -47,8 +70,21 @@ const READ_EVERY_MS = 3000
 const CLOUD_EVERY_MS = 10_000
 /** The office page whose database the cloud sessions feed. */
 const OFFICE_URL = 'https://claude.ai/artifact/94pH1R4YMfQgxPUeghXbiK'
-/** A session writes the session list there at most this often. */
-const FEED_EVERY_MS = 60_000
+/** A cloud session looks after the office page this often: its mail, its desk, and as messenger the rest. */
+const TICK_MS = 15_000
+/** A session that is not the messenger reads the session list this rarely. */
+const LIST_EVERY_MS = 60_000
+/** The logbook a session reads its news from is refreshed this often. */
+const NEWS_EVERY_MS = 60_000
+/** The messenger clears out old mail, logbook days and desks this often. */
+const PRUNE_EVERY_MS = 10 * 60_000
+/** Waiting sessions whose question the messenger fetches per round, at most. */
+const QUESTIONS_PER_TICK = 2
+/** Mail the messenger carries per round, at most. */
+const CARRIES_PER_TICK = 3
+/** On its first prompt a session hears what happened in its repository this far back. */
+const FIRST_NEWS_MS = 6 * 60 * 60_000
+const DAY_MS = 24 * 60 * 60_000
 /** GitHub is asked about this session's own pull request at most this often. */
 const PR_EVERY_MS = 60_000
 const GITHUB_SERVER = 'github'
@@ -80,15 +116,32 @@ const lastGood = new Map<string, SessionRecord>()
 /** This session's id in the cloud (`cse_…`); empty on a PC. */
 let cloudSelf = ''
 let cloudCache: { at: number; sessions: CloudSession[]; records: SessionRecord[] } | undefined
-let feeder: Timer | undefined
-let feedVersion: number | undefined
-let lastFeed = ''
-let isFeeding = false
 /** Why the cloud's list could not be read last time, for the kollegen tool. */
 let cloudError: string | undefined
 /** This session's own pull request, as GitHub last reported it. */
 let ownPr: OwnPr | undefined
 let ownPrAt = 0
+
+/** A document of the office page only this session writes, whole, at the version it last saw. */
+type Owned = { collection: string; id: string; version: number | undefined; isKnown: boolean; last: string }
+
+let ticker: Timer | undefined
+let isTicking = false
+/** Whether this session is the messenger now: it keeps the list, the logbook and the mail. */
+let isLeader = false
+let listDoc: Owned | undefined
+let deskDoc: Owned | undefined
+/** This session's logbook documents, one per day, with what it noted there. */
+const logs = new Map<string, { doc: Owned; events: OfficeEvent[]; isLoaded: boolean }>()
+/** A waiting session's `updated_at` when its question was last fetched. */
+const asked = new Map<string, string>()
+let prunedAt = 0
+/** The logbook of today and yesterday, as last read, for the news. */
+let news: OfficeEvent[] = []
+let newsAt = 0
+/** Logbook lines up to this time were told already; the colleagues as last named. */
+let newsSince = 0
+let newsTold = ''
 
 async function safe($: $, label: string, work: () => Promise<void>): Promise<void> {
   try {
@@ -206,24 +259,26 @@ function textOf(answer: { content: readonly unknown[] }): string {
     .join('\n')
 }
 
-/** The cloud's sessions, asked at most every CLOUD_EVERY_MS; undefined on a PC. */
-async function cloudList($: $, now: number): Promise<SessionRecord[] | undefined> {
+/** A long answer is saved to a file and its text names the file. */
+async function unsaved($: $, text: string): Promise<string> {
+  const saved = /saved to (\S+\.(?:txt|json))/.exec(text)?.[1]
+
+  return saved === undefined ? text : $.fs.read(saved)
+}
+
+/** The cloud's sessions, asked at most every `maxAge`; undefined on a PC. */
+async function cloudList($: $, now: number, maxAge = CLOUD_EVERY_MS): Promise<SessionRecord[] | undefined> {
   if (cloudSelf === '') {
     return undefined
   }
-  if (cloudCache !== undefined && now - cloudCache.at < CLOUD_EVERY_MS) {
+  if (cloudCache !== undefined && now - cloudCache.at < maxAge) {
     return cloudCache.records
   }
   try {
-    const answer = await $.mcp.call(CLOUD_SERVER, 'list_sessions', { mine: true, limit: 20 })
-    let text = textOf(answer)
+    const answer = await $.mcp.call(CLOUD_SERVER, 'list_sessions', { mine: true, limit: 25 })
+    const text = await unsaved($, textOf(answer))
     if (answer.isError) {
       throw new Error(clip(text, 200))
-    }
-    // a long answer is saved to a file and the text names it
-    const saved = /saved to (\S+\.(?:txt|json))/.exec(text)?.[1]
-    if (saved !== undefined) {
-      text = await $.fs.read(saved)
     }
     const sessions = parseSessionList(text)
     if (sessions.length === 0) {
@@ -291,7 +346,8 @@ function selfIdIn(records: readonly SessionRecord[]): string | undefined {
 async function deliver($: $, sessionId: string, text: string): Promise<string | undefined> {
   if (cloudSelf !== '' && sessionId.startsWith('session_')) {
     try {
-      const answer = await $.mcp.call(CLOUD_SERVER, 'send_message', { session_id: sessionId, message: text })
+      // `next` joins a running turn without stopping it; an idle session starts one
+      const answer = await $.mcp.call(CLOUD_SERVER, 'send_message', { session_id: sessionId, message: text, priority: 'next' })
 
       return answer.isError ? clip(textOf(answer), 200) || 'unbekannter Fehler' : undefined
     } catch (error) {
@@ -303,61 +359,401 @@ async function deliver($: $, sessionId: string, text: string): Promise<string | 
   return sent.isDelivered ? undefined : sent.reason
 }
 
-function artifactWrite(docId: string, data: Record<string, unknown>, ifVersion: number | undefined) {
-  return {
-    tool: 'ArtifactData',
-    action: 'set',
-    url: OFFICE_URL,
-    collection: 'buero',
+// The office page's database, through ArtifactData: the session list, the
+// logbook, the mail the person writes on the page and the messenger's lease.
+
+async function db($: $, action: string, fields: Record<string, unknown>): Promise<string> {
+  const ran = (await $.tool.call({ tool: 'ArtifactData', action, url: OFFICE_URL, ...fields } as never)) as {
+    text?: unknown
+    result?: unknown
+    deny?: unknown
+  }
+
+  return unsaved($, String(ran.text ?? (typeof ran.result === 'string' ? ran.result : undefined) ?? ran.deny ?? ''))
+}
+
+async function dbGet($: $, collection: string, docId: string): Promise<Doc | undefined> {
+  return docsIn(await db($, 'get', { collection, doc_id: docId })).find(doc => doc.id === docId)
+}
+
+async function dbQuery($: $, collection: string, query: Record<string, unknown>): Promise<Doc[]> {
+  return docsIn(await db($, 'query', { collection, query }))
+}
+
+async function dbWrite(
+  $: $,
+  action: 'set' | 'update' | 'delete',
+  collection: string,
+  docId: string,
+  data: Record<string, unknown> | undefined,
+  version: number | undefined,
+): Promise<WriteOutcome> {
+  const text = await db($, action, {
+    collection,
     doc_id: docId,
-    data,
-    ...(ifVersion === undefined ? {} : { if_version: ifVersion }),
+    ...(data === undefined ? {} : { data }),
+    ...(version === undefined ? {} : { if_version: version }),
+  })
+
+  return writeOutcome(text)
+}
+
+function owned(collection: string, id: string): Owned {
+  return { collection, id, version: undefined, isKnown: false, last: '' }
+}
+
+/**
+ * Writes a document only this session writes, whole, when `signature`
+ * changed. A reload forgets its version, so it reads it again when unsure.
+ */
+async function keep($: $, doc: Owned, data: Record<string, unknown>, signature = JSON.stringify(data)): Promise<void> {
+  if (signature === doc.last) {
+    return
+  }
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (!doc.isKnown) {
+      doc.version = (await dbGet($, doc.collection, doc.id))?.version
+      doc.isKnown = true
+    }
+    const outcome = await dbWrite($, 'set', doc.collection, doc.id, data, doc.version)
+    if (outcome.isDone) {
+      doc.version = outcome.version ?? (doc.version ?? 0) + 1
+      doc.last = signature
+
+      return
+    }
+    if (!outcome.isStale) {
+      throw new Error(outcome.reason)
+    }
+    doc.isKnown = false
+  }
+}
+
+function idOfSelf(): string {
+  return `session_${tailOf(cloudSelf)}`
+}
+
+function ownSession(): CloudSession | undefined {
+  return cloudCache?.sessions.find(session => sameSession(session.id ?? '', cloudSelf))
+}
+
+/** Adds lines to this session's logbook; the next round writes them. */
+function addEvents(events: readonly OfficeEvent[]): void {
+  for (const event of events) {
+    const day = dayOf(event.at)
+    let log = logs.get(day)
+    if (log === undefined) {
+      log = { doc: owned('logbuch', logDocId(event.at, cloudSelf)), events: [], isLoaded: false }
+      logs.set(day, log)
+    }
+    if (!log.events.some(one => eventKey(one) === eventKey(event))) {
+      log.events.push(event)
+    }
+  }
+}
+
+/** Notes something this session did, which only it knows: a push, a PR, a message. */
+async function note($: $, kind: EventKind, text: string): Promise<void> {
+  if (cloudSelf === '') {
+    return
+  }
+  const mine = ownSession()
+  addEvents([
+    {
+      at: await $.clock.now(),
+      sid: idOfSelf(),
+      title: clip(mine?.title ?? self?.task ?? '', 120),
+      repo: mine === undefined ? (self?.project ?? 'ohne Repo') : repoOfSession(mine),
+      kind,
+      text: clip(text, 220),
+    },
+  ])
+}
+
+/** Writes the logbook days with new lines; a day that is over and written is let go. */
+async function flushLogs($: $, now: number): Promise<void> {
+  for (const [day, log] of logs) {
+    if (!log.isLoaded) {
+      // a reload starts with nothing in hand: keep what this session wrote before
+      const found = await dbGet($, 'logbuch', log.doc.id)
+      const before = Array.isArray(found?.data.events) ? (found.data.events as OfficeEvent[]) : []
+      const known = new Set(before.map(eventKey))
+      log.events = [...before, ...log.events.filter(event => !known.has(eventKey(event)))]
+      log.doc.version = found?.version
+      log.doc.isKnown = true
+      log.isLoaded = true
+    }
+    log.events = log.events.sort((a, b) => a.at - b.at).slice(-500)
+    await keep($, log.doc, { day, writer: cloudSelf, events: log.events })
+    if (day !== dayOf(now)) {
+      logs.delete(day)
+    }
+  }
+}
+
+/** This session's desk on the page: its own pull request and the messages it sent. */
+async function writeDesk($: $, now: number): Promise<void> {
+  if (self === undefined) {
+    return
+  }
+  deskDoc ??= owned('sessions', tailOf(cloudSelf))
+  const sent = self.sent.filter(one => now - one.at < DAY_MS).slice(-10)
+  const data = { sid: idOfSelf(), writer: cloudSelf, ...(ownPr === undefined ? {} : { pr: ownPr }), sent }
+  await keep($, deskDoc, { ...data, writtenAt: now }, JSON.stringify(data))
+}
+
+/**
+ * Delivers one letter: the recipient itself takes it in as a prompt; the
+ * messenger sends it on through the cloud. Taken first, so no one carries it twice.
+ */
+async function carry($: $, doc: Doc, post: Post, via: 'selbst' | 'bote'): Promise<void> {
+  const claimedAt = await $.clock.now()
+  const claimed = await dbWrite($, 'update', 'post', doc.id, { state: 'unterwegs', by: cloudSelf, via, claimedAt }, doc.version)
+  if (!claimed.isDone) {
+    return
+  }
+  let error: string | undefined
+  if (via === 'selbst') {
+    try {
+      const entered = await $.prompt.submit({ text: bossMessage(post.text) })
+      error = 'drop' in entered && entered.drop !== undefined ? clip(String(entered.drop), 200) : undefined
+    } catch (failure) {
+      error = clip(String(failure), 200)
+    }
+  } else {
+    const me = cloudCache?.records.find(record => sameSession(record.id, cloudSelf))
+    error = await deliver($, post.to, carriedMessage(post.text, me === undefined ? cloudSelf : `${me.name} (${me.id})`))
+  }
+  const deliveredAt = await $.clock.now()
+  await dbWrite(
+    $,
+    'update',
+    'post',
+    doc.id,
+    error === undefined ? { state: 'zugestellt', deliveredAt } : { state: 'fehler', error },
+    claimed.version ?? doc.version + 1,
+  )
+}
+
+/** Mail for this session: taken in while it is not busy; a busy one gets it from the messenger. */
+async function fetchOwnMail($: $): Promise<void> {
+  if (self?.status === 'arbeitet') {
+    return
+  }
+  const mine = await dbQuery($, 'post', {
+    where: [
+      ['to', 'in', [idOfSelf(), cloudSelf]],
+      ['state', '==', 'neu'],
+    ],
+    limit: 5,
+  })
+  for (const doc of mine.sort((a, b) => Number(a.data.createdAt) - Number(b.data.createdAt))) {
+    const post = postOf(doc.data)
+    if (post !== undefined) {
+      await carry($, doc, post, 'selbst')
+    }
+  }
+}
+
+/** The messenger's mail round: what recipients did not fetch themselves, and what got stuck. */
+async function carryMail($: $, sessions: readonly CloudSession[], now: number): Promise<void> {
+  const open = await dbQuery($, 'post', { where: [['state', 'in', ['neu', 'unterwegs']]], limit: 50 })
+  const letters = open.flatMap(doc => {
+    const post = postOf(doc.data)
+
+    return post === undefined ? [] : [{ id: doc.id, doc, post }]
+  })
+  const working = new Set(
+    sessions.filter(session => session.status_bucket === 'SESSION_STATUS_BUCKET_WORKING').map(session => session.id ?? ''),
+  )
+  const { carry: due, unclear } = mailFor(letters, working, now)
+  for (const id of unclear) {
+    const letter = letters.find(one => one.id === id)
+    if (letter !== undefined) {
+      await dbWrite($, 'update', 'post', id, { state: 'unklar' }, letter.doc.version)
+    }
+  }
+  const others = due
+    .map(id => letters.find(one => one.id === id))
+    .filter(letter => letter !== undefined && !sameSession(letter.post.to, cloudSelf))
+    .slice(0, CARRIES_PER_TICK)
+  for (const letter of others) {
+    if (letter !== undefined) {
+      await carry($, letter.doc, letter.post, 'bote')
+    }
+  }
+}
+
+/** The full text of each waiting session's question, fetched once per question. */
+async function fetchQuestions($: $, sessions: readonly CloudSession[], now: number): Promise<void> {
+  const waiting = sessions.filter(
+    session =>
+      typeof session.id === 'string' &&
+      session.status_bucket === 'SESSION_STATUS_BUCKET_BLOCKED' &&
+      session.session_status !== 'SESSION_STATUS_ARCHIVED',
+  )
+  const stored = await dbQuery($, 'fragen', { limit: 100 })
+  for (const doc of stored) {
+    if (!waiting.some(session => tailOf(session.id ?? '') === doc.id)) {
+      await dbWrite($, 'delete', 'fragen', doc.id, undefined, doc.version)
+    }
+  }
+  let fetched = 0
+  for (const session of waiting) {
+    const id = session.id ?? ''
+    const stamp = session.updated_at ?? ''
+    const doc = stored.find(one => one.id === tailOf(id))
+    if (fetched >= QUESTIONS_PER_TICK || asked.get(id) === stamp || doc?.data.updatedAt === stamp) {
+      continue
+    }
+    fetched += 1
+    asked.set(id, stamp)
+    const answer = await $.mcp.call(CLOUD_SERVER, 'list_events', { session_id: id, kinds: ['assistant'], limit: 100 })
+    const question = answer.isError ? undefined : questionIn(await unsaved($, textOf(answer)))
+    if (question !== undefined) {
+      await dbWrite($, 'set', 'fragen', tailOf(id), { sid: id, text: question, updatedAt: stamp, at: now }, doc?.version)
+    }
+  }
+}
+
+/** Mail, logbook days, desks and lists older than a week go. */
+async function prune($: $, now: number): Promise<void> {
+  const old = now - KEEP_MS
+  const rounds: [string, Record<string, unknown>][] = [
+    ['post', { where: [['createdAt', '<', old]], limit: 50 }],
+    ['logbuch', { where: [['day', '<', dayOf(old)]], limit: 50 }],
+    ['sessions', { where: [['writtenAt', '<', old]], limit: 50 }],
+  ]
+  for (const [collection, query] of rounds) {
+    for (const doc of await dbQuery($, collection, query)) {
+      await dbWrite($, 'delete', collection, doc.id, undefined, doc.version)
+    }
   }
 }
 
 /**
- * Writes the cloud's session list into the office page's database, so the
- * page shows it without a connector of its own; only when it changed.
+ * The messenger's round: the session list for the page, the logbook lines
+ * for what changed, waiting sessions' questions, the mail. Resolves what the
+ * logbook knows now.
  */
-async function feed($: $): Promise<void> {
-  if (cloudSelf === '' || isFeeding) {
+async function runOffice($: $, now: number, seen: Readonly<Record<string, string>>): Promise<Record<string, string>> {
+  await cloudList($, now)
+  const sessions = cloudCache?.sessions
+  if (sessions === undefined) {
+    return { ...seen }
+  }
+  listDoc ??= owned('buero', 'liste')
+  const trimmed = sessions.map(trimSession)
+  await keep($, listDoc, { writtenAt: now, writer: cloudSelf, sessions: trimmed }, JSON.stringify(trimmed))
+  const desks = await dbQuery($, 'sessions', { limit: 200 })
+  const reports = new Map<string, OwnPr>()
+  for (const desk of desks) {
+    const pr = desk.data.pr as OwnPr | undefined
+    if (typeof desk.data.writer === 'string' && typeof pr?.number === 'number') {
+      reports.set(desk.data.writer, pr)
+    }
+  }
+  if (ownPr !== undefined) {
+    reports.set(cloudSelf, ownPr)
+  }
+  const deliveries = new Map(sessions.map(session => [session.id ?? '', deliveryOf(session, reportFor(reports, session.id ?? ''))]))
+  const told = eventsFrom(sessions, deliveries, seen, now)
+  addEvents(told.events)
+  await safe($, 'fragen', () => fetchQuestions($, sessions, now))
+  await safe($, 'post', () => carryMail($, sessions, now))
+  if (now - prunedAt > PRUNE_EVERY_MS) {
+    prunedAt = now
+    await safe($, 'aufräumen', () => prune($, now))
+  }
+
+  return told.seen
+}
+
+/**
+ * One session at a time is the messenger: it holds a lease in the page's
+ * database and renews it while it runs; when it stops, the next one takes over.
+ */
+async function lead($: $, now: number): Promise<void> {
+  const found = await dbGet($, 'leitung', 'bote')
+  const lease = leaseOf(found?.data)
+  if (!mayLead(lease, cloudSelf, now)) {
+    isLeader = false
+
     return
   }
-  isFeeding = true
+  let version = found?.version
+  const seen = lease?.seen ?? {}
+  if (lease?.holder !== cloudSelf || lease.until - now < RENEW_MS) {
+    const claimed = await dbWrite($, 'set', 'leitung', 'bote', { holder: cloudSelf, until: now + LEASE_MS, seen }, version)
+    if (!claimed.isDone || claimed.version === undefined) {
+      isLeader = false
+
+      return
+    }
+    version = claimed.version
+  }
+  isLeader = true
+  const next = await runOffice($, now, seen)
+  if (JSON.stringify(next) !== JSON.stringify(seen)) {
+    const kept = await dbWrite($, 'set', 'leitung', 'bote', { holder: cloudSelf, until: now + LEASE_MS, seen: next }, version)
+    isLeader = kept.isDone
+  }
+}
+
+/** Reads the logbook of today and yesterday, for the news a session gets with its next prompt. */
+async function readNews($: $, now: number): Promise<void> {
+  if (now - newsAt < NEWS_EVERY_MS) {
+    return
+  }
+  newsAt = now
+  const docs = await dbQuery($, 'logbuch', { where: [['day', '>=', dayOf(now - DAY_MS)]], limit: 100 })
+  news = eventsIn(docs.map(doc => doc.data))
+}
+
+/** A cloud session's round: messenger if it can be, its own mail, its desk, its logbook, its news. */
+async function tick($: $): Promise<void> {
+  if (cloudSelf === '' || isTicking) {
+    return
+  }
+  isTicking = true
   try {
     const now = await $.clock.now()
-    await cloudList($, now)
-    const sessions = cloudCache?.sessions
-    if (sessions === undefined) {
-      return
+    await safe($, 'bote', () => lead($, now))
+    if (!isLeader) {
+      await cloudList($, now, LIST_EVERY_MS)
     }
-    const trimmed = sessions.map(trimSession)
-    const signature = JSON.stringify([trimmed, ownPr])
-    if (signature === lastFeed) {
-      return
-    }
-    const docId = snapshotDocId(cloudSelf)
-    const data = { writtenAt: now, writer: cloudSelf, sessions: trimmed, ...(ownPr === undefined ? {} : { pr: ownPr }) }
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const ran = await $.tool.call(artifactWrite(docId, data, feedVersion) as never)
-      const text = String((ran as { text?: unknown; deny?: unknown }).text ?? (ran as { deny?: unknown }).deny ?? '')
-      if (/committed/i.test(text)) {
-        feedVersion = versionIn(text)
-        lastFeed = signature
-
-        return
-      }
-      // the document exists from an earlier run, or moved on: take its version
-      feedVersion = versionIn(text)
-      if (feedVersion === undefined) {
-        throw new Error(clip(text, 200))
-      }
-    }
-  } catch (error) {
-    $.ui.log(`buero: feed: ${String(error)}`, { to: 'debug' })
+    await safe($, 'eigene post', () => fetchOwnMail($))
+    await safe($, 'schreibtisch', () => writeDesk($, now))
+    await safe($, 'logbuch', () => flushLogs($, now))
+    await safe($, 'neuigkeiten', () => readNews($, now))
   } finally {
-    isFeeding = false
+    isTicking = false
   }
+}
+
+/** What colleagues in this session's repository did since its last prompt; undefined when nothing. */
+async function newsContext($: $): Promise<string | undefined> {
+  const mine = ownSession()
+  if (mine === undefined) {
+    return undefined
+  }
+  const now = await $.clock.now()
+  const told = newsFor({
+    self: cloudSelf,
+    repo: repoOfSession(mine),
+    records: cloudCache?.records ?? [],
+    events: news,
+    since: newsSince === 0 ? now - FIRST_NEWS_MS : newsSince,
+    told: newsTold,
+    now,
+  })
+  newsSince = Math.max(newsSince, ...news.map(event => event.at))
+  if (told === undefined) {
+    return undefined
+  }
+  newsTold = told.told
+
+  return told.text
 }
 
 /** Takes this session's desk: a new record, or the one a reload left behind. */
@@ -497,10 +893,10 @@ export const register: Register = (on, options) => {
       await join($)
       heartbeat?.cancel()
       heartbeat = $.clock.every(HEARTBEAT_MS, () => void beat($))
-      feeder?.cancel()
+      ticker?.cancel()
       if (cloudSelf !== '') {
-        feeder = $.clock.every(FEED_EVERY_MS, () => void feed($))
-        $.clock.after(5000, () => void feed($))
+        ticker = $.clock.every(TICK_MS, () => void tick($))
+        $.clock.after(5000, () => void tick($))
       }
       if ((await $.ui.panes()).some(pane => pane.id === PANE)) {
         startReader($)
@@ -525,6 +921,7 @@ export const register: Register = (on, options) => {
   })
 
   on('prompt.submit', async ($, e, next) => {
+    let context: string | undefined
     await safe($, 'prompt', async () => {
       if (self === undefined) {
         await join($)
@@ -532,9 +929,12 @@ export const register: Register = (on, options) => {
       if (e.command === undefined && e.isMeta !== true && e.text.trim() !== '') {
         change({ task: clip(e.text, 300) })
       }
+      if (cloudSelf !== '' && e.command === undefined && e.isMeta !== true) {
+        context = await newsContext($)
+      }
     })
 
-    return next(e)
+    return next(context === undefined ? e : { ...e, context: [...(e.context ?? []), context] })
   })
 
   on('turn.start', async ($, e, next) => {
@@ -570,7 +970,8 @@ export const register: Register = (on, options) => {
   })
 
   on('tool.call', async ($, e, next) => {
-    if (self === undefined) {
+    // the mod's own reads and writes of the office page are no work of the session
+    if (self === undefined || next.origin.plugin === 'buero') {
       return next(e)
     }
     const tool = String(e.tool)
@@ -607,6 +1008,11 @@ export const register: Register = (on, options) => {
 
   // A permission card for the person: the verdict asks, and it stays open.
   on('tool.check', async ($, e, next) => {
+    // the mod's own rounds write only into its office page; no card for those
+    const url = typeof e.input === 'object' && e.input !== null ? (e.input as { url?: unknown }).url : undefined
+    if (next.origin.plugin === 'buero' && String(e.tool) === 'ArtifactData' && url === OFFICE_URL) {
+      return { decision: 'allow' as const, reason: 'Die Büro-Mod pflegt ihre eigene Büro-Seite.' }
+    }
     const verdict = await next(e)
     await safe($, 'check', async () => {
       const tool = String(e.tool)
@@ -697,6 +1103,45 @@ export const register: Register = (on, options) => {
         sent: withSent(self.sent, { at: now, to: input.session_id, toId: input.session_id, text: clip(text, 200), counts: true }),
       })
       void save($)
+      const to = cloudCache?.records.find(record => sameSession(record.id, String(input.session_id)))
+      await safe($, 'notiz', () => note($, 'nachricht', `→ ${to?.name ?? input.session_id}: ${clip(text, 120)}`))
+    }
+
+    return ran
+  })
+
+  // What only the session itself knows goes into the logbook: it pushed, opened or merged a PR.
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const ran = await next(e)
+    if (cloudSelf !== '' && ran.deny === undefined && ran.isError !== true && /\bgit\s+push\b/.test(String(e.command))) {
+      await safe($, 'push', async () => {
+        const branch = branchOf(ownSession())?.branch
+        const pr = ownPr?.state === 'open' ? `, PR #${ownPr.number} aktualisiert` : ''
+        await note($, 'push', `hat gepusht${branch === undefined ? '' : ` (${branch})`}${pr}`)
+        ownPrAt = 0
+      })
+    }
+
+    return ran
+  })
+
+  on('tool.call', { tool: 'mcp__github__create_pull_request' }, async ($, e, next) => {
+    const ran = await next(e)
+    if (cloudSelf !== '' && ran.deny === undefined && ran.isError !== true) {
+      const number = /"number"\s*:\s*(\d+)|\/pull\/(\d+)/.exec(String(ran.text ?? ''))
+      await safe($, 'pr', () => note($, 'pr', `hat ${number === null ? 'einen PR' : `PR #${number[1] ?? number[2]}`} erstellt`))
+      ownPrAt = 0
+    }
+
+    return ran
+  })
+
+  on('tool.call', { tool: 'mcp__github__merge_pull_request' }, async ($, e, next) => {
+    const ran = await next(e)
+    const number = (e as unknown as { pullNumber?: unknown }).pullNumber
+    if (cloudSelf !== '' && ran.deny === undefined && ran.isError !== true) {
+      await safe($, 'merge', () => note($, 'gemergt', `hat PR #${String(number)} gemergt`))
+      ownPrAt = 0
     }
 
     return ran
@@ -706,7 +1151,10 @@ export const register: Register = (on, options) => {
     const now = await $.clock.now()
     const records = await officeRecords($, now)
 
-    const listed = colleaguesText(records, now, stuckMs, selfIdIn(records) ?? '', where())
+    const mine = ownSession()
+    const listed =
+      colleaguesText(records, now, stuckMs, selfIdIn(records) ?? '', where()) +
+      (mine === undefined ? '' : recentText(news, records, repoOfSession(mine), now))
 
     return { result: cloudError === undefined ? listed : `${listed}\n\n(Cloud-Liste nicht lesbar: ${cloudError})` }
   })
@@ -746,6 +1194,7 @@ export const register: Register = (on, options) => {
       sent: withSent(sender.sent, { at: now, to: target.id, toId: target.id, text: clip(body, 200), counts: true }),
     })
     void save($)
+    await safe($, 'notiz', () => note($, 'nachricht', `→ ${target.name}: ${clip(body, 120)}`))
 
     return { result: `Gesendet an ${target.name}. Noch ${budget.left - 1} Nachrichten in dieser Stunde.` }
   })
@@ -757,7 +1206,7 @@ export const register: Register = (on, options) => {
     }
 
     return {
-      sections: [...composed.sections, { id: 'buero:team', text: teamPrompt(perHour, where()), scope: 'session' as const }],
+      sections: [...composed.sections, { id: 'buero:team', text: teamPrompt(perHour, where(), cloudSelf !== ''), scope: 'session' as const }],
     }
   })
 
