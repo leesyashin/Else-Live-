@@ -1,7 +1,7 @@
 {
   "name": "buero",
-  "version": "0.1.0",
-  "description": "Pixel-Art-Büro: deine Claude Code Sessions als Mitarbeiter an Schreibtischen, mit Chefbüro für Fragen und Absprache zwischen den Sessions.",
+  "version": "0.2.0",
+  "description": "Pixel-Art-Büro: deine Claude Code Sessions als Mitarbeiter an Schreibtischen, mit Chefbüro für Fragen, Briefkasten für deine Antworten, Logbuch und Absprache zwischen den Sessions.",
   "types": "./types/index.d.ts",
   "userConfig": {
     "nachrichtenProStunde": {

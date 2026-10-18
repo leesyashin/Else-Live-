@@ -92,6 +92,59 @@ export type OfficeView = {
   clockMinutes: number
 }
 
+/** What happened in the office: a line of the logbook. */
+export type EventKind =
+  | 'neu'
+  | 'arbeitet'
+  | 'frage'
+  | 'fertig'
+  | 'fehler'
+  | 'pr'
+  | 'gemergt'
+  | 'archiviert'
+  | 'push'
+  | 'nachricht'
+
+/** One logbook entry, kept in the office page's database for a week. */
+export type OfficeEvent = {
+  at: number
+  /** The session it is about (`session_…`). */
+  sid: string
+  /** The session's title then, for once it has left the office. */
+  title: string
+  /** `owner/repo`, or the repository's name; `ohne Repo` without one. */
+  repo: string
+  kind: EventKind
+  text: string
+}
+
+export type PostState = 'neu' | 'unterwegs' | 'zugestellt' | 'fehler' | 'unklar'
+
+/** A message the person wrote on the office page, waiting for a session to carry it. */
+export type Post = {
+  /** The recipient (`session_…`). */
+  to: string
+  text: string
+  createdAt: number
+  state: PostState
+  /** Who took it to deliver: a session (`cse_…`), or `seite` for the page itself. */
+  by?: string
+  /** `selbst` when the recipient fetched it, `bote` when another session carried it. */
+  via?: 'selbst' | 'bote' | 'seite'
+  claimedAt?: number
+  deliveredAt?: number
+  error?: string
+}
+
+/** The messenger's lease: one session at a time keeps the office up to date. */
+export type Lease = {
+  /** The session holding it (`cse_…`). */
+  holder: string
+  until: number
+  /** Per session (id tail): what the logbook last said about it. */
+  seen: Record<string, string>
+}
+
 declare module 'claude-code' {
   interface PluginState {
     buero: {
