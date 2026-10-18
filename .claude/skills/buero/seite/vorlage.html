@@ -116,6 +116,7 @@
   .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .btn { font: inherit; font-weight: 600; padding: 7px 14px; cursor: pointer; border: 2px solid var(--frame); background: var(--accent); color: var(--accent-ink); box-shadow: 3px 3px 0 var(--frame); }
   .btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--frame); }
+  a.btn { display: inline-block; text-decoration: none; }
   .btn.quiet { background: var(--surface); color: var(--ink); }
   .btn:disabled { opacity: 0.6; cursor: progress; }
   .result { margin: 0; font-size: 13px; color: var(--muted); }
@@ -148,6 +149,7 @@
         <span id="noticeText">Ich verbinde mich mit deinen Sessions …</span>
         <div class="actions" id="noticeActions" hidden>
           <button class="btn" id="allow" type="button">Zugriff erlauben</button>
+          <a class="btn" id="connectors" href="https://claude.ai/customize/connectors" target="_blank" rel="noopener">Connector-Einstellungen öffnen ↗</a>
         </div>
       </div>
     </figure>
@@ -206,6 +208,7 @@
     const LETTER_MS = 90 * 1000;
     const DENIALS = new Set(['needs_reauth', 'server_not_connected', 'server_not_found', 'blocked_by_policy', 'approval_required', 'not_in_manifest', 'selection_required', 'consent_required']);
     const ASKABLE = new Set(['approval_required', 'not_in_manifest', 'consent_required']);
+    const SETTINGS = new Set(['blocked_by_policy', 'needs_reauth', 'server_not_connected', 'server_not_found']);
     const NO_MCP = new Set(['not_granted', 'capability_disabled', 'capability_removed']);
     const LABEL = { ...Office.MOOD_LABEL, frage: 'wartet auf dich' };
     const ORDER = { frage: 0, freigabe: 0, haengt: 1, fehler: 1, arbeitet: 2, neu: 3, fertig: 4, weg: 5 };
@@ -362,7 +365,7 @@
         case 'not_in_manifest':
         case 'consent_required': return 'Die Seite braucht deine Erlaubnis, deine Sessions zu lesen.';
         case 'selection_required': return 'Du hast Claude Code Remote mehrfach verbunden. Wähle in claude.ai aus, welches die Seite nutzen soll.';
-        case 'blocked_by_policy': return 'Deine Organisation erlaubt diesen Zugriff nicht.';
+        case 'blocked_by_policy': return 'Claude Code Remote lässt die Seite deine Sessions noch nicht lesen. Öffne die Connector-Einstellungen, wähle Claude Code Remote und stell list_sessions und send_message auf „Erlaubt“. Danach öffne die Seite neu.';
         case 'tool_error': return `Claude Code Remote meldet einen Fehler: ${Office.clip(message || '', 160)}`;
         case 'server_unavailable':
         case 'upstream_error':
@@ -379,7 +382,10 @@
       }
       notice.hidden = false;
       el('noticeText').textContent = state.problem ? problemText(state.problem.code || state.problem, state.problem.message) : 'Ich verbinde mich mit deinen Sessions …';
-      el('noticeActions').hidden = !(state.problem && ASKABLE.has(state.problem.code || state.problem));
+      const code = state.problem ? state.problem.code || state.problem : '';
+      el('allow').hidden = !ASKABLE.has(code);
+      el('connectors').hidden = !SETTINGS.has(code);
+      el('noticeActions').hidden = el('allow').hidden && el('connectors').hidden;
     }
 
     function renderAll() {
