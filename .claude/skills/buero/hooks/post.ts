@@ -1,9 +1,9 @@
 // The office beyond the session list: the mailbox the page writes into, the
-// logbook of what happened, the messenger's lease, the full text of a waiting
-// session's question, and the news a session gets about colleagues in its
-// repository. Pure, like model.ts and cloud.ts.
+// colleagues' letters, the logbook of what happened, the messenger's lease,
+// the full text of a waiting session's question, and the news a session gets
+// about colleagues in its repository. Pure, like model.ts and cloud.ts.
 
-import type { EventKind, Lease, OfficeEvent, Post, SessionRecord } from '../types'
+import type { EventKind, Lease, Letter, OfficeEvent, Post, SessionRecord } from '../types'
 import type { CloudSession, Delivery } from './cloud'
 import { baseName, bossMessage, clip } from './model'
 
@@ -109,16 +109,17 @@ export function carriedMessage(text: string, carrier?: string): string {
   return `${bossMessage(text)}${note}`
 }
 
-/** Mail that waits for the messenger: new and past its recipient's own turn, or carried too long ago to know. */
-export function mailFor(
-  posts: readonly { id: string; post: Post }[],
-  workingIds: ReadonlySet<string>,
-  now: number,
-): { carry: string[]; unclear: string[] } {
+/**
+ * Mail that waits for the messenger: new and past its recipient's own turn,
+ * or carried too long ago to know. A working recipient waits its turn too:
+ * the cloud would hand it the messenger's delivery only once its turn ends,
+ * while its own mod takes the mail into the running turn.
+ */
+export function mailFor(posts: readonly { id: string; post: Post }[], now: number): { carry: string[]; unclear: string[] } {
   const carry: string[] = []
   const unclear: string[] = []
   for (const { id, post } of posts) {
-    if (post.state === 'neu' && (workingIds.has(post.to) || now - post.createdAt >= SELF_FETCH_MS)) {
+    if (post.state === 'neu' && now - post.createdAt >= SELF_FETCH_MS) {
       carry.push(id)
     }
     if (post.state === 'unterwegs' && now - (post.claimedAt ?? post.createdAt) > CLAIM_MS) {
@@ -127,6 +128,48 @@ export function mailFor(
   }
 
   return { carry, unclear }
+}
+
+export function letterOf(data: Record<string, unknown>): Letter | undefined {
+  return typeof data.to === 'string' &&
+    typeof data.from === 'string' &&
+    typeof data.text === 'string' &&
+    typeof data.createdAt === 'number' &&
+    (data.state === 'neu' || data.state === 'gelesen')
+    ? (data as unknown as Letter)
+    : undefined
+}
+
+/** A new letter's id: the sender's id tail and the time, unique per sender. */
+export function letterId(sender: string, now: number): string {
+  return `${tailOf(sender).slice(-8)}-${now.toString(36)}`
+}
+
+/** The letter a delivered colleague message names in its first line (`Brief …`), if any. */
+export function letterIn(text: string): string | undefined {
+  return /\[Büro\] Nachricht von Kollege [^\n]*, Brief ([A-Za-z0-9_-]+)\):/.exec(text)?.[1]
+}
+
+/** What a busy session reads after a tool result: the messages that arrived during its turn. */
+export function arrivedText(texts: readonly string[]): string {
+  return [
+    '[Büro] Während deines Auftrags angekommen. Die Cloud würde es erst nach dem Auftrag zustellen; die Büro-Mod reicht es jetzt durch. Lies es, bevor du weitermachst:',
+    ...texts,
+  ].join('\n\n')
+}
+
+/** What became of this session's recent messages to colleagues, for the kollegen tool. */
+export function receiptsText(sent: readonly { to: string; at: number; text: string; readAt?: number }[], now: number): string {
+  if (sent.length === 0) {
+    return ''
+  }
+  const lines = sent.map(one => {
+    const read = one.readAt === undefined ? 'noch nicht gelesen' : `gelesen ${ago(one.readAt, now)}`
+
+    return `- ${ago(one.at, now)} an ${one.to}: ${read} · „${clip(one.text, 60)}“`
+  })
+
+  return `\n\nDeine Nachrichten der letzten Stunde:\n${lines.join('\n')}`
 }
 
 const BUCKET_SHORT: Readonly<Record<string, string>> = {

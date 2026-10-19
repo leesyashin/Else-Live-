@@ -25,6 +25,8 @@ export type SentRecord = {
   counts: boolean
   /** Sent by the person from the office pane. */
   fromBoss?: boolean
+  /** The letter in the office page's database that tells whether it was read (cloud only). */
+  letter?: string
 }
 
 /** One session's file: `<config dir>/buero/sessions/<id>.json`. */
@@ -134,6 +136,23 @@ export type Post = {
   claimedAt?: number
   deliveredAt?: number
   error?: string
+}
+
+/**
+ * A colleague's message, kept beside the cloud's own delivery: the cloud hands
+ * a busy session its messages only once its turn ends, the recipient's mod
+ * fetches them from here into the running turn, and the sender sees it was read.
+ */
+export type Letter = {
+  /** The recipient (`session_…`). */
+  to: string
+  /** The sender (`session_…`). */
+  from: string
+  /** The message as the recipient reads it, its letter id in the first line. */
+  text: string
+  createdAt: number
+  state: 'neu' | 'gelesen'
+  readAt?: number
 }
 
 /** The messenger's lease: one session at a time keeps the office up to date. */

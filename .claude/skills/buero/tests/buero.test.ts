@@ -17,16 +17,20 @@ import {
   eventsFrom,
   eventsIn,
   leaseOf,
+  letterId,
+  letterIn,
   mailFor,
   mayLead,
   newsFor,
   questionIn,
+  receiptsText,
   tailOf,
   writeOutcome,
 } from '../hooks/post'
 import {
   bossMessage,
   buildOffice,
+  colleagueMessage,
   describeTool,
   moodLabel,
   moodOf,
@@ -654,6 +658,9 @@ test('the messenger keeps the page: list, questions, logbook and mail', async ($
   db.put('post/p1', { to: 'session_01BLOCKED', text: 'Nimm B.', createdAt: clock.now(), state: 'neu' })
   db.put('post/p2', { to: 'session_01SELF', text: 'Wie weit bist du?', createdAt: clock.now(), state: 'neu' })
   await clock.advance(15_000)
+  // a working recipient first gets the time to take the mail into its turn itself
+  expect(sent).toHaveLength(0)
+  await clock.advance(15_000)
 
   expect(sent).toHaveLength(1)
   expect(sent[0]).toContain('session_01BLOCKED next: [Büro] Nachricht vom Nutzer')
@@ -714,6 +721,100 @@ test('a session hears what colleagues in its repository did, once', async ($, on
   expect(listed).toContain('Letzte Ereignisse im Büro')
 })
 
+test('a busy session reads letters and mail within its turn, each only once', async ($, on) => {
+  const files = new Map<string, string>()
+  const clock = world(on, files, { CLAUDE_CODE_REMOTE_SESSION_ID: 'cse_01SELF' })
+  const db = store(on)
+  on('mcp.call', ($, e) => (e.tool === 'list_sessions' ? listOf(CLOUD_LIST.ccr.data) : { value: { content: [{ type: 'text', text: '[]' }], isError: false } }))
+  db.put('leitung/bote', { holder: 'cse_01OTHER', until: START + 10 * 60_000, seen: {} })
+  on('tool.call', { tool: 'Bash' }, () => ({ result: 'ok' }))
+  const prompts: string[] = []
+  on('prompt.submit', ($, e) => {
+    prompts.push(e.text)
+
+    return { text: e.text }
+  })
+  const ella = record('session_01ELLA', 'Ella', { project: 'Acai' })
+
+  await $.session.start(START_EVENT)
+  await $.turn.start({ text: 'Baue die Matcha-Bar', turnId: 't1' })
+  const letter = letterId('cse_01ELLA', START)
+  const text = colleagueMessage(ella, 'Ich übernehme die Karte.', letter)
+  db.put(`kollegenpost/${letter}`, { to: 'session_01SELF', from: 'session_01ELLA', text, createdAt: START, state: 'neu' })
+  db.put('post/p1', { to: 'session_01SELF', text: 'Mach erst die Tests.', createdAt: START, state: 'neu' })
+  await clock.advance(15_000)
+  expect(db.get('post/p1')?.state).toBe('unterwegs')
+
+  // a subagent's result carries nothing; the main conversation's next one carries both
+  const inAgent = await $.tool.call({ tool: 'Bash', command: 'ls', agentId: 'a1' } as never)
+  expect(JSON.stringify(inAgent)).not.toContain('Ich übernehme die Karte.')
+  const ran = await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  const said = ran.deny === undefined ? (ran.context ?? []).join('\n') : ''
+  expect(said).toContain('[Büro] Während deines Auftrags angekommen')
+  expect(said).toContain('Ich übernehme die Karte.')
+  expect(said).toContain('Mach erst die Tests.')
+  await clock.advance(1000)
+  expect(db.get(`kollegenpost/${letter}`)?.state).toBe('gelesen')
+  expect(db.get('post/p1')?.state).toBe('zugestellt')
+  const after = await $.tool.call({ tool: 'Bash', command: 'git status' })
+  expect(after.deny === undefined ? after.context : 'verweigert').toBeUndefined()
+
+  // the cloud brings the same letter once the turn ends: read already, it is taken
+  const again = await $.session.receive({ origin: { kind: 'peer-send-message' }, text: `<cross-session-message>\n${text}\n</cross-session-message>` })
+  expect(again).toEqual({ consumed: expect.stringContaining('schon') })
+
+  // after the last tool call the person's mail comes as a prompt, a letter with the cloud
+  const late = letterId('cse_01ELLA', START + 1)
+  db.put(`kollegenpost/${late}`, { to: 'session_01SELF', from: 'session_01ELLA', text: colleagueMessage(ella, 'Gepusht.', late), createdAt: clock.now(), state: 'neu' })
+  db.put('post/p2', { to: 'session_01SELF', text: 'Und dann pushen.', createdAt: clock.now(), state: 'neu' })
+  await clock.advance(15_000)
+  expect(prompts).toEqual([])
+  await $.turn.complete({ reason: 'answer', answer: 'Fertig.', durationMs: 900, isAborted: false, turnId: 't1' })
+  await clock.advance(1000)
+  expect(prompts).toEqual([bossMessage('Und dann pushen.')])
+  expect(db.get('post/p2')?.state).toBe('zugestellt')
+  expect(db.get(`kollegenpost/${late}`)?.state).toBe('neu')
+})
+
+test('a message to a working colleague waits on the page too, and its sender sees it read', async ($, on) => {
+  const files = new Map<string, string>()
+  const clock = world(on, files, { CLAUDE_CODE_REMOTE_SESSION_ID: 'cse_01SELF' })
+  const db = store(on)
+  const mate: CloudSession = {
+    id: 'session_01NORA',
+    title: 'Matcha-Bar',
+    status_bucket: 'SESSION_STATUS_BUCKET_WORKING',
+    created_at: '2026-10-18T09:00:00Z',
+    updated_at: '2026-10-18T11:59:00Z',
+    session_context: { outcomes: [{ git_repository: { git_info: { repo: 'leesyashin/Acai', branches: ['claude/matcha'] } } }] },
+  }
+  const sent: string[] = []
+  on('mcp.call', ($, e) => {
+    if (e.tool === 'list_sessions') {
+      return listOf([...CLOUD_LIST.ccr.data, mate])
+    }
+    if (e.tool === 'send_message') {
+      sent.push(String(e.args.message))
+    }
+
+    return { value: { content: [{ type: 'text', text: '[]' }], isError: false } }
+  })
+  db.put('leitung/bote', { holder: 'cse_01OTHER', until: START + 10 * 60_000, seen: {} })
+
+  await $.session.start(START_EVENT)
+  const result = JSON.stringify(await $.tool.call({ tool: 'mcp__buero__nachricht', an: 'session_01NORA', text: 'Ich übernehme die Karte.' }))
+  expect(result).toContain('arbeitet gerade')
+  const letter = letterIn(sent[0] ?? '') ?? ''
+  expect(letter).not.toBe('')
+  expect(db.get(`kollegenpost/${letter}`)).toMatchObject({ to: 'session_01NORA', from: 'session_01SELF', state: 'neu' })
+  expect(mine(files).sent[0]?.letter).toBe(letter)
+  expect(JSON.stringify(await $.tool.call({ tool: 'mcp__buero__kollegen' }))).toContain('noch nicht gelesen')
+
+  await clock.advance(2 * MINUTE)
+  db.put(`kollegenpost/${letter}`, { ...db.get(`kollegenpost/${letter}`), state: 'gelesen', readAt: clock.now() })
+  expect(JSON.stringify(await $.tool.call({ tool: 'mcp__buero__kollegen' }))).toContain('gelesen gerade eben')
+})
+
 test('the logbook notes changes once, mail waits for its recipient first, questions read whole', () => {
   const at = (minutes: number) => new Date(START + minutes * MINUTE).toISOString()
   const one = (patch: Partial<CloudSession>): CloudSession => ({
@@ -753,8 +854,27 @@ test('the logbook notes changes once, mail waits for its recipient first, questi
     { id: 'alt', post: post({ to: 'session_01B', createdAt: START - 30_000 }) },
     { id: 'fest', post: post({ state: 'unterwegs', claimedAt: START - 4 * 60_000 }) },
   ]
-  expect(mailFor(letters, new Set(), START)).toEqual({ carry: ['alt'], unclear: ['fest'] })
-  expect(mailFor(letters, new Set(['session_01A']), START).carry).toEqual(['jetzt', 'alt'])
+  // a working recipient takes its mail into its turn itself: the messenger waits for it too
+  expect(mailFor(letters, START)).toEqual({ carry: ['alt'], unclear: ['fest'] })
+
+  const letter = letterId('cse_01SELF', START)
+  expect(letterIn(colleagueMessage(record('session_01SELF', 'Ada'), 'Ich nehme die Karte.', letter))).toBe(letter)
+  expect(letterIn(colleagueMessage(record('session_01SELF', 'Ada'), 'Ohne Brief.'))).toBeUndefined()
+  expect(letterIn(bossMessage('Nachricht von Kollege X, Brief abc):'))).toBeUndefined()
+  expect(
+    receiptsText(
+      [
+        { to: 'Nora', at: START - 9 * MINUTE, text: 'Ich nehme die Karte.' },
+        { to: 'Nora', at: START - 3 * MINUTE, text: 'Gepusht.', readAt: START - 2 * MINUTE },
+      ],
+      START,
+    ),
+  ).toBe(
+    '\n\nDeine Nachrichten der letzten Stunde:\n' +
+      '- vor 9 Min. an Nora: noch nicht gelesen · „Ich nehme die Karte.“\n' +
+      '- vor 3 Min. an Nora: gelesen vor 2 Min. · „Gepusht.“',
+  )
+  expect(receiptsText([], START)).toBe('')
 
   const asked = JSON.stringify({
     data: [
