@@ -163,7 +163,10 @@ Brief in den Speicher der Seite. Die Mod des Empfängers holt ihn innerhalb von
 15 Sekunden ab und reicht ihn mit dem Ergebnis des nächsten Arbeitsschritts
 durch („[Büro] Während deines Auftrags angekommen …“). So erfährt eine Session
 rechtzeitig, dass ein Kollege eine Aufgabe übernommen hat. Bringt die Cloud
-denselben Brief nach dem Auftrag noch einmal, fängt die Mod ihn ab. Unter
+denselben Brief nach dem Auftrag noch einmal, fängt die Mod ihn ab. Erreicht
+eine Nachricht die Session selbst schon während des Auftrags, etwa von einer
+Session mit älterer Mod, nimmt die Mod sie aus der Warteschlange und reicht sie
+genauso durch. Unter
 „Deine Nachrichten der letzten Stunde“ zeigt `kollegen` dem Absender, ob seine
 Nachricht schon gelesen ist.
 

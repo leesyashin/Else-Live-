@@ -191,8 +191,12 @@ let newsAt = 0
 let newsSince = 0
 let newsTold = ''
 
-/** A message that reached this session during its turn: the person's mail or a colleague's letter. */
-type Arrived = { text: string; post?: string; letter?: string }
+/**
+ * A message that reached this session during its turn: the person's mail, a
+ * colleague's letter, or a delivery the mod took from the cloud's queue
+ * (`isHeld`), which nothing else brings now.
+ */
+type Arrived = { text: string; post?: string; letter?: string; isHeld?: boolean }
 /** What the next tool result of the main conversation hands over. */
 let arrived: Arrived[] = []
 /** Letters taken in already, from the page or through the cloud, and those the model has read. */
@@ -708,16 +712,19 @@ function handOver($: $): string | undefined {
   return arrivedText(items.map(one => one.text))
 }
 
-/** What a turn ended without reading: the person's mail comes as a prompt, letters with the cloud's own delivery. */
+/**
+ * What a turn ended without reading: the person's mail and the deliveries the
+ * mod held come as a prompt, letters from the page with the cloud's own delivery.
+ */
 function afterTurn($: $): void {
-  const posts = arrived.filter(one => one.post !== undefined)
+  const left = arrived.filter(one => one.post !== undefined || one.isHeld === true)
   arrived = []
-  if (posts.length === 0) {
+  if (left.length === 0) {
     return
   }
   void safe($, 'post nach dem auftrag', async () => {
-    await $.prompt.submit({ text: posts.map(one => one.text).join('\n\n') })
-    await markHandedOver($, posts)
+    await $.prompt.submit({ text: left.map(one => one.text).join('\n\n') })
+    await markHandedOver($, left)
   })
 }
 
@@ -1236,21 +1243,28 @@ export const register: Register = (on, options) => {
     if (letter !== undefined && readLetters.has(letter)) {
       return { consumed: 'Büro: schon während des Auftrags gelesen' }
     }
+    const isPeer = (e.origin.kind === 'peer' || e.origin.kind === 'peer-send-message') && e.agentId === undefined
+    // queued, it would wait for the end of the turn: the next tool result carries it
+    const isHeld = isPeer && cloudSelf !== '' && self?.status === 'arbeitet'
+    if (letter !== undefined) {
+      // this copy is the one the model reads: none from the page
+      takenLetters.add(letter)
+      arrived = arrived.filter(one => one.letter !== letter)
+    }
+    if (isHeld) {
+      arrived.push({ text: e.text, letter, isHeld })
+    }
     await safe($, 'receive', async () => {
-      const isPeer = e.origin.kind === 'peer' || e.origin.kind === 'peer-send-message'
-      if (isPeer && e.agentId === undefined) {
+      if (isPeer) {
         change({ receivedAt: await $.clock.now(), receivedText: clip(e.text, 200) })
         void save($)
       }
-      if (letter !== undefined) {
-        // the cloud brings it itself: no second copy from the page
-        takenLetters.add(letter)
-        arrived = arrived.filter(one => one.letter !== letter)
+      if (letter !== undefined && !isHeld) {
         void safe($, 'gelesen', () => markRead($, letter))
       }
     })
 
-    return next(e)
+    return isHeld ? { consumed: 'Büro: kommt mit dem nächsten Arbeitsschritt' } : next(e)
   })
 
   // The model's own SendMessage to another session on this PC counts toward

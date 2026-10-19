@@ -728,6 +728,7 @@ test('a busy session reads letters and mail within its turn, each only once', as
   on('mcp.call', ($, e) => (e.tool === 'list_sessions' ? listOf(CLOUD_LIST.ccr.data) : { value: { content: [{ type: 'text', text: '[]' }], isError: false } }))
   db.put('leitung/bote', { holder: 'cse_01OTHER', until: START + 10 * 60_000, seen: {} })
   on('tool.call', { tool: 'Bash' }, () => ({ result: 'ok' }))
+  on('session.receive', ($, e) => ({ text: e.text }))
   const prompts: string[] = []
   on('prompt.submit', ($, e) => {
     prompts.push(e.text)
@@ -763,17 +764,27 @@ test('a busy session reads letters and mail within its turn, each only once', as
   const again = await $.session.receive({ origin: { kind: 'peer-send-message' }, text: `<cross-session-message>\n${text}\n</cross-session-message>` })
   expect(again).toEqual({ consumed: expect.stringContaining('schon') })
 
+  // any colleague's delivery that reaches the busy session rides along too, rather than waiting in the queue
+  const raw = await $.session.receive({ origin: { kind: 'peer-send-message' }, text: '<cross-session-message>Hallo, alte Mod hier.</cross-session-message>' })
+  expect(raw).toEqual({ consumed: expect.stringContaining('nächsten Arbeitsschritt') })
+  const carried = await $.tool.call({ tool: 'Bash', command: 'ls -la' })
+  expect(carried.deny === undefined ? (carried.context ?? []).join('\n') : '').toContain('Hallo, alte Mod hier.')
+
   // after the last tool call the person's mail comes as a prompt, a letter with the cloud
   const late = letterId('cse_01ELLA', START + 1)
   db.put(`kollegenpost/${late}`, { to: 'session_01SELF', from: 'session_01ELLA', text: colleagueMessage(ella, 'Gepusht.', late), createdAt: clock.now(), state: 'neu' })
   db.put('post/p2', { to: 'session_01SELF', text: 'Und dann pushen.', createdAt: clock.now(), state: 'neu' })
   await clock.advance(15_000)
+  await $.session.receive({ origin: { kind: 'peer-send-message' }, text: 'Noch was.' })
   expect(prompts).toEqual([])
   await $.turn.complete({ reason: 'answer', answer: 'Fertig.', durationMs: 900, isAborted: false, turnId: 't1' })
   await clock.advance(1000)
-  expect(prompts).toEqual([bossMessage('Und dann pushen.')])
+  expect(prompts).toEqual([`${bossMessage('Und dann pushen.')}\n\nNoch was.`])
   expect(db.get('post/p2')?.state).toBe('zugestellt')
   expect(db.get(`kollegenpost/${late}`)?.state).toBe('neu')
+
+  // between turns a delivery starts a turn of its own, as before
+  expect(await $.session.receive({ origin: { kind: 'peer-send-message' }, text: 'Bist du fertig?' })).toEqual({ text: 'Bist du fertig?' })
 })
 
 test('a message to a working colleague waits on the page too, and its sender sees it read', async ($, on) => {
