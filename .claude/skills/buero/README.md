@@ -24,7 +24,7 @@ lesen (blocked_by_policy). Die Arbeit machen deshalb die Cloud-Sessions mit der
 Büro-Mod (Setup-Skript unten). Jede schaut alle **15 Sekunden** nach dem Büro.
 
 - **Ein Bote zur Zeit:** Die erste Büro-Session, die läuft, wird zum Boten und meldet das im Speicher der Seite. Der Bote liest die Session-Liste, schreibt sie für die Seite, führt das Logbuch fürs Schwarze Brett, holt die vollständigen Fragen wartender Sessions und stellt Post zu. Hört er auf, übernimmt nach spätestens 90 Sekunden die nächste Büro-Session.
-- **Post holen die Sessions selbst ab:** Eine Session mit der Mod holt ihre eigene Post innerhalb von 15 Sekunden ab, sobald sie gerade nicht arbeitet. Arbeitet sie gerade oder hat sie keine Mod, bringt der Bote die Nachricht. Bei einer arbeitenden Session fließt die Nachricht in ihren laufenden Arbeitsschritt ein, ohne ihn abzubrechen.
+- **Post holen die Sessions selbst ab:** Eine Session mit der Mod holt ihre eigene Post innerhalb von 15 Sekunden ab. Arbeitet sie gerade, bekommt sie die Nachricht mit dem Ergebnis ihres nächsten Arbeitsschritts, ohne dass ihr Auftrag abbricht. Endet der Auftrag vorher, kommt die Nachricht gleich danach als eigene Runde. Hat eine Session keine Mod, bringt der Bote die Nachricht nach 20 Sekunden. Die Cloud reicht sie dann aber erst weiter, wenn der laufende Auftrag fertig ist.
 - **Jede Session meldet, was nur sie weiß:** dass sie gepusht hat (und damit ihren PR aktualisiert), dass sie einen PR erstellt oder gemergt hat, wem sie geschrieben hat. Dazu fragt sie einmal pro Minute bei GitHub nach dem Stand ihres eigenen PRs.
 
 Oben rechts steht, wie alt der Stand ist. Ist seit 5 Minuten keine Büro-Session
@@ -156,6 +156,20 @@ bewegt) oder dass jemand auf dich wartet, und wer gerade im selben Repo an
 welchem Branch arbeitet. Andere Repos erscheinen dort nicht, die stehen nur in
 `kollegen`. Der Block ist als Information markiert, nicht als Anweisung.
 
+**Nachrichten an arbeitende Kollegen:** Die Cloud stellt eine Nachricht an eine
+Session, die gerade arbeitet, erst zu, wenn deren Auftrag fertig ist. Das kann
+eine halbe Stunde dauern. Deshalb legt `nachricht` in der Cloud zusätzlich einen
+Brief in den Speicher der Seite. Die Mod des Empfängers holt ihn innerhalb von
+15 Sekunden ab und reicht ihn mit dem Ergebnis des nächsten Arbeitsschritts
+durch („[Büro] Während deines Auftrags angekommen …“). So erfährt eine Session
+rechtzeitig, dass ein Kollege eine Aufgabe übernommen hat. Bringt die Cloud
+denselben Brief nach dem Auftrag noch einmal, fängt die Mod ihn ab. Erreicht
+eine Nachricht die Session selbst schon während des Auftrags, etwa von einer
+Session mit älterer Mod, nimmt die Mod sie aus der Warteschlange und reicht sie
+genauso durch. Unter
+„Deine Nachrichten der letzten Stunde“ zeigt `kollegen` dem Absender, ob seine
+Nachricht schon gelesen ist.
+
 Nachrichten untereinander sollen die Sessions nur schicken, wenn es echte Arbeit
 spart, höchstens **5 pro Stunde**. Das Limit gilt auch für das eingebaute
 `send_message` der Cloud und für SendMessage an andere Sessions. Nachrichten
@@ -171,6 +185,7 @@ auch nicht.
 | `sessions/<id>` | der eigene PR einer Session, ihre letzten Nachrichten an Kollegen | jede Büro-Session | 7 Tage |
 | `logbuch/<tag>-<id>` | die Einträge fürs Schwarze Brett, ein Dokument pro Schreiber und Tag | Bote und Sessions | 7 Tage |
 | `post/<id>` | deine Nachrichten aus dem Büro mit Zustellstatus | du, beim Zustellen der Empfänger oder der Bote | 7 Tage |
+| `kollegenpost/<id>` | Nachrichten der Sessions untereinander, ob sie gelesen sind | Absender und Empfänger | 7 Tage |
 | `fragen/<id>` | der volle Wortlaut der Frage einer wartenden Session | der Bote | solange sie wartet |
 
 Ältere Dokumente räumt der Bote alle 10 Minuten weg. Die Mod schreibt nur in
@@ -187,7 +202,7 @@ Auf dem PC kannst du beides unter `/config` ändern.
 
 - In der Cloud siehst du keine Agents fremder Sessions, nur die der Session, in der das Büro offen ist.
 - Auf dem PC schreibt jede Session ihren Status nach `~/.claude/buero/sessions/<session-id>.json`. Darin stehen Projektname, Ordner und die ersten 300 Zeichen deines letzten Auftrags. Die Dateien bleiben auf deinem Rechner.
-- Im Speicher der Büro-Seite liegen Titel, Repos und Zusammenfassungen deiner Cloud-Sessions, der volle Wortlaut wartender Fragen und deine Nachrichten aus dem Büro. Die Seite ist privat. Teilst du sie, kann jeder, mit dem du sie teilst, das lesen.
+- Im Speicher der Büro-Seite liegen Titel, Repos und Zusammenfassungen deiner Cloud-Sessions, der volle Wortlaut wartender Fragen, deine Nachrichten aus dem Büro und die Nachrichten der Sessions untereinander. Die Seite ist privat. Teilst du sie, kann jeder, mit dem du sie teilst, das lesen.
 - Die Mod nutzt die neue Mod-Schnittstelle von Claude Code. Gebaut und getestet wurde sie mit Version 2.1.302.
 
 ## Entwickeln

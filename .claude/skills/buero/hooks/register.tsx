@@ -5,7 +5,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { EventKind, OfficeEvent, OfficeView, Post, SessionRecord, Status, WorkerView } from '../types'
+import type { EventKind, Letter, OfficeEvent, OfficeView, Post, SessionRecord, Status, WorkerView } from '../types'
 import { describeOffice, drawOffice } from './art'
 import type { CloudSession, OwnPr } from './cloud'
 import {
@@ -23,6 +23,7 @@ import type { Doc, WriteOutcome } from './post'
 import {
   LEASE_MS,
   RENEW_MS,
+  arrivedText,
   carriedMessage,
   dayOf,
   docsIn,
@@ -30,12 +31,16 @@ import {
   eventsFrom,
   eventsIn,
   leaseOf,
+  letterId,
+  letterIn,
+  letterOf,
   logDocId,
   mailFor,
   mayLead,
   newsFor,
   postOf,
   questionIn,
+  receiptsText,
   recentText,
   repoOfSession,
   tailOf,
@@ -84,7 +89,10 @@ const QUESTIONS_PER_TICK = 2
 const CARRIES_PER_TICK = 3
 /** On its first prompt a session hears what happened in its repository this far back. */
 const FIRST_NEWS_MS = 6 * 60 * 60_000
+const HOUR_MS = 60 * 60_000
 const DAY_MS = 24 * 60 * 60_000
+/** The office page's collection of colleagues' letters (Letter). */
+const LETTERS = 'kollegenpost'
 /** GitHub is asked about this session's own pull request at most this often. */
 const PR_EVERY_MS = 60_000
 const GITHUB_SERVER = 'github'
@@ -142,6 +150,18 @@ let newsAt = 0
 /** Logbook lines up to this time were told already; the colleagues as last named. */
 let newsSince = 0
 let newsTold = ''
+
+/**
+ * A message that reached this session during its turn: the person's mail, a
+ * colleague's letter, or a delivery the mod took from the cloud's queue
+ * (`isHeld`), which nothing else brings now.
+ */
+type Arrived = { text: string; post?: string; letter?: string; isHeld?: boolean }
+/** What the next tool result of the main conversation hands over. */
+let arrived: Arrived[] = []
+/** Letters taken in already, from the page or through the cloud, and those the model has read. */
+const takenLetters = new Set<string>()
+const readLetters = new Set<string>()
 
 async function safe($: $, label: string, work: () => Promise<void>): Promise<void> {
   try {
@@ -535,11 +555,17 @@ async function carry($: $, doc: Doc, post: Post, via: 'selbst' | 'bote'): Promis
   )
 }
 
-/** Mail for this session: taken in while it is not busy; a busy one gets it from the messenger. */
+function byCreated(a: Doc, b: Doc): number {
+  return Number(a.data.createdAt) - Number(b.data.createdAt)
+}
+
+/**
+ * Mail for this session. Not busy, it takes it in as a prompt. Busy, it holds
+ * the mail and its colleagues' letters for the next tool result of the
+ * running turn: the cloud would hand them over only once the turn ends.
+ */
 async function fetchOwnMail($: $): Promise<void> {
-  if (self?.status === 'arbeitet') {
-    return
-  }
+  const isBusy = self?.status === 'arbeitet'
   const mine = await dbQuery($, 'post', {
     where: [
       ['to', 'in', [idOfSelf(), cloudSelf]],
@@ -547,26 +573,145 @@ async function fetchOwnMail($: $): Promise<void> {
     ],
     limit: 5,
   })
-  for (const doc of mine.sort((a, b) => Number(a.data.createdAt) - Number(b.data.createdAt))) {
+  for (const doc of mine.sort(byCreated)) {
     const post = postOf(doc.data)
-    if (post !== undefined) {
+    if (post !== undefined && isBusy) {
+      await hold($, doc, post)
+    } else if (post !== undefined) {
       await carry($, doc, post, 'selbst')
+    }
+  }
+  if (isBusy) {
+    await fetchLetters($)
+  }
+  if (isBusy && self?.status !== 'arbeitet') {
+    // the turn ended while the mail was fetched
+    afterTurn($)
+  }
+}
+
+/** Takes the person's letter for the running turn, so no messenger carries it meanwhile. */
+async function hold($: $, doc: Doc, post: Post): Promise<void> {
+  const claimedAt = await $.clock.now()
+  const claimed = await dbWrite($, 'update', 'post', doc.id, { state: 'unterwegs', by: cloudSelf, via: 'selbst', claimedAt }, doc.version)
+  if (claimed.isDone) {
+    arrived.push({ text: bossMessage(post.text), post: doc.id })
+  }
+}
+
+/** Colleagues' letters to this session that the cloud holds back until its turn ends. */
+async function fetchLetters($: $): Promise<void> {
+  const open = await dbQuery($, LETTERS, {
+    where: [
+      ['to', 'in', [idOfSelf(), cloudSelf]],
+      ['state', '==', 'neu'],
+    ],
+    limit: 10,
+  })
+  for (const doc of open.sort(byCreated)) {
+    const letter = letterOf(doc.data)
+    if (letter !== undefined && !takenLetters.has(doc.id)) {
+      takenLetters.add(doc.id)
+      arrived.push({ text: letter.text, letter: doc.id })
     }
   }
 }
 
+/** Puts a colleague's letter on the office page; resolves its version, or undefined when it could not. */
+async function fileLetter($: $, id: string, letter: Letter): Promise<number | undefined> {
+  try {
+    const outcome = await dbWrite($, 'set', LETTERS, id, letter, undefined)
+
+    return outcome.isDone ? (outcome.version ?? 1) : undefined
+  } catch (error) {
+    $.ui.log(`buero: brief: ${String(error)}`, { to: 'debug' })
+
+    return undefined
+  }
+}
+
+/** Updates a document at whatever version it is at now; a missing one stays missing. */
+async function settle($: $, collection: string, id: string, data: Record<string, unknown>): Promise<void> {
+  const doc = await dbGet($, collection, id)
+  if (doc !== undefined) {
+    await dbWrite($, 'update', collection, id, data, doc.version)
+  }
+}
+
+async function markRead($: $, letter: string): Promise<void> {
+  await settle($, LETTERS, letter, { state: 'gelesen', readAt: await $.clock.now() })
+}
+
+/** Notes on the page that the model has read what arrived: the mail delivered, the letters read. */
+async function markHandedOver($: $, items: readonly Arrived[]): Promise<void> {
+  const at = await $.clock.now()
+  for (const one of items) {
+    if (one.post !== undefined) {
+      await settle($, 'post', one.post, { state: 'zugestellt', deliveredAt: at })
+    }
+    if (one.letter !== undefined) {
+      await markRead($, one.letter)
+    }
+  }
+}
+
+/** What arrived during the turn, as the model reads it after a tool result; undefined when nothing did. */
+function handOver($: $): string | undefined {
+  if (arrived.length === 0) {
+    return undefined
+  }
+  const items = arrived
+  arrived = []
+  for (const one of items) {
+    if (one.letter !== undefined) {
+      readLetters.add(one.letter)
+    }
+  }
+  void safe($, 'übergeben', () => markHandedOver($, items))
+
+  return arrivedText(items.map(one => one.text))
+}
+
+/**
+ * What a turn ended without reading: the person's mail and the deliveries the
+ * mod held come as a prompt, letters from the page with the cloud's own delivery.
+ */
+function afterTurn($: $): void {
+  const left = arrived.filter(one => one.post !== undefined || one.isHeld === true)
+  arrived = []
+  if (left.length === 0) {
+    return
+  }
+  void safe($, 'post nach dem auftrag', async () => {
+    await $.prompt.submit({ text: left.map(one => one.text).join('\n\n') })
+    await markHandedOver($, left)
+  })
+}
+
+/** This session's messages of the last hour and whether they were read, as their letters on the page say. */
+async function receiptsOf($: $, records: readonly SessionRecord[], now: number): Promise<string> {
+  const recent = (self?.sent ?? []).filter(one => one.letter !== undefined && now - one.at < HOUR_MS)
+  const told = await Promise.all(
+    recent.map(async one => {
+      const letter = letterOf((await dbGet($, LETTERS, one.letter ?? ''))?.data ?? {})
+      const to = records.find(record => sameSession(record.id, one.toId ?? one.to))?.name ?? one.to
+
+      return { to, at: one.at, text: one.text, readAt: letter?.state === 'gelesen' ? (letter.readAt ?? now) : undefined }
+    }),
+  )
+
+  return receiptsText(told, now)
+}
+
 /** The messenger's mail round: what recipients did not fetch themselves, and what got stuck. */
-async function carryMail($: $, sessions: readonly CloudSession[], now: number): Promise<void> {
+async function carryMail($: $, now: number): Promise<void> {
   const open = await dbQuery($, 'post', { where: [['state', 'in', ['neu', 'unterwegs']]], limit: 50 })
   const letters = open.flatMap(doc => {
     const post = postOf(doc.data)
 
     return post === undefined ? [] : [{ id: doc.id, doc, post }]
   })
-  const working = new Set(
-    sessions.filter(session => session.status_bucket === 'SESSION_STATUS_BUCKET_WORKING').map(session => session.id ?? ''),
-  )
-  const { carry: due, unclear } = mailFor(letters, working, now)
+  const { carry: due, unclear } = mailFor(letters, now)
   for (const id of unclear) {
     const letter = letters.find(one => one.id === id)
     if (letter !== undefined) {
@@ -616,11 +761,12 @@ async function fetchQuestions($: $, sessions: readonly CloudSession[], now: numb
   }
 }
 
-/** Mail, logbook days, desks and lists older than a week go. */
+/** Mail, letters, logbook days, desks and lists older than a week go. */
 async function prune($: $, now: number): Promise<void> {
   const old = now - KEEP_MS
   const rounds: [string, Record<string, unknown>][] = [
     ['post', { where: [['createdAt', '<', old]], limit: 50 }],
+    [LETTERS, { where: [['createdAt', '<', old]], limit: 50 }],
     ['logbuch', { where: [['day', '<', dayOf(old)]], limit: 50 }],
     ['sessions', { where: [['writtenAt', '<', old]], limit: 50 }],
   ]
@@ -660,7 +806,7 @@ async function runOffice($: $, now: number, seen: Readonly<Record<string, string
   const told = eventsFrom(sessions, deliveries, seen, now)
   addEvents(told.events)
   await safe($, 'fragen', () => fetchQuestions($, sessions, now))
-  await safe($, 'post', () => carryMail($, sessions, now))
+  await safe($, 'post', () => carryMail($, now))
   if (now - prunedAt > PRUNE_EVERY_MS) {
     prunedAt = now
     await safe($, 'aufräumen', () => prune($, now))
@@ -964,6 +1110,7 @@ export const register: Register = (on, options) => {
       const activity =
         e.reason === 'aborted' ? 'abgebrochen' : e.reason === 'error' ? 'Fehler beim Modell-Aufruf' : ''
       await setStatus($, e.reason === 'error' ? 'fehler' : 'fertig', { activity, question: undefined })
+      afterTurn($)
     })
 
     return next(e)
@@ -1002,8 +1149,13 @@ export const register: Register = (on, options) => {
         void beat($)
       }
     })
+    if (e.agentId !== undefined || ran.deny !== undefined) {
+      return ran
+    }
+    // what reached the session during its turn rides along with this result
+    const said = handOver($)
 
-    return ran
+    return said === undefined ? ran : { ...ran, context: [...(ran.context ?? []), said] }
   })
 
   // A permission card for the person: the verdict asks, and it stays open.
@@ -1047,15 +1199,32 @@ export const register: Register = (on, options) => {
   })
 
   on('session.receive', async ($, e, next) => {
+    const letter = e.agentId === undefined ? letterIn(e.text) : undefined
+    if (letter !== undefined && readLetters.has(letter)) {
+      return { consumed: 'Büro: schon während des Auftrags gelesen' }
+    }
+    const isPeer = (e.origin.kind === 'peer' || e.origin.kind === 'peer-send-message') && e.agentId === undefined
+    // queued, it would wait for the end of the turn: the next tool result carries it
+    const isHeld = isPeer && cloudSelf !== '' && self?.status === 'arbeitet'
+    if (letter !== undefined) {
+      // this copy is the one the model reads: none from the page
+      takenLetters.add(letter)
+      arrived = arrived.filter(one => one.letter !== letter)
+    }
+    if (isHeld) {
+      arrived.push({ text: e.text, letter, isHeld })
+    }
     await safe($, 'receive', async () => {
-      const isPeer = e.origin.kind === 'peer' || e.origin.kind === 'peer-send-message'
-      if (isPeer && e.agentId === undefined) {
+      if (isPeer) {
         change({ receivedAt: await $.clock.now(), receivedText: clip(e.text, 200) })
         void save($)
       }
+      if (letter !== undefined && !isHeld) {
+        void safe($, 'gelesen', () => markRead($, letter))
+      }
     })
 
-    return next(e)
+    return isHeld ? { consumed: 'Büro: kommt mit dem nächsten Arbeitsschritt' } : next(e)
   })
 
   // The model's own SendMessage to another session on this PC counts toward
@@ -1152,8 +1321,10 @@ export const register: Register = (on, options) => {
     const records = await officeRecords($, now)
 
     const mine = ownSession()
+    const receipts = cloudSelf === '' ? '' : await receiptsOf($, records, now).catch(() => '')
     const listed =
       colleaguesText(records, now, stuckMs, selfIdIn(records) ?? '', where()) +
+      receipts +
       (mine === undefined ? '' : recentText(news, records, repoOfSession(mine), now))
 
     return { result: cloudError === undefined ? listed : `${listed}\n\n(Cloud-Liste nicht lesbar: ${cloudError})` }
@@ -1186,17 +1357,41 @@ export const register: Register = (on, options) => {
       return { deny: limitText(perHour, budget.waitMinutes) }
     }
     const asSeen = records.find(record => record.id === me) ?? sender
-    const refused = await deliver($, target.id, colleagueMessage(asSeen, clip(body, 2000)))
+    // in the cloud a copy waits on the office page, for a busy recipient's mod and for the read receipt
+    const letter = cloudSelf === '' ? undefined : letterId(cloudSelf, now)
+    const text = colleagueMessage(asSeen, clip(body, 2000), letter)
+    const filed =
+      letter === undefined
+        ? undefined
+        : await fileLetter($, letter, { to: target.id, from: idOfSelf(), text, createdAt: now, state: 'neu' })
+    const refused = await deliver($, target.id, text)
     if (refused !== undefined) {
+      if (letter !== undefined && filed !== undefined) {
+        await safe($, 'brief zurück', async () => {
+          await dbWrite($, 'delete', LETTERS, letter, undefined, filed)
+        })
+      }
+
       return { deny: `Nicht zugestellt: ${refused}` }
     }
     change({
-      sent: withSent(sender.sent, { at: now, to: target.id, toId: target.id, text: clip(body, 200), counts: true }),
+      sent: withSent(sender.sent, {
+        at: now,
+        to: target.id,
+        toId: target.id,
+        text: clip(body, 200),
+        counts: true,
+        ...(filed === undefined ? {} : { letter }),
+      }),
     })
     void save($)
     await safe($, 'notiz', () => note($, 'nachricht', `→ ${target.name}: ${clip(body, 120)}`))
+    const busy =
+      cloudSelf !== '' && target.status === 'arbeitet'
+        ? ` ${target.name} arbeitet gerade, und die Cloud stellt Nachrichten erst nach dem laufenden Auftrag zu. Läuft bei ${target.name} die Büro-Mod, reicht sie die Nachricht schon beim nächsten Arbeitsschritt durch. Ob sie gelesen ist, zeigt mcp__buero__kollegen.`
+        : ''
 
-    return { result: `Gesendet an ${target.name}. Noch ${budget.left - 1} Nachrichten in dieser Stunde.` }
+    return { result: `Gesendet an ${target.name}.${busy} Noch ${budget.left - 1} Nachrichten in dieser Stunde.` }
   })
 
   on('prompt.compose', async ($, e, next) => {
