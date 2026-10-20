@@ -73,7 +73,8 @@ install_buero() {
   mkdir -p "\$dir"
   base64 -d <<'BUERO_ARCHIV_ENDE' | tar -xzf - -C "\$dir"
 HEAD
-  tar -czf - -C "$mod" "${files[@]}" | base64 -w 76
+  # deterministic: fixed times and owners, sorted names, gzip without a timestamp
+  tar --sort=name --mtime="2026-01-01 00:00:00Z" --owner=0 --group=0 --numeric-owner -cf - -C "$mod" "${files[@]}" | gzip -n -9 | base64 -w 76
   cat <<'TAIL'
 BUERO_ARCHIV_ENDE
   if [ ! -f "$dir/hooks/register.tsx" ]; then
