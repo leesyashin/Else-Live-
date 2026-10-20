@@ -249,6 +249,18 @@
   .card[aria-current="true"] { background: var(--accent-soft); border-left-color: var(--accent); }
   .card b { font-weight: 600; overflow-wrap: anywhere; }
   .card small { color: var(--muted); overflow-wrap: anywhere; }
+  .done { display: grid; gap: 6px; }
+  .done-head { font: inherit; color: inherit; width: 100%; text-align: left; background: var(--surface-2); border: 0; border-radius: var(--radius-s); padding: 10px 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; cursor: pointer; font-size: 13px; }
+  .done-head b { font-weight: 600; }
+  .done-head small { color: var(--muted); grid-column: 1; overflow-wrap: anywhere; }
+  .done-head .done-arrow { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 13px; font-weight: 500; color: var(--accent); }
+  .done-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .done-row { font: inherit; color: inherit; width: 100%; text-align: left; background: transparent; border: 0; border-left: 4px solid var(--done, #30d158); border-radius: var(--radius-s); padding: 6px 10px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 8px; cursor: pointer; font-size: 13px; min-height: 36px; align-items: baseline; }
+  .done-row[data-state="abgebrochen"] { border-left-color: var(--line); }
+  .done-row[aria-current="true"] { background: var(--accent-soft); }
+  .done-row .data { color: var(--muted); font-size: 12px; }
+  .done-row b { font-weight: 500; overflow-wrap: anywhere; }
+  .done-row small { grid-column: 2; color: var(--muted); }
   .card[data-prio="hoch"] { border-left-color: var(--accent); }
   .card[data-state="blockiert"], .card[data-state="abgebrochen"] { border-left-color: var(--bad); }
   .card[data-state="in_arbeit"] { border-left-color: var(--work); }
@@ -444,6 +456,7 @@
           <datalist id="repoList"></datalist>
           <div class="filters" id="taskFilters"></div>
           <div class="kanban" id="kanban"></div>
+          <div class="done" id="taskDone" hidden></div>
           <p class="empty" id="tasksEmpty">Noch kein Auftrag. Leg einen an oder sag es dem Chef vom Dienst.</p>
           <div class="detail-box" id="taskDetail" hidden></div>
         </section>
@@ -581,11 +594,8 @@
     const MESSAGE_SHOW_MS = 90_000;
     const HOUR_MS = 60 * 60_000;
     const MINUTE_MS = 60_000;
-    const NAMES = [
-        'Mia', 'Ben', 'Lena', 'Paul', 'Emma', 'Finn', 'Lea', 'Jonas', 'Hanna', 'Luis',
-        'Sofia', 'Elias', 'Marie', 'Noah', 'Lina', 'Felix', 'Clara', 'Leon', 'Ida',
-        'Max', 'Nora', 'Theo', 'Ella', 'Anton', 'Mila', 'Karl', 'Zoe', 'Jakob',
-    ];
+    /** The names the office gives its workers: Vincent's list; past thirteen a number follows. */
+    const NAMES = ['Jakob', 'Johann', 'Josef', 'Laurenz', 'Carlos', 'Daniel', 'Max', 'David', 'Oscar', 'Mia', 'Johanna', 'Yul', 'Sima'];
     const SHIRTS = [
         '#d9534f', '#4a7fd6', '#43a047', '#f0a030', '#8e44ad', '#00a0a0', '#e0457b',
         '#8d6e63', '#3f51b5', '#7cb342',
@@ -3616,7 +3626,11 @@
     const ASKABLE = new Set(['approval_required', 'not_in_manifest', 'consent_required']);
     const SETTINGS = new Set(['blocked_by_policy', 'needs_reauth', 'server_not_connected', 'server_not_found']);
     const NO_MCP = new Set(['not_granted', 'capability_disabled', 'capability_removed']);
-    const TASK_STATES = ['offen', 'vergeben', 'in_arbeit', 'review', 'blockiert', 'fertig'];
+    const TASK_STATES = ['offen', 'vergeben', 'in_arbeit', 'review', 'blockiert'];
+    const DONE_STATES = ['fertig', 'abgebrochen'];
+    /** Cards a column shows before it folds the rest; rows the done list shows per page. */
+    const COLUMN_CAP = 6;
+    const DONE_PAGE = 10;
     const labelOf = worker => (worker.mood === 'frage' ? 'wartet auf dich' : Office.moodLabel(worker));
     const ORDER = { frage: 0, freigabe: 0, haengt: 1, fehler: 1, arbeitet: 2, bereit: 2, neu: 3, fertig: 4, weg: 5 };
     const el = id => document.getElementById(id);
@@ -3654,6 +3668,9 @@
       sofort: 'unknown',
       auftraege: [],
       taskFilter: 'alle',
+      taskDoneOpen: false,
+      taskDonePages: 1,
+      taskUnfolded: new Set(),
       taskOpen: null,
       besprechungen: [],
       meetingOpen: null,
@@ -4491,22 +4508,23 @@
     function renderTasks() {
       const all = state.auftraege;
       const counts = {};
-      for (const s of TASK_STATES) counts[s] = all.filter(a => a.state === s).length;
-      el('taskFilters').replaceChildren(...['alle', ...TASK_STATES].map(s => {
+      for (const s of [...TASK_STATES, ...DONE_STATES]) counts[s] = all.filter(a => a.state === s).length;
+      const doneCount = DONE_STATES.reduce((n, s) => n + counts[s], 0);
+      el('taskFilters').replaceChildren(...['alle', ...TASK_STATES, 'erledigt'].map(s => {
         const b = document.createElement('button');
         b.type = 'button';
         b.className = 'filter';
         b.setAttribute('aria-pressed', String(state.taskFilter === s));
-        b.textContent = s === 'alle' ? 'alle' : Office.AUFTRAG_LABEL[s];
+        b.textContent = s === 'alle' ? 'alle' : s === 'erledigt' ? 'erledigt' : Office.AUFTRAG_LABEL[s];
         if (s !== 'alle') {
           const n = document.createElement('b');
-          n.textContent = counts[s];
+          n.textContent = s === 'erledigt' ? doneCount : counts[s];
           b.append(n);
         }
-        b.addEventListener('click', () => { state.taskFilter = s; renderTasks(); });
+        b.addEventListener('click', () => { state.taskFilter = s; state.taskDonePages = 1; renderTasks(); });
         return b;
       }));
-      const states = state.taskFilter === 'alle' ? TASK_STATES.filter(s => counts[s] > 0 || s === 'offen') : [state.taskFilter];
+      const states = state.taskFilter === 'alle' ? TASK_STATES.filter(s => counts[s] > 0 || s === 'offen') : state.taskFilter === 'erledigt' ? [] : [state.taskFilter];
       el('kanban').replaceChildren(...states.map(s => {
         const col = document.createElement('div');
         col.className = 'col';
@@ -4520,13 +4538,87 @@
         const items = all
           .filter(a => a.state === s)
           .sort((a, b) => (a.prio === 'hoch' ? 0 : 1) - (b.prio === 'hoch' ? 0 : 1) || b.updatedAt - a.updatedAt);
-        ul.replaceChildren(...items.map(cardFor));
+        // a long column folds past its cap, unless it was unfolded or is the only one shown
+        const isFolded = state.taskFilter === 'alle' && !state.taskUnfolded.has(s) && items.length > COLUMN_CAP + 1;
+        ul.replaceChildren(...(isFolded ? items.slice(0, COLUMN_CAP) : items).map(cardFor));
         col.append(h, ul);
+        if (isFolded) {
+          col.append(button(`${items.length - COLUMN_CAP} weitere anzeigen`, () => { state.taskUnfolded.add(s); renderTasks(); }, 'quiet small'));
+        }
         return col;
       }));
+      el('kanban').hidden = states.length === 0;
+      renderDone(all, doneCount);
       el('tasksEmpty').hidden = all.length > 0;
       renderTaskDetail();
       renderRepoList();
+    }
+
+    // What is done stays off the board: one line says how many and what came
+    // last, and opens a compact list, ten at a time, newest first.
+    function renderDone(all, doneCount) {
+      const box = el('taskDone');
+      box.replaceChildren();
+      const isFilter = state.taskFilter === 'erledigt';
+      box.hidden = doneCount === 0 || (state.taskFilter !== 'alle' && !isFilter);
+      if (box.hidden) return;
+      const done = all.filter(a => DONE_STATES.includes(a.state)).sort((a, b) => b.updatedAt - a.updatedAt);
+      const isOpen = isFilter || state.taskDoneOpen;
+      const head = document.createElement('button');
+      head.type = 'button';
+      head.className = 'done-head';
+      head.setAttribute('aria-expanded', String(isOpen));
+      const title = document.createElement('b');
+      const cancelled = done.filter(a => a.state === 'abgebrochen').length;
+      title.textContent = `Erledigt · ${done.length - cancelled} fertig${cancelled > 0 ? `, ${cancelled} abgebrochen` : ''}`;
+      const last = done[0];
+      const hint = document.createElement('small');
+      hint.textContent = last ? `zuletzt ${last.id} ${Office.clip(last.titel, 40)}${last.pr ? ` (${last.pr})` : ''} · ${when(last.updatedAt)}` : '';
+      const arrow = document.createElement('span');
+      arrow.className = 'done-arrow';
+      arrow.textContent = isOpen ? 'einklappen' : 'anzeigen';
+      head.append(title, hint, arrow);
+      head.addEventListener('click', () => {
+        if (isFilter) { state.taskFilter = 'alle'; state.taskDoneOpen = false; } else { state.taskDoneOpen = !state.taskDoneOpen; }
+        state.taskDonePages = 1;
+        renderTasks();
+      });
+      box.append(head);
+      if (!isOpen) return;
+      const shown = done.slice(0, DONE_PAGE * state.taskDonePages);
+      const ul = document.createElement('ul');
+      ul.className = 'done-list';
+      ul.replaceChildren(...shown.map(rowFor));
+      box.append(ul);
+      if (shown.length < done.length) {
+        const left = done.length - shown.length;
+        box.append(button(left > DONE_PAGE ? `${DONE_PAGE} weitere anzeigen (${left} übrig)` : `${left} weitere anzeigen`, () => { state.taskDonePages += 1; renderTasks(); }, 'quiet small'));
+      }
+    }
+
+    /** One line for a done order: id, title, state, PR, when; opens the detail like a card. */
+    function rowFor(a) {
+      const li = document.createElement('li');
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'done-row';
+      b.dataset.state = a.state;
+      b.setAttribute('aria-current', String(state.taskOpen === a.id));
+      const id = document.createElement('span');
+      id.className = 'data';
+      id.textContent = a.id;
+      const title = document.createElement('b');
+      title.textContent = a.titel;
+      const meta = document.createElement('small');
+      meta.textContent = [a.state === 'abgebrochen' ? 'abgebrochen' : null, a.pr || null, a.repo.split('/').pop(), when(a.updatedAt)].filter(Boolean).join(' · ');
+      b.append(id, title, meta);
+      b.addEventListener('click', () => {
+        state.taskOpen = state.taskOpen === a.id ? null : a.id;
+        renderTasks();
+        if (state.taskOpen) el('taskDetail').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
+      });
+      li.append(b);
+      return li;
     }
 
     function renderTaskDetail() {

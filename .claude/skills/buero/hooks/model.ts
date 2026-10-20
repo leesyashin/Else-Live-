@@ -25,11 +25,8 @@ export const MESSAGE_SHOW_MS = 90_000
 const HOUR_MS = 60 * 60_000
 const MINUTE_MS = 60_000
 
-const NAMES = [
-  'Mia', 'Ben', 'Lena', 'Paul', 'Emma', 'Finn', 'Lea', 'Jonas', 'Hanna', 'Luis',
-  'Sofia', 'Elias', 'Marie', 'Noah', 'Lina', 'Felix', 'Clara', 'Leon', 'Ida',
-  'Max', 'Nora', 'Theo', 'Ella', 'Anton', 'Mila', 'Karl', 'Zoe', 'Jakob',
-]
+/** The names the office gives its workers: Vincent's list; past thirteen a number follows. */
+const NAMES = ['Jakob', 'Johann', 'Josef', 'Laurenz', 'Carlos', 'Daniel', 'Max', 'David', 'Oscar', 'Mia', 'Johanna', 'Yul', 'Sima']
 const SHIRTS = [
   '#d9534f', '#4a7fd6', '#43a047', '#f0a030', '#8e44ad', '#00a0a0', '#e0457b',
   '#8d6e63', '#3f51b5', '#7cb342',
