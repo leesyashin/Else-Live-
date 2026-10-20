@@ -998,6 +998,13 @@ function screen(ctx: Ctx, x: number, y: number, view: WorkerView | undefined): s
     case 'frage':
     case 'freigabe':
       return rect(sx, sy, 52, 26, '#2a2410') + text(sx + 26, sy + 16, '→ Chef', 9, '#ffd54f', ' text-anchor="middle" font-weight="bold"')
+    case 'bereit':
+      return (
+        rect(sx, sy, 52, 26, '#0b2224') + rect(sx, sy, 52, 4, '#071617') +
+        `<circle cx="${sx + 10}" cy="${sy + 15}" r="3" fill="#2ee6c8">${frames(ctx, 'opacity', [1, 0.3], [0, 0.5], 1.8)}</circle>` +
+        text(sx + 17, sy + 18, 'bereit', 8, '#9ff1e4', ' font-weight="bold"') +
+        glow('#2ee6c8', 0.07)
+      )
     case 'weg':
     case 'leer':
       return rect(sx, sy, 52, 26, '#07080b')
@@ -1055,6 +1062,14 @@ function worker(ctx: Ctx, x: number, y: number, view: WorkerView): string {
       return use(ctx, 'chairHigh', x, y) + seatedFront(ctx, view, palette, ox, front, true)
     case 'neu':
       return use(ctx, 'chairHigh', x, y) + seatedFront(ctx, view, palette, ox, front, false)
+    case 'bereit':
+      // turned to the room with a headset on: awake, waiting for your word
+      return (
+        use(ctx, 'chairHigh', x, y) + seatedFront(ctx, view, palette, ox, front, false) +
+        `<path d="M${ox + 9} ${front + 10} a9 9 0 0 1 18 0" fill="none" stroke="#1a1a1a" stroke-width="2"/>` +
+        rect(ox + 7, front + 9, 3, 5, '#1a1a1a') + rect(ox + 26, front + 9, 3, 5, '#1a1a1a') +
+        rect(ox + 26, front + 14, 2, 2, '#2ee6c8')
+      )
     case 'frage':
     case 'freigabe':
     case 'weg':

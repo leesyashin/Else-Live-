@@ -5,28 +5,33 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { EventKind, Letter, OfficeEvent, OfficeView, Post, SessionRecord, Status, WorkerView } from '../types'
+import type { EventKind, Letter, OfficeEvent, OfficeView, Post, Rolle, SessionRecord, Stand, Status, WorkerView } from '../types'
 import { describeOffice, drawOffice } from './art'
-import type { CloudSession, OwnPr } from './cloud'
+import type { CloudSession, DeskInfo, OwnPr } from './cloud'
 import {
   CLOUD_SERVER,
   branchOf,
   cloudRecords,
   deliveryOf,
+  elternOf,
+  parseSession,
+  parseSessionPage,
   pullRequestIn,
-  parseSessionList,
   reportFor,
+  rolleOf,
   sameSession,
+  tagValue,
   trimSession,
 } from './cloud'
-import type { Doc, WriteOutcome } from './post'
+import type { Owned } from './db'
+import { OFFICE_URL, byCreated, dbGet, dbQuery, dbWrite, keep, owned, settle, textOf, unsaved } from './db'
+import type { Doc } from './post'
 import {
   LEASE_MS,
   RENEW_MS,
   arrivedText,
   carriedMessage,
   dayOf,
-  docsIn,
   eventKey,
   eventsFrom,
   eventsIn,
@@ -44,21 +49,23 @@ import {
   recentText,
   repoOfSession,
   tailOf,
-  writeOutcome,
   KEEP_MS,
 } from './post'
 import {
   GONE_MS,
   HEARTBEAT_MS,
   MOOD_ICON,
+  ROLLE_LABEL,
   baseName,
   bossMessage,
   buildOffice,
   clip,
   colleagueMessage,
   colleaguesText,
+  compareVersions,
   describeTool,
   isActive,
+  isVeraltet,
   limitText,
   moodLabel,
   moodOf,
@@ -73,8 +80,11 @@ const PANE = 'buero'
 const READ_EVERY_MS = 3000
 /** The cloud's session list is asked at most this often. */
 const CLOUD_EVERY_MS = 10_000
-/** The office page whose database the cloud sessions feed. */
-const OFFICE_URL = 'https://claude.ai/artifact/94pH1R4YMfQgxPUeghXbiK'
+/** Sessions per page of the cloud's list, and how many pages the office reads at most. */
+const LIST_LIMIT = 50
+const LIST_PAGES = 3
+/** Sessions untouched for longer than this are not read page by page. */
+const LIST_BACK_MS = 2 * 24 * 60 * 60_000
 /** A cloud session looks after the office page this often: its mail, its desk, and as messenger the rest. */
 const TICK_MS = 15_000
 /** A session that is not the messenger reads the session list this rarely. */
@@ -129,9 +139,18 @@ let cloudError: string | undefined
 /** This session's own pull request, as GitHub last reported it. */
 let ownPr: OwnPr | undefined
 let ownPrAt = 0
-
-/** A document of the office page only this session writes, whole, at the version it last saw. */
-type Owned = { collection: string; id: string; version: number | undefined; isKnown: boolean; last: string }
+/** This session's role in the office, from its cloud tags; read once the cloud answers. */
+let rolle: Rolle | undefined
+let isRoleKnown = false
+let elternId: string | undefined
+let auftragTag: string | undefined
+/** The version of this mod, from its manifest. */
+let modVersion = ''
+/** The newest mod version the office has seen: the messenger's, or this one's. */
+let latestVersion = ''
+/** What sessions wrote on their desks, as the messenger last read them. */
+let deskInfos = new Map<string, DeskInfo>()
+let isVeraltetTold = false
 
 let ticker: Timer | undefined
 let isTicking = false
@@ -269,23 +288,6 @@ function where(): string {
   return cloudSelf === '' ? 'auf diesem PC' : 'in deiner Claude-Code-Cloud'
 }
 
-function textOf(answer: { content: readonly unknown[] }): string {
-  return answer.content
-    .map(block => {
-      const text = (block as { text?: unknown }).text
-
-      return typeof text === 'string' ? text : ''
-    })
-    .join('\n')
-}
-
-/** A long answer is saved to a file and its text names the file. */
-async function unsaved($: $, text: string): Promise<string> {
-  const saved = /saved to (\S+\.(?:txt|json))/.exec(text)?.[1]
-
-  return saved === undefined ? text : $.fs.read(saved)
-}
-
 /** The cloud's sessions, asked at most every `maxAge`; undefined on a PC. */
 async function cloudList($: $, now: number, maxAge = CLOUD_EVERY_MS): Promise<SessionRecord[] | undefined> {
   if (cloudSelf === '') {
@@ -295,18 +297,10 @@ async function cloudList($: $, now: number, maxAge = CLOUD_EVERY_MS): Promise<Se
     return cloudCache.records
   }
   try {
-    const answer = await $.mcp.call(CLOUD_SERVER, 'list_sessions', { mine: true, limit: 25 })
-    const text = await unsaved($, textOf(answer))
-    if (answer.isError) {
-      throw new Error(clip(text, 200))
-    }
-    const sessions = parseSessionList(text)
-    if (sessions.length === 0) {
-      throw new Error(`keine Sessions in der Antwort: ${clip(text, 200)}`)
-    }
+    const sessions = await listSessions($, now)
     await checkOwnPr($, sessions, now)
     const reports = new Map(ownPr === undefined ? [] : [[cloudSelf, ownPr] as const])
-    cloudCache = { at: now, sessions, records: cloudRecords(sessions, now, reports) }
+    cloudCache = { at: now, sessions, records: cloudRecords(sessions, now, reports, deskInfos) }
     cloudError = undefined
   } catch (error) {
     cloudError = clip(String(error), 300)
@@ -314,6 +308,76 @@ async function cloudList($: $, now: number, maxAge = CLOUD_EVERY_MS): Promise<Se
   }
 
   return cloudCache?.records
+}
+
+/** The cloud's sessions, page by page, as far back as the office looks. */
+async function listSessions($: $, now: number): Promise<CloudSession[]> {
+  const all: CloudSession[] = []
+  let after: string | undefined
+  for (let page = 0; page < LIST_PAGES; page += 1) {
+    const answer = await $.mcp.call(CLOUD_SERVER, 'list_sessions', {
+      mine: true,
+      limit: LIST_LIMIT,
+      ...(after === undefined ? {} : { after_id: after }),
+    })
+    const text = await unsaved($, textOf(answer))
+    if (answer.isError) {
+      throw new Error(clip(text, 200))
+    }
+    const found = parseSessionPage(text)
+    all.push(...found.sessions)
+    const oldest = Date.parse(found.sessions.at(-1)?.updated_at ?? '')
+    if (!found.hasMore || found.lastId === undefined || (Number.isFinite(oldest) && now - oldest > LIST_BACK_MS)) {
+      break
+    }
+    after = found.lastId
+  }
+  if (all.length === 0) {
+    throw new Error('keine Sessions in der Antwort')
+  }
+
+  return all
+}
+
+/** This session's role and team from its cloud tags, and the mod's version from its manifest. */
+async function readRole($: $): Promise<void> {
+  if (modVersion === '') {
+    const manifest = await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`).catch(() => '')
+    const version = /"version"\s*:\s*"([^"]+)"/.exec(manifest)?.[1]
+    modVersion = version ?? ''
+    noteLatest(undefined)
+  }
+  const answer = await $.mcp.call(CLOUD_SERVER, 'get_session', {})
+  const own = answer.isError ? undefined : parseSession(await unsaved($, textOf(answer)))
+  if (own === undefined) {
+    return
+  }
+  rolle = rolleOf(own.tags)
+  elternId = elternOf(own)
+  auftragTag = tagValue(own.tags, 'auftrag')
+  isRoleKnown = true
+  change({ rolle, eltern: elternId, auftrag: auftragTag, modVersion: modVersion === '' ? undefined : modVersion })
+}
+
+/** Remembers the newest mod version seen, for the office's "veraltet" marks. */
+function noteLatest(version: string | undefined): void {
+  for (const one of [version, modVersion]) {
+    if (one !== undefined && one !== '' && (latestVersion === '' || compareVersions(one, latestVersion) > 0)) {
+      latestVersion = one
+    }
+  }
+}
+
+function deskInfoOf(data: Record<string, unknown>): DeskInfo {
+  const stand = data.stand as Partial<Stand> | null | undefined
+  const hasStand = stand !== undefined && stand !== null && typeof stand.text === 'string' && typeof stand.at === 'number'
+
+  return {
+    stand: hasStand ? { text: stand.text as string, at: stand.at as number, fortschritt: typeof stand.fortschritt === 'string' ? stand.fortschritt : undefined } : undefined,
+    modVersion: typeof data.modVersion === 'string' ? data.modVersion : undefined,
+    rolle: rolleOf(typeof data.rolle === 'string' ? [`buero:rolle=${data.rolle}`] : undefined),
+    auftrag: typeof data.auftrag === 'string' ? data.auftrag : undefined,
+  }
 }
 
 /**
@@ -379,75 +443,8 @@ async function deliver($: $, sessionId: string, text: string): Promise<string | 
   return sent.isDelivered ? undefined : sent.reason
 }
 
-// The office page's database, through ArtifactData: the session list, the
-// logbook, the mail the person writes on the page and the messenger's lease.
-
-async function db($: $, action: string, fields: Record<string, unknown>): Promise<string> {
-  const ran = (await $.tool.call({ tool: 'ArtifactData', action, url: OFFICE_URL, ...fields } as never)) as {
-    text?: unknown
-    result?: unknown
-    deny?: unknown
-  }
-
-  return unsaved($, String(ran.text ?? (typeof ran.result === 'string' ? ran.result : undefined) ?? ran.deny ?? ''))
-}
-
-async function dbGet($: $, collection: string, docId: string): Promise<Doc | undefined> {
-  return docsIn(await db($, 'get', { collection, doc_id: docId })).find(doc => doc.id === docId)
-}
-
-async function dbQuery($: $, collection: string, query: Record<string, unknown>): Promise<Doc[]> {
-  return docsIn(await db($, 'query', { collection, query }))
-}
-
-async function dbWrite(
-  $: $,
-  action: 'set' | 'update' | 'delete',
-  collection: string,
-  docId: string,
-  data: Record<string, unknown> | undefined,
-  version: number | undefined,
-): Promise<WriteOutcome> {
-  const text = await db($, action, {
-    collection,
-    doc_id: docId,
-    ...(data === undefined ? {} : { data }),
-    ...(version === undefined ? {} : { if_version: version }),
-  })
-
-  return writeOutcome(text)
-}
-
-function owned(collection: string, id: string): Owned {
-  return { collection, id, version: undefined, isKnown: false, last: '' }
-}
-
-/**
- * Writes a document only this session writes, whole, when `signature`
- * changed. A reload forgets its version, so it reads it again when unsure.
- */
-async function keep($: $, doc: Owned, data: Record<string, unknown>, signature = JSON.stringify(data)): Promise<void> {
-  if (signature === doc.last) {
-    return
-  }
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    if (!doc.isKnown) {
-      doc.version = (await dbGet($, doc.collection, doc.id))?.version
-      doc.isKnown = true
-    }
-    const outcome = await dbWrite($, 'set', doc.collection, doc.id, data, doc.version)
-    if (outcome.isDone) {
-      doc.version = outcome.version ?? (doc.version ?? 0) + 1
-      doc.last = signature
-
-      return
-    }
-    if (!outcome.isStale) {
-      throw new Error(outcome.reason)
-    }
-    doc.isKnown = false
-  }
-}
+// The office page's database (db.ts): the session list, the logbook, the
+// mail the person writes on the page and the messenger's lease.
 
 function idOfSelf(): string {
   return `session_${tailOf(cloudSelf)}`
@@ -518,7 +515,18 @@ async function writeDesk($: $, now: number): Promise<void> {
   }
   deskDoc ??= owned('sessions', tailOf(cloudSelf))
   const sent = self.sent.filter(one => now - one.at < DAY_MS).slice(-10)
-  const data = { sid: idOfSelf(), writer: cloudSelf, ...(ownPr === undefined ? {} : { pr: ownPr }), sent }
+  const data = {
+    sid: idOfSelf(),
+    writer: cloudSelf,
+    ...(ownPr === undefined ? {} : { pr: ownPr }),
+    sent,
+    ...(rolle === undefined ? {} : { rolle }),
+    ...(elternId === undefined ? {} : { eltern: elternId }),
+    ...(modVersion === '' ? {} : { modVersion }),
+    ...(self.stand === undefined ? {} : { stand: self.stand }),
+    ...(auftragTag === undefined ? {} : { auftrag: auftragTag }),
+    ...(self.kontext === undefined ? {} : { kontext: self.kontext }),
+  }
   await keep($, deskDoc, { ...data, writtenAt: now }, JSON.stringify(data))
 }
 
@@ -553,10 +561,6 @@ async function carry($: $, doc: Doc, post: Post, via: 'selbst' | 'bote'): Promis
     error === undefined ? { state: 'zugestellt', deliveredAt } : { state: 'fehler', error },
     claimed.version ?? doc.version + 1,
   )
-}
-
-function byCreated(a: Doc, b: Doc): number {
-  return Number(a.data.createdAt) - Number(b.data.createdAt)
 }
 
 /**
@@ -627,14 +631,6 @@ async function fileLetter($: $, id: string, letter: Letter): Promise<number | un
     $.ui.log(`buero: brief: ${String(error)}`, { to: 'debug' })
 
     return undefined
-  }
-}
-
-/** Updates a document at whatever version it is at now; a missing one stays missing. */
-async function settle($: $, collection: string, id: string, data: Record<string, unknown>): Promise<void> {
-  const doc = await dbGet($, collection, id)
-  if (doc !== undefined) {
-    await dbWrite($, 'update', collection, id, data, doc.version)
   }
 }
 
@@ -790,15 +786,25 @@ async function runOffice($: $, now: number, seen: Readonly<Record<string, string
   }
   listDoc ??= owned('buero', 'liste')
   const trimmed = sessions.map(trimSession)
-  await keep($, listDoc, { writtenAt: now, writer: cloudSelf, sessions: trimmed }, JSON.stringify(trimmed))
+  await keep(
+    $,
+    listDoc,
+    { writtenAt: now, writer: cloudSelf, sessions: trimmed, ...(modVersion === '' ? {} : { modVersion }) },
+    JSON.stringify(trimmed),
+  )
   const desks = await dbQuery($, 'sessions', { limit: 200 })
   const reports = new Map<string, OwnPr>()
+  const infos = new Map<string, DeskInfo>()
   for (const desk of desks) {
     const pr = desk.data.pr as OwnPr | undefined
     if (typeof desk.data.writer === 'string' && typeof pr?.number === 'number') {
       reports.set(desk.data.writer, pr)
     }
+    if (typeof desk.data.writer === 'string') {
+      infos.set(desk.data.writer, deskInfoOf(desk.data))
+    }
   }
+  deskInfos = infos
   if (ownPr !== undefined) {
     reports.set(cloudSelf, ownPr)
   }
@@ -822,15 +828,22 @@ async function runOffice($: $, now: number, seen: Readonly<Record<string, string
 async function lead($: $, now: number): Promise<void> {
   const found = await dbGet($, 'leitung', 'bote')
   const lease = leaseOf(found?.data)
-  if (!mayLead(lease, cloudSelf, now)) {
+  noteLatest(lease?.modVersion)
+  const isCvd = rolle === 'cvd'
+  if (!mayLead(lease, cloudSelf, now, isCvd)) {
     isLeader = false
 
     return
   }
   let version = found?.version
   const seen = lease?.seen ?? {}
+  // the Chef vom Dienst marks the lease as its own, so no one else keeps the office while it is around
+  const marks = {
+    ...(isCvd ? { pinned: cloudSelf, cvdHeartbeat: now } : lease?.pinned === undefined ? {} : { pinned: lease.pinned, cvdHeartbeat: lease.cvdHeartbeat }),
+    ...(modVersion === '' ? {} : { modVersion }),
+  }
   if (lease?.holder !== cloudSelf || lease.until - now < RENEW_MS) {
-    const claimed = await dbWrite($, 'set', 'leitung', 'bote', { holder: cloudSelf, until: now + LEASE_MS, seen }, version)
+    const claimed = await dbWrite($, 'set', 'leitung', 'bote', { holder: cloudSelf, until: now + LEASE_MS, seen, ...marks }, version)
     if (!claimed.isDone || claimed.version === undefined) {
       isLeader = false
 
@@ -841,7 +854,7 @@ async function lead($: $, now: number): Promise<void> {
   isLeader = true
   const next = await runOffice($, now, seen)
   if (JSON.stringify(next) !== JSON.stringify(seen)) {
-    const kept = await dbWrite($, 'set', 'leitung', 'bote', { holder: cloudSelf, until: now + LEASE_MS, seen: next }, version)
+    const kept = await dbWrite($, 'set', 'leitung', 'bote', { holder: cloudSelf, until: now + LEASE_MS, seen: next, ...marks }, version)
     isLeader = kept.isDone
   }
 }
@@ -864,6 +877,9 @@ async function tick($: $): Promise<void> {
   isTicking = true
   try {
     const now = await $.clock.now()
+    if (!isRoleKnown) {
+      await safe($, 'rolle', () => readRole($))
+    }
     await safe($, 'bote', () => lead($, now))
     if (!isLeader) {
       await cloudList($, now, LIST_EVERY_MS)
@@ -877,11 +893,22 @@ async function tick($: $): Promise<void> {
   }
 }
 
-/** What colleagues in this session's repository did since its last prompt; undefined when nothing. */
+/**
+ * What colleagues in this session's repository did since its last prompt,
+ * and once that this session's mod is older than the office's; undefined
+ * when nothing.
+ */
 async function newsContext($: $): Promise<string | undefined> {
+  const warn =
+    !isVeraltetTold && isVeraltet(modVersion, latestVersion)
+      ? `[Büro] Diese Session läuft mit Büro-Mod ${modVersion}, das Büro schon mit ${latestVersion}. Neue Werkzeuge gibt es erst in einer neuen Session.`
+      : undefined
+  if (warn !== undefined) {
+    isVeraltetTold = true
+  }
   const mine = ownSession()
   if (mine === undefined) {
-    return undefined
+    return warn
   }
   const now = await $.clock.now()
   const told = newsFor({
@@ -895,11 +922,11 @@ async function newsContext($: $): Promise<string | undefined> {
   })
   newsSince = Math.max(newsSince, ...news.map(event => event.at))
   if (told === undefined) {
-    return undefined
+    return warn
   }
   newsTold = told.told
 
-  return told.text
+  return warn === undefined ? told.text : `${warn}\n${told.text}`
 }
 
 /** Takes this session's desk: a new record, or the one a reload left behind. */
@@ -961,7 +988,7 @@ async function refresh($: $): Promise<void> {
     const now = await $.clock.now()
     const records = await officeRecords($, now)
     const clock = new Date(now)
-    const view = buildOffice(records, now, stuckMs, selfIdIn(records), clock.getHours() * 60 + clock.getMinutes())
+    const view = buildOffice(records, now, stuckMs, selfIdIn(records), clock.getHours() * 60 + clock.getMinutes(), latestVersion || undefined)
     const signature = JSON.stringify(view)
     if (signature === lastSignature) {
       return
@@ -1050,7 +1077,7 @@ export const register: Register = (on, options) => {
     })
 
     return next(e)
-  })
+  }).catch(($, e, next) => next(e))
 
   on('session.end', async ($, e, next) => {
     await safe($, 'end', async () => {
@@ -1064,7 +1091,7 @@ export const register: Register = (on, options) => {
     })
 
     return next(e)
-  })
+  }).catch(($, e, next) => next(e))
 
   on('prompt.submit', async ($, e, next) => {
     let context: string | undefined
@@ -1081,7 +1108,7 @@ export const register: Register = (on, options) => {
     })
 
     return next(context === undefined ? e : { ...e, context: [...(e.context ?? []), context] })
-  })
+  }).catch(($, e, next) => next(e))
 
   on('turn.start', async ($, e, next) => {
     await safe($, 'turn start', async () => {
@@ -1098,7 +1125,7 @@ export const register: Register = (on, options) => {
     })
 
     return next(e)
-  })
+  }).catch(($, e, next) => next(e))
 
   on('turn.complete', async ($, e, next) => {
     await safe($, 'turn complete', async () => {
@@ -1114,7 +1141,7 @@ export const register: Register = (on, options) => {
     })
 
     return next(e)
-  })
+  }).catch(($, e, next) => next(e))
 
   on('tool.call', async ($, e, next) => {
     // the mod's own reads and writes of the office page are no work of the session
@@ -1156,13 +1183,13 @@ export const register: Register = (on, options) => {
     const said = handOver($)
 
     return said === undefined ? ran : { ...ran, context: [...(ran.context ?? []), said] }
-  })
+  }).catch(($, e, next) => next(e))
 
   // A permission card for the person: the verdict asks, and it stays open.
   on('tool.check', async ($, e, next) => {
     // the mod's own rounds write only into its office page; no card for those
     const url = typeof e.input === 'object' && e.input !== null ? (e.input as { url?: unknown }).url : undefined
-    if (next.origin.plugin === 'buero' && String(e.tool) === 'ArtifactData' && url === OFFICE_URL) {
+    if (next.origin.plugin === 'buero' && (String(e.tool) === 'ArtifactData' || String(e.tool) === 'ArtifactComments') && url === OFFICE_URL) {
       return { decision: 'allow' as const, reason: 'Die Büro-Mod pflegt ihre eigene Büro-Seite.' }
     }
     const verdict = await next(e)
@@ -1187,7 +1214,7 @@ export const register: Register = (on, options) => {
     })
 
     return verdict
-  })
+  }).catch(($, e, next) => next(e))
 
   on('classic.PermissionRequest', async ($, e, next) => {
     await safe($, 'permission', async () => {
@@ -1196,7 +1223,7 @@ export const register: Register = (on, options) => {
     })
 
     return next(e)
-  })
+  }).catch(($, e, next) => next(e))
 
   on('session.receive', async ($, e, next) => {
     const letter = e.agentId === undefined ? letterIn(e.text) : undefined
@@ -1225,7 +1252,7 @@ export const register: Register = (on, options) => {
     })
 
     return isHeld ? { consumed: 'Büro: kommt mit dem nächsten Arbeitsschritt' } : next(e)
-  })
+  }).catch(($, e, next) => next(e))
 
   // The model's own SendMessage to another session on this PC counts toward
   // the hourly limit; messages within the session's own team do not.
@@ -1252,7 +1279,7 @@ export const register: Register = (on, options) => {
     }
 
     return sent
-  })
+  }).catch(($, e, next) => next(e))
 
   // The cloud's own send_message counts toward the same hourly limit.
   on('tool.call', { tool: 'mcp__claude-code-remote__send_message' }, async ($, e, next) => {
@@ -1277,7 +1304,7 @@ export const register: Register = (on, options) => {
     }
 
     return ran
-  })
+  }).catch(($, e, next) => next(e))
 
   // What only the session itself knows goes into the logbook: it pushed, opened or merged a PR.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
@@ -1292,7 +1319,7 @@ export const register: Register = (on, options) => {
     }
 
     return ran
-  })
+  }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: 'mcp__github__create_pull_request' }, async ($, e, next) => {
     const ran = await next(e)
@@ -1303,7 +1330,7 @@ export const register: Register = (on, options) => {
     }
 
     return ran
-  })
+  }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: 'mcp__github__merge_pull_request' }, async ($, e, next) => {
     const ran = await next(e)
@@ -1314,7 +1341,7 @@ export const register: Register = (on, options) => {
     }
 
     return ran
-  })
+  }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: 'mcp__buero__kollegen' }, async $ => {
     const now = await $.clock.now()
@@ -1322,13 +1349,17 @@ export const register: Register = (on, options) => {
 
     const mine = ownSession()
     const receipts = cloudSelf === '' ? '' : await receiptsOf($, records, now).catch(() => '')
+    const own = isVeraltet(modVersion, latestVersion)
+      ? `\n\nDeine Büro-Mod ist ${modVersion}, im Büro läuft schon ${latestVersion}. Neue Sessions bekommen die neue Version über das Setup-Skript der Umgebung.`
+      : ''
     const listed =
-      colleaguesText(records, now, stuckMs, selfIdIn(records) ?? '', where()) +
+      colleaguesText(records, now, stuckMs, selfIdIn(records) ?? '', where(), latestVersion || undefined) +
       receipts +
-      (mine === undefined ? '' : recentText(news, records, repoOfSession(mine), now))
+      (mine === undefined ? '' : recentText(news, records, repoOfSession(mine), now)) +
+      own
 
     return { result: cloudError === undefined ? listed : `${listed}\n\n(Cloud-Liste nicht lesbar: ${cloudError})` }
-  })
+  }).catch(() => ({ deny: 'Büro: das Werkzeug kollegen ist gerade gestört.' }))
 
   on('tool.call', { tool: 'mcp__buero__nachricht' }, async ($, e) => {
     const input = e as unknown as { an?: unknown; text?: unknown }
@@ -1392,7 +1423,7 @@ export const register: Register = (on, options) => {
         : ''
 
     return { result: `Gesendet an ${target.name}.${busy} Noch ${budget.left - 1} Nachrichten in dieser Stunde.` }
-  })
+  }).catch(() => ({ deny: 'Büro: die Nachricht konnte nicht gesendet werden (Fehler in der Mod).' }))
 
   on('prompt.compose', async ($, e, next) => {
     const composed = await next(e)
@@ -1422,7 +1453,7 @@ export const register: Register = (on, options) => {
     lastSignature = ''
 
     return next(e)
-  })
+  }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const table = $.ui.resolve(e)
@@ -1473,7 +1504,10 @@ export const register: Register = (on, options) => {
           <Box flexDirection="column" borderStyle="round" paddingX={1}>
             <Text bold>{`${MOOD_ICON[chosen.mood]} ${chosen.name} · ${chosen.project}`}</Text>
             <Text>{`${moodLabel(chosen)}, seit ${chosen.minutesInMood} Min.`}</Text>
+            {chosen.rolle !== undefined && <Text>{`Rolle: ${ROLLE_LABEL[chosen.rolle]}`}</Text>}
+            {chosen.auftrag !== undefined && <Text>{`Auftrag-Nr: ${chosen.auftrag}`}</Text>}
             {chosen.task !== '' && <Text>{`Auftrag: ${clip(chosen.task, 300)}`}</Text>}
+            {chosen.stand !== undefined && <Text>{`Stand: ${chosen.stand}`}</Text>}
             {chosen.activity !== '' && <Text dimColor>{`Gerade: ${chosen.activity}`}</Text>}
             {chosen.question !== undefined && <Text color="#f08c00">{`Frage: ${chosen.question}`}</Text>}
             {chosen.agents.length > 0 && (
@@ -1482,6 +1516,9 @@ export const register: Register = (on, options) => {
             {chosen.mailText !== undefined && <Text dimColor>{`Post bekommen: ${clip(chosen.mailText, 160)}`}</Text>}
             <Text dimColor>{`${chosen.link === undefined ? 'Ordner' : 'Repo'}: ${chosen.cwd}`}</Text>
             {chosen.usage !== undefined && <Text dimColor>{chosen.usage}</Text>}
+            {chosen.modVersion !== undefined && (
+              <Text dimColor>{`Büro-Mod ${chosen.modVersion}${chosen.isVeraltet ? ' (veraltet)' : ''}`}</Text>
+            )}
             {chosen.link !== undefined && <Link href={chosen.link} label="Session öffnen" />}
             {(chosen.mood === 'frage' || chosen.mood === 'freigabe') && (
               <Text dimColor>

@@ -11,6 +11,8 @@ import { baseName, bossMessage, clip } from './model'
 export const LEASE_MS = 90_000
 /** The messenger renews its lease once less than this is left. */
 export const RENEW_MS = 45_000
+/** Without a heartbeat for this long, the Chef vom Dienst counts as gone and another session may keep the office. */
+export const CVD_GRACE_MS = 3 * 60_000
 /** Logbook, mail and questions are kept this long. */
 export const KEEP_MS = 7 * 24 * 60 * 60_000
 /** Mail taken but not reported delivered after this long may or may not have arrived. */
@@ -82,8 +84,22 @@ export function logDocId(time: number, writer: string): string {
   return `${dayOf(time)}-${tailOf(writer)}`
 }
 
-/** Whether `me` may take the lease, or keeps it. */
-export function mayLead(lease: Lease | undefined, me: string, now: number): boolean {
+/**
+ * Whether `me` may take the lease, or keeps it. The Chef vom Dienst always
+ * may: it takes the office over from whoever kept it meanwhile. Anyone else
+ * only while no Chef vom Dienst has been heard from lately, and only once the
+ * holder's lease ran out.
+ */
+export function mayLead(lease: Lease | undefined, me: string, now: number, isCvd = false): boolean {
+  if (isCvd) {
+    return true
+  }
+  const cvdIsAround =
+    lease?.cvdHeartbeat !== undefined && now - lease.cvdHeartbeat <= CVD_GRACE_MS && lease.pinned !== undefined && lease.pinned !== me
+  if (cvdIsAround) {
+    return false
+  }
+
   return lease === undefined || lease.holder === me || lease.until < now
 }
 
@@ -93,7 +109,14 @@ export function leaseOf(data: Record<string, unknown> | undefined): Lease | unde
   }
   const seen = typeof data.seen === 'object' && data.seen !== null ? (data.seen as Record<string, string>) : {}
 
-  return { holder: data.holder, until: data.until, seen }
+  return {
+    holder: data.holder,
+    until: data.until,
+    seen,
+    pinned: typeof data.pinned === 'string' ? data.pinned : undefined,
+    cvdHeartbeat: typeof data.cvdHeartbeat === 'number' ? data.cvdHeartbeat : undefined,
+    modVersion: typeof data.modVersion === 'string' ? data.modVersion : undefined,
+  }
 }
 
 export function postOf(data: Record<string, unknown>): Post | undefined {
