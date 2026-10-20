@@ -191,14 +191,37 @@ test('the round reports stuck and failed colleagues, unaccepted and reviewable o
   const waiting = session('session_01ASK', { title: 'Login', status_bucket: 'SESSION_STATUS_BUCKET_BLOCKED', post_turn_summary: { needs_action: 'Welche Farbe?' } })
   const prompts: string[] = []
   const pushed: string[] = []
+  const sent: string[] = []
   let sleeps = 0
-  on('mcp.call', ($, e) => (e.tool === 'list_sessions' ? listOf([cvd, stuck, failed, waiting]) : e.tool === 'get_session' ? said(JSON.stringify({ ccr: cvd })) : said('ok')))
+  on('mcp.call', ($, e) => {
+    if (e.tool === 'list_sessions') {
+      return listOf([cvd, stuck, failed, waiting])
+    }
+    if (e.tool === 'get_session') {
+      return said(JSON.stringify({ ccr: cvd }))
+    }
+    if (e.tool === 'send_message') {
+      sent.push(`${String(e.args.session_id)}: ${String(e.args.message)}`)
+    }
+    if (e.tool === 'pull_request_read') {
+      // PR #9 has conflicts with main, PR #10 is green and clean
+      const isDirty = e.args.pullNumber === 9
+      if (e.args.method === 'get') {
+        return said(JSON.stringify({ number: e.args.pullNumber, mergeable: !isDirty, mergeable_state: isDirty ? 'dirty' : 'clean', draft: !isDirty, head: { sha: `sha${String(e.args.pullNumber)}` } }))
+      }
+
+      return said(JSON.stringify({ total_count: 1, check_runs: [{ name: 'bauen', status: 'completed', conclusion: 'success' }] }))
+    }
+
+    return said('ok')
+  })
   on('prompt.submit', ($, e) => {
     prompts.push(e.text)
 
     return { text: e.text }
   })
   on('tool.call', { tool: 'ArtifactComments' }, () => ({ result: 'ok' }))
+  on('tool.call', { tool: 'mcp__claude-code-remote__send_message' }, () => ({ result: 'ok' }))
   on('tool.call', { tool: 'PushNotification' }, ($, e) => {
     pushed.push(String((e as unknown as { message: string }).message))
 
@@ -211,6 +234,7 @@ test('the round reports stuck and failed colleagues, unaccepted and reviewable o
   })
   db.put('auftraege/a1', { id: 'a1', nr: 1, titel: 'Login-Seite', text: 'x', repo: 'leesyashin/asker', state: 'vergeben', owner: 'session_01GONE', createdBy: 'chef', createdAt: START - 30 * 60_000, updatedAt: START - 12 * 60_000, abnahme: ['ok'], prio: 'normal', verlauf: [] })
   db.put('auftraege/a3', { id: 'a3', nr: 3, titel: 'Menü', text: 'x', repo: 'leesyashin/asker', state: 'review', owner: 'session_01STUCK', pr: 'PR #9', createdBy: 'chef', createdAt: START - 30 * 60_000, updatedAt: START - 60_000, abnahme: ['ok'], prio: 'normal', verlauf: [] })
+  db.put('auftraege/a4', { id: 'a4', nr: 4, titel: 'Suche', text: 'x', repo: 'leesyashin/asker', state: 'review', owner: 'session_01ASK', pr: 'PR #10', createdBy: 'chef', createdAt: START - 30 * 60_000, updatedAt: START - 60_000, abnahme: ['ok'], prio: 'normal', verlauf: [] })
   db.put('regeln/leesyashin_asker', { autoMerge: 'gruen' })
   // a command taken a while ago that never reached a turn
   db.put('kommandos/k-old', { text: 'Was macht Ella?', createdAt: START - 40 * 60_000, updatedAt: START - 20 * 60_000, state: 'angenommen', von: 'chef' })
@@ -225,6 +249,11 @@ test('the round reports stuck and failed colleagues, unaccepted and reviewable o
   expect(round).toContain('Auftrag a1 (Login-Seite) ist seit')
   expect(round).toContain('Auftrag a3 (Menü) ist bereit zum Review: PR #9')
   expect(round).toContain('bei grüner CI mergen')
+  // the pull request watch: the owner of a conflicting PR hears it at once, a green and clean one is reported as mergeable
+  expect(round).toContain('PR #9 (Auftrag a3, leesyashin/asker) hat Konflikte mit main')
+  expect(sent.some(text => text.startsWith('session_01STUCK: ') && text.includes('PR #9') && text.includes('Konflikte mit main') && text.includes('aktion=review id=a3 pr=9'))).toBe(true)
+  expect(round).toContain('PR #10 (Auftrag a4, leesyashin/asker) ist grün und konfliktfrei. Er ist noch ein Draft')
+  expect(round).toContain('jetzt mergen (merge_pull_request')
   expect(pushed.some(text => text.includes('wartet auf dich') && text.includes('Welche Farbe?'))).toBe(true)
   expect(prompts.some(text => text.includes('[Büro] Kommando k-old vom Chef'))).toBe(true)
   // without the background pause the model is told to start it again
@@ -234,6 +263,14 @@ test('the round reports stuck and failed colleagues, unaccepted and reviewable o
   const before = prompts.length
   await clock.advance(5 * 60_000)
   expect(prompts.slice(before).some(text => text.includes('session_01STUCK'))).toBe(false)
+  // the Chef vom Dienst wakes colleagues for a living: the hourly limit does not hold him
+  for (let i = 0; i < 7; i += 1) {
+    const answer = JSON.stringify(await $.tool.call({ tool: 'mcp__buero__nachricht', an: 'session_01STUCK', text: `Stand? (${i})` } as never))
+    expect(answer).toContain('Gesendet an')
+    expect(answer).not.toContain('Büro-Limit')
+  }
+  const direct = await $.tool.call({ tool: 'mcp__claude-code-remote__send_message', session_id: 'session_01STUCK', message: 'Merge main, bitte.', priority: 'now' } as never)
+  expect(JSON.stringify(direct)).not.toContain('Büro-Limit')
 })
 
 test('a write to the page reaches core: the model is asked, the mod is allowed only after that look', async ($, on) => {

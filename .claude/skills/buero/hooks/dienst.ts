@@ -38,7 +38,7 @@ import {
   neueAblage,
   neueBesprechung,
 } from './besprechung'
-import { CLOUD_SERVER, parseSession, sameSession } from './cloud'
+import { CLOUD_SERVER, checkRunsIn, mergeStateIn, parseSession, sameSession } from './cloud'
 import { OFFICE_URL, dbCreate, dbGet, dbQuery, dbWrite, textOf, unsaved } from './db'
 import { clip, colleagueMessage, isActive, moodOf, resolveRecipient } from './model'
 import { letterId, tailOf } from './post'
@@ -111,6 +111,10 @@ const DAY_MS = 24 * 60 * 60_000
 const KOMMANDOS_PER_TICK = 5
 /** A command taken but neither closed nor worked on for this long is handed to the model again, once. */
 const STALE_KOMMANDO_MS = 15 * 60_000
+/** The pull request of an order under review is looked at this often, and this many per round. */
+const PR_WATCH_MS = 3 * 60_000
+const PR_WATCH_PER_ROUND = 4
+const GITHUB_SERVER = 'github'
 
 const openKommandos = new Map<string, number>()
 const alerted = new Map<string, number>()
@@ -119,6 +123,8 @@ let waechterAt = 0
 let pushAt = 0
 let isWatched = false
 const regelnCache = new Map<string, { at: number; regeln: Regeln }>()
+/** Per order: when its pull request was last looked at. */
+const prWatched = new Map<string, number>()
 
 const PROPS = {
   id: { type: 'string', description: 'Die ID (Auftrag a12, Besprechung b-…, Eintrag x-…).' },
@@ -1219,9 +1225,91 @@ async function stoerungen($: $, ctx: DienstCtx, now: number): Promise<void> {
       }
     }
   }
+  lines.push(...(await watchPullRequests($, ctx, open, records, now)))
   if (lines.length > 0) {
     await handToModel($, ctx, `[Büro] Störungen und Meldungen vom Rundgang (Information der Büro-Mod):\n${lines.map(line => `- ${line}`).join('\n')}\nHandle, was deine Dienstanweisung vorsieht; melde dem Chef nur, was seine Entscheidung braucht.`)
   }
+}
+
+/**
+ * The pull requests of orders under review, looked at every few minutes: a
+ * conflict or a red CI goes straight to the session that owns the order, so
+ * nobody waits for a word from the Chef vom Dienst; a green, mergeable one
+ * is reported to him, with what the rule says.
+ */
+async function watchPullRequests($: $, ctx: DienstCtx, open: readonly Auftrag[], records: readonly SessionRecord[], now: number): Promise<string[]> {
+  const lines: string[] = []
+  let looked = 0
+  for (const auftrag of open) {
+    const number = Number(/#(\d+)/.exec(auftrag.pr ?? '')?.[1])
+    const [owner, repo] = auftrag.repo.split('/')
+    if (!Number.isFinite(number) || !owner || !repo || (auftrag.state !== 'review' && auftrag.state !== 'in_arbeit')) {
+      continue
+    }
+    if (now - (prWatched.get(auftrag.id) ?? 0) < PR_WATCH_MS || looked >= PR_WATCH_PER_ROUND) {
+      continue
+    }
+    prWatched.set(auftrag.id, now)
+    looked += 1
+    let state: ReturnType<typeof mergeStateIn>
+    let ci: ReturnType<typeof checkRunsIn>
+    try {
+      const got = await $.mcp.call(GITHUB_SERVER, 'pull_request_read', { method: 'get', owner, repo, pullNumber: number })
+      state = got.isError ? undefined : mergeStateIn(await unsaved($, textOf(got)))
+      const runs = await $.mcp.call(GITHUB_SERVER, 'pull_request_read', { method: 'get_check_runs', owner, repo, pullNumber: number, perPage: 100 })
+      ci = runs.isError ? undefined : checkRunsIn(await unsaved($, textOf(runs)), now)
+    } catch (error) {
+      $.ui.log(`buero: pr-wache ${auftrag.pr ?? ''}: ${String(error)}`, { to: 'debug' })
+      continue
+    }
+    const head = state?.headSha ?? 'kopf'
+    const pr = auftrag.pr ?? `PR #${number}`
+    const ownerRecord = auftrag.owner === undefined ? undefined : records.find(one => sameSession(one.id, auftrag.owner ?? '') && isActive(one, now))
+    const hasConflict = state?.mergeableState === 'dirty' || state?.mergeable === false
+    const isRed = ci?.state === 'rot'
+    if (hasConflict && alertOnce(`konflikt:${auftrag.id}:${head}`, now)) {
+      const told =
+        ownerRecord === undefined
+          ? undefined
+          : await sendLetter(
+              $,
+              ctx,
+              ownerRecord,
+              `[Büro] Dein ${pr} in ${auftrag.repo} (Auftrag ${auftrag.id}) hat Konflikte mit main und kann so nicht gemergt werden. Hol main in deinen Branch (git fetch origin main && git merge origin/main), löse die Konflikte, prüfe und pushe. Melde dich danach mit mcp__buero__auftrag aktion=review id=${auftrag.id} pr=${number}.`,
+            )
+      lines.push(
+        `${pr} (Auftrag ${auftrag.id}, ${auftrag.repo}) hat Konflikte mit main. ${ownerRecord === undefined ? `Die Besitzer-Session ${auftrag.owner ?? '–'} ist nicht mehr im Büro: hol eine Fortsetzung (mcp__buero__kollegen_holen) oder merge main selbst (update_pull_request_branch).` : told === undefined ? `${ownerRecord.name} (Session-ID ${ownerRecord.id}) hat den Brief: main hineinmergen. Bleibt es dabei, weck sie mit send_message priority now.` : `${ownerRecord.name} war nicht zu erreichen (${told}): weck sie mit send_message priority now.`}`,
+      )
+    }
+    if (isRed && !hasConflict && alertOnce(`rot:${auftrag.id}:${head}`, now)) {
+      const named = (ci?.rot ?? []).slice(0, 3).join(', ')
+      const told =
+        ownerRecord === undefined
+          ? undefined
+          : await sendLetter(
+              $,
+              ctx,
+              ownerRecord,
+              `[Büro] Die CI deines ${pr} in ${auftrag.repo} (Auftrag ${auftrag.id}) ist rot${named === '' ? '' : ` (${named})`}. Lies das Log (get_job_logs oder get_check_run), behebe die Ursache und pushe; dann melde dich mit mcp__buero__auftrag aktion=review id=${auftrag.id} pr=${number}.`,
+            )
+      lines.push(
+        `${pr} (Auftrag ${auftrag.id}, ${auftrag.repo}): CI rot${named === '' ? '' : ` (${named})`}. ${ownerRecord === undefined ? `Die Besitzer-Session ${auftrag.owner ?? '–'} ist nicht mehr im Büro: hol eine Fortsetzung.` : told === undefined ? `${ownerRecord.name} hat den Brief.` : `${ownerRecord.name} war nicht zu erreichen (${told}).`}`,
+      )
+    }
+    const isMergeable = !hasConflict && ci?.state === 'gruen' && (state?.mergeableState === undefined || ['clean', 'unstable', 'has_hooks', 'unknown'].includes(state.mergeableState))
+    if (isMergeable && auftrag.state === 'review' && alertOnce(`mergebar:${auftrag.id}:${head}`, now)) {
+      const regeln = await loadRegeln($, auftrag.repo, now)
+      const draft = state?.isDraft === true ? ' Er ist noch ein Draft: vorher update_pull_request draft=false.' : ''
+      lines.push(
+        `${pr} (Auftrag ${auftrag.id}, ${auftrag.repo}) ist grün und konfliktfrei.${draft} Regel: ${regeln.autoMerge === 'nie' ? 'nicht automatisch mergen, dem Chef melden, dass der PR bereit ist' : regeln.autoMerge === 'gruen' ? 'jetzt mergen (merge_pull_request, merge_method merge), dann mcp__buero__auftrag aktion=abschliessen' : 'Prüfer holen, bei gutem Befund mergen'}.`,
+      )
+    }
+    if (state?.mergeableState === 'blocked' && ci?.state === 'gruen' && alertOnce(`blockiert:${auftrag.id}:${head}`, now)) {
+      lines.push(`${pr} (Auftrag ${auftrag.id}) ist grün, aber GitHub blockt den Merge (Branch-Schutz: Review oder Pflicht-Check fehlt). Prüf die Reviews (pull_request_read get_reviews) oder melde es dem Chef.`)
+    }
+  }
+
+  return lines
 }
 
 /** The readiness watchdog: without the background pause the session would fall asleep. */

@@ -1,7 +1,7 @@
 // Cloud sessions as the claude-code-remote server lists them, turned into the
 // same records the office draws from the files of a PC.
 
-import type { Rolle, SessionRecord, Stand, Status } from '../types'
+import type { CiStand, Rolle, SessionRecord, Stand, Status } from '../types'
 import { baseName, clip, pickName } from './model'
 
 export const CLOUD_SERVER = 'claude-code-remote'
@@ -89,10 +89,59 @@ export function taskSummaryOf(session: CloudSession): string | undefined {
  * merge), or neither. The cloud keeps no merge state of its own, so this
  * reads the summary the cloud writes after each turn.
  */
-export type Delivery = { state: 'gemergt' } | { state: 'pr'; pr: string } | { state: 'ohne' }
+export type Delivery = { state: 'gemergt' } | { state: 'pr'; pr: string; ci?: CiStand } | { state: 'ohne' }
 
 /** A session's own pull request as GitHub reports it: what a session with the mod writes about itself. */
-export type OwnPr = { number: number; state: 'open' | 'merged' | 'closed'; url?: string }
+export type OwnPr = { number: number; state: 'open' | 'merged' | 'closed'; url?: string; ci?: CiStand }
+
+const FAILED = new Set(['failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure', 'stale'])
+
+/**
+ * What CI says, out of a `pull_request_read get_check_runs` answer: how many
+ * runs are done, whether one failed, and the names of the failed ones.
+ */
+export function checkRunsIn(text: string, now: number): CiStand | undefined {
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start < 0 || end <= start) {
+    return undefined
+  }
+  try {
+    const value = JSON.parse(text.slice(start, end + 1)) as { check_runs?: unknown }
+    if (!Array.isArray(value.check_runs)) {
+      return undefined
+    }
+    const runs = (value.check_runs as { name?: unknown; status?: unknown; conclusion?: unknown }[]).filter(run => typeof run === 'object' && run !== null)
+    const done = runs.filter(run => run.status === 'completed')
+    const rot = done.filter(run => typeof run.conclusion === 'string' && FAILED.has(run.conclusion)).map(run => (typeof run.name === 'string' ? run.name : 'Check'))
+    const state: CiStand['state'] = runs.length === 0 ? 'keine' : rot.length > 0 ? 'rot' : done.length < runs.length ? 'laeuft' : 'gruen'
+
+    return { state, fertig: done.length, gesamt: runs.length, rot, at: now }
+  } catch {
+    return undefined
+  }
+}
+
+/** Whether a pull request can be merged, out of a `pull_request_read get` answer: `dirty` means conflicts. */
+export function mergeStateIn(text: string): { mergeable?: boolean; mergeableState?: string; headSha?: string; isDraft?: boolean } | undefined {
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start < 0 || end <= start) {
+    return undefined
+  }
+  try {
+    const value = JSON.parse(text.slice(start, end + 1)) as { mergeable?: unknown; mergeable_state?: unknown; head?: { sha?: unknown }; draft?: unknown }
+
+    return {
+      mergeable: typeof value.mergeable === 'boolean' ? value.mergeable : undefined,
+      mergeableState: typeof value.mergeable_state === 'string' ? value.mergeable_state : undefined,
+      headSha: typeof value.head?.sha === 'string' ? value.head.sha : undefined,
+      isDraft: typeof value.draft === 'boolean' ? value.draft : undefined,
+    }
+  } catch {
+    return undefined
+  }
+}
 
 /** The newest pull request in a `list_pull_requests` answer; a merged one is closed with a merge time. */
 export function pullRequestIn(text: string): OwnPr | undefined {
@@ -168,16 +217,26 @@ const PR_NAMED = /\b(?:pr|pull[- ]?request)\s*#\s*(\d+)/
 // "Draft-PR", "PR erstellt", not "PR-Branch-Workflow"
 const PR_SAID = /\b(?:draft-?pr|pull[- ]?requests?)\b|\bprs?\b(?![-/])/
 
-/** What GitHub says about the session's own pull request wins; otherwise the summary decides. */
+/**
+ * What GitHub says about the session's own pull request wins; otherwise the
+ * summary decides. The Chef vom Dienst merges and checks other people's pull
+ * requests, so its summary names none of its own.
+ */
 export function deliveryOf(session: CloudSession, own?: OwnPr): Delivery {
-  const summary = session.post_turn_summary ?? session.external_metadata?.post_turn_summary
-  const said = [summary?.status_detail, summary?.recent_action].filter(Boolean).join('. ').toLowerCase()
-  const clauses = said.split(/[;,!?\n]|\.(?:\s|$)|\s[–—-]\s/)
-  if (own?.state === 'merged' || clauses.some(clause => !HEDGED.test(clause) && MERGED.some(pattern => pattern.test(clause)))) {
+  if (own?.state === 'merged') {
     return { state: 'gemergt' }
   }
   if (own?.state === 'open') {
-    return { state: 'pr', pr: `PR #${own.number}` }
+    return { state: 'pr', pr: `PR #${own.number}`, ...(own.ci === undefined ? {} : { ci: own.ci }) }
+  }
+  if (rolleOf(session.tags) === 'cvd') {
+    return { state: 'ohne' }
+  }
+  const summary = session.post_turn_summary ?? session.external_metadata?.post_turn_summary
+  const said = [summary?.status_detail, summary?.recent_action].filter(Boolean).join('. ').toLowerCase()
+  const clauses = said.split(/[;,!?\n]|\.(?:\s|$)|\s[–—-]\s/)
+  if (clauses.some(clause => !HEDGED.test(clause) && MERGED.some(pattern => pattern.test(clause)))) {
+    return { state: 'gemergt' }
   }
   if (own?.state === 'closed') {
     return { state: 'ohne' }
@@ -344,6 +403,7 @@ export function cloudRecords(
       link: `https://claude.ai/code/${id}`,
       usage: usageOf(session),
       pr: status === 'fertig' && delivery.state === 'pr' ? delivery.pr : undefined,
+      ci: delivery.state === 'pr' ? delivery.ci : undefined,
       rolle: rolleOf(session.tags) ?? desk?.rolle,
       eltern: elternOf(session),
       modVersion: desk?.modVersion,

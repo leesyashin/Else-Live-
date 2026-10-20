@@ -5,7 +5,7 @@
 
 import type { EventKind, Lease, Letter, OfficeEvent, Post, SessionRecord } from '../types'
 import type { CloudSession, Delivery } from './cloud'
-import { baseName, bossMessage, clip } from './model'
+import { baseName, bossMessage, clip, prLabel } from './model'
 
 /** The messenger holds its lease this long without renewing it. */
 export const LEASE_MS = 90_000
@@ -203,20 +203,27 @@ const BUCKET_SHORT: Readonly<Record<string, string>> = {
   SESSION_STATUS_BUCKET_FAILED: 'fehler',
 }
 
-/** What the logbook knows of a session, as `status|pr|archived`; the PR part keeps its last value. */
-type Seen = { status: string; pr: string; isArchived: boolean }
+/** What the logbook knows of a session, as `status|pr|archived|ci`; the PR part keeps its last value. */
+type Seen = { status: string; pr: string; isArchived: boolean; ci: string }
 
 function parseSeen(text: string | undefined): Seen | undefined {
   if (text === undefined) {
     return undefined
   }
-  const [status = '', pr = '', archived = ''] = text.split('|')
+  const [status = '', pr = '', archived = '', ci = ''] = text.split('|')
 
-  return { status, pr, isArchived: archived === '1' }
+  return { status, pr, isArchived: archived === '1', ci }
 }
 
 function seenText(seen: Seen): string {
-  return `${seen.status}|${seen.pr}|${seen.isArchived ? '1' : '0'}`
+  return `${seen.status}|${seen.pr}|${seen.isArchived ? '1' : '0'}|${seen.ci}`
+}
+
+/** The CI state worth a logbook line: green or red; a running or missing CI is nothing yet. */
+function ciKey(delivery: Delivery): string {
+  const ci = delivery.state === 'pr' ? delivery.ci : undefined
+
+  return ci?.state === 'gruen' || ci?.state === 'rot' ? ci.state : ''
 }
 
 function prKey(delivery: Delivery): string {
@@ -264,8 +271,9 @@ export function eventsFrom(
     const delivery = deliveries.get(session.id) ?? { state: 'ohne' }
     const status = BUCKET_SHORT[session.status_bucket ?? ''] ?? 'neu'
     const key = prKey(delivery)
+    const ci = ciKey(delivery)
     const isArchived = session.session_status === 'SESSION_STATUS_ARCHIVED'
-    next[tail] = seenText({ status, pr: key === '' ? (before?.pr ?? '') : key, isArchived })
+    next[tail] = seenText({ status, pr: key === '' ? (before?.pr ?? '') : key, isArchived, ci: key === 'gemergt' ? '' : ci === '' ? (key === before?.pr ? (before?.ci ?? '') : '') : ci })
     if (isFirstLook) {
       continue
     }
@@ -305,6 +313,10 @@ export function eventsFrom(
       } else {
         add('pr', `${before.pr !== '' && before.pr !== 'gemergt' ? 'neuer ' : ''}${key} offen, wartet aufs Mergen`)
       }
+    }
+    if (key !== '' && key !== 'gemergt' && ci !== '' && (ci !== before.ci || key !== before.pr) && delivery.state === 'pr') {
+      const rot = delivery.ci?.rot ?? []
+      add('ci', ci === 'gruen' ? `${key}: CI grün, bereit zum Mergen` : `${key}: CI rot${rot.length === 0 ? '' : ` (${rot.slice(0, 3).join(', ')})`}`)
     }
   }
 
@@ -462,7 +474,7 @@ export function newsFor(input: {
     .sort((a, b) => a.at - b.at)
     .slice(-8)
   const mates = records.filter(record => !isSelf(record.id) && sameRepo(record.project, repo))
-  const told = mates.map(record => `${record.id}:${record.status}:${record.pr ?? ''}`).sort().join(',')
+  const told = mates.map(record => `${record.id}:${record.status}:${record.pr ?? ''}:${record.ci?.state ?? ''}`).sort().join(',')
   if (fresh.length === 0 && told === input.told) {
     return undefined
   }
@@ -473,7 +485,7 @@ export function newsFor(input: {
   if (mates.length > 0) {
     lines.push('Gerade im selben Repo:')
     for (const mate of mates) {
-      const status = mate.pr === undefined ? mate.status : `${mate.pr} wartet aufs Mergen`
+      const status = mate.pr === undefined ? mate.status : prLabel(mate.pr, mate.ci)
       lines.push(`- ${mate.name} (Session-ID ${mate.id}): ${status} · ${clip(mate.task, 80)} · ${mate.cwd}`)
     }
   } else if (fresh.length === 0) {

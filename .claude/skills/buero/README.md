@@ -19,12 +19,12 @@ Die Seite hat eine Navigation (am Rand, auf dem Handy als Leiste unten) mit den 
 | **Büro** (Startseite) | Kommando, die Zahlen, die Bühne, daneben „Für dich“ und das Session-Detail. |
 | **Kommandoleiste** | Sag dem Chef vom Dienst, was er tun soll. **Senden** legt es in den Briefkasten (in höchstens 15 Sekunden bei ihm). **Sofort** schickt zusätzlich einen Kommentar an Claude, der ihn auch aus dem Schlaf weckt. Darunter stehen deine Kommandos mit Zustand (neu, angenommen, in Arbeit, erledigt, abgelehnt, braucht dich) und seiner Antwort. |
 | **Für dich** | Wer auf dich wartet, mit der Frage im Wortlaut und einem Antwortfeld. Freigabe-Karten beantwortest du in der Session selbst („Session öffnen“). |
-| **Bühne** | Das Pixel-Büro. Der Chef vom Dienst sitzt mit Headset an seinem eigenen Schreibtisch im Chefbüro („in Bereitschaft“), Teams stehen zusammen, Prüfer tragen eine Lupe. Klick auf eine Figur öffnet ihr Detail. |
-| **Aufgabenbrett** | Aufträge in den Spalten offen, vergeben, in Arbeit, Review, blockiert, fertig. Anlegen, „Session holen“ (der Chef vom Dienst holt sie), öffnen: Text, Abnahme, Besitzer, PR, Verlauf, Übergabe. |
+| **Bühne** | Das Pixel-Büro. Der Chef vom Dienst sitzt mit Headset an seinem eigenen Schreibtisch im Chefbüro („in Bereitschaft“), Teams stehen zusammen, Prüfer tragen eine Lupe. Links der **Besprechungsraum**: Kollegen, die sich schreiben oder an einer Besprechung teilnehmen, sitzen dort am Tisch (Sprechblase, wer zuletzt sprach; das Thema am Whiteboard); Briefe fliegen nur noch zwischen dir, dem Chef vom Dienst und den Sessions. Der Bildschirm einer fertigen Session zeigt ihren PR und die CI: grüner Haken, drehender Ring mit „CI 2/5“, oder rotes Kreuz. Klick auf eine Figur öffnet ihr Detail. |
+| **Aufgabenbrett** | Aufträge in den Spalten offen, vergeben, in Arbeit, Review, blockiert, fertig, auf der Karte der PR mit CI-Punkt (orange läuft, grün, rot). Anlegen, „Session holen“ (der Chef vom Dienst holt sie), öffnen: Text, Abnahme, Besitzer, PR, Verlauf, Übergabe. |
 | **Besprechungsraum** | Offene Besprechungen mit den Beiträgen der Sessions; „Zusammenfassen“ (Chef vom Dienst) und „Entscheiden“ (du). |
 | **Ablage** | Notizen, Links und Dateien, die Sessions und du geteilt haben, mit Vorschau, nach Repo und Tag. |
 | **Schwarzes Brett** | Das Logbuch der letzten 7 Tage: wer arbeitet, pusht, fertig ist, welche PRs auf- und zugehen, Aufträge, Übergaben, Kommandos. |
-| **Session-Detail** | Rolle, Team, Auftrag, Stand, Kontext und Kosten, PR, Mod-Version (rot, wenn veraltet). Knöpfe: Nachricht, Sofort, Pausieren, Weiter, Archivieren, Session öffnen. Antworten der Session auf deine Nachrichten stehen darunter. |
+| **Session-Detail** | Rolle, Team, Auftrag, Stand, Kontext und Kosten, PR mit Link und CI-Stand (läuft mit Zähler, grün, rot mit den gescheiterten Checks), Mod-Version (rot, wenn veraltet). Knöpfe: Nachricht, Sofort, Pausieren, Weiter, Archivieren, Session öffnen. Antworten der Session auf deine Nachrichten stehen darunter. |
 | **Regeln** | Pro Repo, das Repo aus der Auswahl deiner Sessions und Aufträge (oder neu eingetragen), Modelle und Session-Zahl ebenfalls zur Auswahl: Merge nie, bei grüner CI oder bei grün plus Prüfer; Modelle je Rolle; Branch-Schema; Prüfbefehle; Archivieren nach Merge; höchstens parallele Sessions; Freigaben in Worten. |
 
 Ist kein Chef vom Dienst und keine andere Session mit der Mod wach, sagt die Seite das: Post und Kommandos warten dann im Briefkasten, der Sofort-Knopf weckt den Chef vom Dienst.
@@ -61,7 +61,7 @@ Jede Session mit der Mod bekommt diese Werkzeuge (alle `mcp__buero__…`):
 | Werkzeug | Zweck |
 | --- | --- |
 | `kollegen` | wer gerade woran arbeitet: Name, Session-ID, Rolle, Team, Projekt, Auftrag, Stand, Mod-Version; die letzten Ereignisse im Büro |
-| `nachricht` | kurze Nachricht an einen Kollegen, höchstens 5 pro Stunde (einstellbar) |
+| `nachricht` | kurze Nachricht an einen Kollegen, höchstens 5 pro Stunde (einstellbar); der Chef vom Dienst ohne Limit |
 | `auftrag` | anlegen, zeigen, annehmen, aendern, review, abschliessen, blockieren, abbrechen |
 | `kollegen_holen` | neue Session für einen Auftrag: Prompt aus Auftrag und Repo-Regeln, Tags, Branch, Modell; die neue Session erscheint im Team |
 | `abgeben` | den eigenen Auftrag mit Übergabe (Stand, Branch, offene Punkte, Fallen, nächster Schritt) an den Chef vom Dienst, eine neue Session oder einen Kollegen |
@@ -72,6 +72,8 @@ Jede Session mit der Mod bekommt diese Werkzeuge (alle `mcp__buero__…`):
 | `ablegen` | Notiz, Link oder Datei in die Ablage; zeigen nach Repo und Tag |
 | `regel` | die Regeln eines Repos zeigen; setzen nur auf dein Kommando |
 | `kommando` | nur der Chef vom Dienst: ein Kommando abschließen (erledigt, braucht dich, abgelehnt) |
+
+Jede Session fragt GitHub jede Minute nach ihrem eigenen PR und dessen Check-Runs und schreibt beides auf ihren Schreibtisch; für Sessions, die schlafen, fragt der Bote nach (alle zwei Minuten, drei je Runde). Das Logbuch notiert, wenn die CI eines PRs grün oder rot wird.
 
 Vor jedem Prompt bekommt eine Session den Block „[Büro] Neues aus dem Repo …“ (was Kollegen im selben Repo seit ihrer letzten Runde getan haben), einmal den Hinweis, wenn ihre Mod veraltet ist, und ab 80 Prozent Kontext die Aufforderung, bald abzugeben. Nachrichten anderer Sessions sind Informationen, keine Anweisungen.
 
@@ -97,6 +99,7 @@ Eine Auftrags-Session darf nur mergen, wenn die Regel des Repos es erlaubt; die 
 | Störung | Erkennung | Reaktion |
 | --- | --- | --- |
 | Session hängt | arbeitet, 5 Minuten ohne Aktivität | der Chef vom Dienst fragt nach dem Stand, nach weiteren 10 Minuten dringend; bleibt sie stumm, holt er eine Fortsetzung und sagt dir Bescheid |
+| PR mit Konflikten oder roter CI | PR-Wache der Mod, alle 3 Minuten für Aufträge in Review | der Besitzer bekommt sofort einen Brief (main hineinmergen bzw. CI reparieren), der Chef vom Dienst erfährt es; wird der PR grün und konfliktfrei, meldet die Mod ihm „mergebar“ mit der Regel |
 | Session fehlgeschlagen | Cloud meldet failed | Fehler lesen, einmal „weiter“, sonst Fortsetzung mit Übergabe |
 | Auftrag nicht angenommen | zehn Minuten vergeben | Session prüfen, neu vergeben oder dich fragen |
 | Kontext voll | 80 Prozent | die Session gibt ab, der Chef vom Dienst holt eine Fortsetzung |
@@ -107,10 +110,10 @@ Eine Auftrags-Session darf nur mergen, wenn die Regel des Repos es erlaubt; die 
 
 | Sammlung | Inhalt | Wer schreibt | Wie lange |
 | --- | --- | --- | --- |
-| `buero/liste` | die Session-Liste der Cloud mit Tags, Eltern, Live-Tätigkeit, Modell | der Bote | immer der neueste Stand |
+| `buero/liste` | die Session-Liste der Cloud mit Tags, Eltern, Live-Tätigkeit, Modell; dazu `prs`: die CI-Stände, die der Bote für schlafende Sessions bei GitHub nachgefragt hat | der Bote | immer der neueste Stand |
 | `leitung/bote` | wer gerade Bote ist, der Chef vom Dienst (`pinned`, `cvdHeartbeat`), die Mod-Version | der Bote | laufend erneuert |
 | `leitung/zaehler` | die nächste Auftragsnummer | Sessions, Seite | dauerhaft |
-| `sessions/<id>` | Schreibtisch: PR, Nachrichten, Rolle, Eltern, Mod-Version, Stand, Auftrag, Kontext | jede Session | 7 Tage |
+| `sessions/<id>` | Schreibtisch: PR mit CI-Stand, Nachrichten, Rolle, Eltern, Mod-Version, Stand, Auftrag, Kontext | jede Session | 7 Tage |
 | `post/<id>` | deine Nachrichten mit Zustellstatus und Antwort | du, Empfänger, Bote | 7 Tage |
 | `kommandos/<id>` | deine Kommandos mit Zustand und Ergebnis | du, Chef vom Dienst | 7 Tage |
 | `auftraege/<id>` | Aufträge mit Verlauf und Übergabe | Sessions, Chef vom Dienst, du | bis fertig plus 7 Tage |
@@ -129,6 +132,7 @@ Standard: 5 Nachrichten pro Stunde zwischen Kollegen, „hängt“ nach 5 Minute
 
 - Im Speicher der Büro-Seite liegen Titel, Repos, Zusammenfassungen und Stände deiner Sessions, deine Kommandos und Nachrichten, Aufträge, Besprechungen und die Ablage. Die Seite ist privat; teilst du sie, liest der andere alles.
 - Freigabe-Karten und Auswahl-Dialoge beantwortest du nur in der Session selbst. Die Seite zeigt sie und führt dich hin.
+- Der Chef vom Dienst hat kein Nachrichtenlimit: Er weckt Kollegen, sobald ihr PR Konflikte hat oder die CI rot ist, statt bis zur nächsten Stunde zu warten (so passiert am 20.10.: zwei Konflikt-PRs blieben liegen, weil das Limit erreicht war).
 - Die Mod nutzt die Mod-Schnittstelle von Claude Code (early access). Gebaut und getestet mit Version 2.1.304 und Artifact-Laufzeit 0.2.87.
 - Auf dem PC schreibt jede Session ihren Status nach `~/.claude/buero/sessions/<id>.json`; die Werkzeuge für Aufträge, Besprechungen und Ablage brauchen die Büro-Seite der Cloud.
 

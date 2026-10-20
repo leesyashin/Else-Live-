@@ -5,12 +5,13 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { EventKind, Letter, OfficeEvent, OfficeView, Post, Rolle, SessionRecord, Stand, Status, WorkerView } from '../types'
+import type { CiStand, EventKind, Letter, OfficeEvent, OfficeView, OpenMeeting, Post, Rolle, SessionRecord, Stand, Status, WorkerView } from '../types'
 import { describeOffice, drawOffice } from './art'
 import type { CloudSession, DeskInfo, OwnPr } from './cloud'
 import {
   CLOUD_SERVER,
   branchOf,
+  checkRunsIn,
   cloudRecords,
   deliveryOf,
   elternOf,
@@ -24,6 +25,7 @@ import {
   trimSession,
 } from './cloud'
 import { kommandoIn } from './auftraege'
+import { besprechungOf } from './besprechung'
 import type { Owned } from './db'
 import { OFFICE_URL, byCreated, dbGet, dbQuery, dbWrite, keep, owned, settle, textOf, unsaved } from './db'
 import type { DienstCtx } from './dienst'
@@ -126,6 +128,13 @@ const LETTERS = 'kollegenpost'
 /** GitHub is asked about this session's own pull request at most this often. */
 const PR_EVERY_MS = 60_000
 const GITHUB_SERVER = 'github'
+/** A desk this old was written by a session that sleeps: the messenger asks GitHub about its pull request instead. */
+const DESK_FRESH_MS = 90_000
+/** The messenger refreshes a sleeping session's CI state this often, and for this many per round. */
+const CI_STALE_MS = 2 * 60_000
+const CI_PER_TICK = 3
+/** Open meetings are read this often, to seat their participants in the meeting room. */
+const MEETINGS_EVERY_MS = 60_000
 /** An ask that is still open after this long is a permission card for the person. */
 const ASK_SETTLE_MS = 1500
 const LIVE_AGENT = new Set(['pending', 'running', 'waiting', 'idle'])
@@ -159,6 +168,11 @@ let cloudError: string | undefined
 /** This session's own pull request, as GitHub last reported it. */
 let ownPr: OwnPr | undefined
 let ownPrAt = 0
+/** CI states the messenger fetched for sleeping sessions' pull requests, by writer (`cse_…`). */
+const refreshedCi = new Map<string, { number: number; ci: CiStand }>()
+/** Open meetings of the office page, for the meeting room. */
+let openMeetings: OpenMeeting[] = []
+let meetingsAt = 0
 /** This session's role in the office, from its cloud tags; read once the cloud answers. */
 let rolle: Rolle | undefined
 let isRoleKnown = false
@@ -434,11 +448,84 @@ async function checkOwnPr($: $, sessions: readonly CloudSession[], now: number):
       fields: ['number', 'state', 'merged', 'merged_at', 'html_url'],
     })
     if (!answer.isError) {
-      ownPr = pullRequestIn(textOf(answer)) ?? ownPr
+      const found = pullRequestIn(textOf(answer))
+      ownPr = found === undefined ? ownPr : { ...found, ...(found.number === ownPr?.number && found.ci === undefined ? { ci: ownPr?.ci } : {}) }
+    }
+    if (ownPr?.state === 'open') {
+      const ci = await fetchCi($, place.owner, place.repo, ownPr.number, now)
+      ownPr = { ...ownPr, ...(ci === undefined ? {} : { ci }) }
     }
   } catch (error) {
     $.ui.log(`buero: list_pull_requests: ${String(error)}`, { to: 'debug' })
   }
+}
+
+/** What CI says about a pull request's head, from GitHub; undefined when it could not be asked. */
+async function fetchCi($: $, owner: string, repo: string, number: number, now: number): Promise<CiStand | undefined> {
+  try {
+    const answer = await $.mcp.call(GITHUB_SERVER, 'pull_request_read', { method: 'get_check_runs', owner, repo, pullNumber: number, perPage: 100 })
+
+    return answer.isError ? undefined : checkRunsIn(await unsaved($, textOf(answer)), now)
+  } catch (error) {
+    $.ui.log(`buero: get_check_runs: ${String(error)}`, { to: 'debug' })
+
+    return undefined
+  }
+}
+
+/**
+ * The messenger's look at sleeping sessions' pull requests: a desk older
+ * than a minute and a half is no longer refreshed by its own session, so the
+ * messenger asks GitHub about its CI, a few per round.
+ */
+async function refreshCi($: $, sessions: readonly CloudSession[], desks: readonly Doc[], now: number): Promise<void> {
+  let asked = 0
+  for (const desk of desks) {
+    const writer = desk.data.writer
+    const pr = desk.data.pr as OwnPr | undefined
+    const writtenAt = Number(desk.data.writtenAt)
+    if (typeof writer !== 'string' || typeof pr?.number !== 'number' || pr.state !== 'open' || sameSession(writer, cloudSelf)) {
+      continue
+    }
+    const known = refreshedCi.get(writer)
+    const freshest = Math.max(pr.ci?.at ?? 0, known?.number === pr.number ? known.ci.at : 0, Number.isFinite(writtenAt) ? writtenAt : 0)
+    if (now - freshest < Math.max(DESK_FRESH_MS, CI_STALE_MS) || asked >= CI_PER_TICK) {
+      continue
+    }
+    const place = branchOf(sessions.find(session => sameSession(session.id ?? '', writer)))
+    if (place === undefined) {
+      continue
+    }
+    asked += 1
+    const ci = await fetchCi($, place.owner, place.repo, pr.number, now)
+    if (ci !== undefined) {
+      refreshedCi.set(writer, { number: pr.number, ci })
+    }
+  }
+}
+
+/** A session's pull request with the freshest CI state the office knows. */
+function withFreshCi(writer: string, pr: OwnPr): OwnPr {
+  const known = refreshedCi.get(writer)
+  if (known === undefined || known.number !== pr.number || (pr.ci !== undefined && pr.ci.at >= known.ci.at)) {
+    return pr
+  }
+
+  return { ...pr, ci: known.ci }
+}
+
+/** The open meetings of the office page, read once a minute. */
+async function readMeetings($: $, now: number): Promise<void> {
+  if (now - meetingsAt < MEETINGS_EVERY_MS) {
+    return
+  }
+  meetingsAt = now
+  const docs = await dbQuery($, 'besprechungen', { where: [['state', '==', 'offen']], limit: 20 })
+  openMeetings = docs.flatMap(doc => {
+    const b = besprechungOf(doc.data)
+
+    return b === undefined || b.bis <= now ? [] : [{ thema: b.thema, teilnehmer: b.teilnehmer, bis: b.bis }]
+  })
 }
 
 /** Everyone in the office: the cloud's sessions, or the files of this PC. */
@@ -565,7 +652,8 @@ async function writeDesk($: $, now: number): Promise<void> {
     ...(auftragTag === undefined ? {} : { auftrag: auftragTag }),
     ...(self.kontext === undefined ? {} : { kontext: self.kontext }),
   }
-  await keep($, deskDoc, { ...data, writtenAt: now }, JSON.stringify(data))
+  const signature = JSON.stringify({ ...data, pr: data.pr === undefined ? undefined : { ...data.pr, ci: data.pr.ci === undefined ? undefined : { ...data.pr.ci, at: 0 } } })
+  await keep($, deskDoc, { ...data, writtenAt: now }, signature)
 }
 
 /**
@@ -826,19 +914,14 @@ async function runOffice($: $, now: number, seen: Readonly<Record<string, string
   }
   listDoc ??= owned('buero', 'liste')
   const trimmed = sessions.map(trimSession)
-  await keep(
-    $,
-    listDoc,
-    { writtenAt: now, writer: cloudSelf, sessions: trimmed, ...(modVersion === '' ? {} : { modVersion }) },
-    JSON.stringify(trimmed),
-  )
   const desks = await dbQuery($, 'sessions', { limit: 200 })
+  await safe($, 'ci', () => refreshCi($, sessions, desks, now))
   const reports = new Map<string, OwnPr>()
   const infos = new Map<string, DeskInfo>()
   for (const desk of desks) {
     const pr = desk.data.pr as OwnPr | undefined
     if (typeof desk.data.writer === 'string' && typeof pr?.number === 'number') {
-      reports.set(desk.data.writer, pr)
+      reports.set(desk.data.writer, withFreshCi(desk.data.writer, pr))
     }
     if (typeof desk.data.writer === 'string') {
       infos.set(desk.data.writer, deskInfoOf(desk.data))
@@ -848,6 +931,14 @@ async function runOffice($: $, now: number, seen: Readonly<Record<string, string
   if (ownPr !== undefined) {
     reports.set(cloudSelf, ownPr)
   }
+  // the page draws from the list: with the CI states the messenger fetched for sleeping sessions
+  const prs = Object.fromEntries([...refreshedCi].map(([writer, known]) => [writer, { number: known.number, state: 'open', ci: known.ci }]))
+  await keep(
+    $,
+    listDoc,
+    { writtenAt: now, writer: cloudSelf, sessions: trimmed, prs, ...(modVersion === '' ? {} : { modVersion }) },
+    JSON.stringify([trimmed, [...refreshedCi].map(([writer, known]) => `${writer}:${known.number}:${known.ci.state}:${known.ci.fertig}`)]),
+  )
   const deliveries = new Map(sessions.map(session => [session.id ?? '', deliveryOf(session, reportFor(reports, session.id ?? ''))]))
   const told = eventsFrom(sessions, deliveries, seen, now)
   addEvents(told.events)
@@ -933,6 +1024,7 @@ async function tick($: $): Promise<void> {
     await safe($, 'schreibtisch', () => writeDesk($, now))
     await safe($, 'logbuch', () => flushLogs($, now))
     await safe($, 'neuigkeiten', () => readNews($, now))
+    await safe($, 'besprechungen', () => readMeetings($, now))
   } finally {
     isTicking = false
   }
@@ -1081,7 +1173,7 @@ async function refresh($: $): Promise<void> {
     const now = await $.clock.now()
     const records = await officeRecords($, now)
     const clock = new Date(now)
-    const view = buildOffice(records, now, stuckMs, selfIdIn(records), clock.getHours() * 60 + clock.getMinutes(), latestVersion || undefined)
+    const view = buildOffice(records, now, stuckMs, selfIdIn(records), clock.getHours() * 60 + clock.getMinutes(), latestVersion || undefined, openMeetings)
     const signature = JSON.stringify(view)
     if (signature === lastSignature) {
       return
@@ -1145,7 +1237,7 @@ export const register: Register = (on, options) => {
       })
       await $.tool.register({
         name: 'nachricht',
-        description: `Schickt einem Büro-Kollegen (einer anderen Claude-Code-Session) eine kurze Nachricht. Höchstens ${perHour} pro Stunde; nur wenn es echte Arbeit spart. Den Chef vom Dienst erreichst du mit mcp__buero__cvd ohne Limit.`,
+        description: `Schickt einem Büro-Kollegen (einer anderen Claude-Code-Session) eine kurze Nachricht. Höchstens ${perHour} pro Stunde (der Chef vom Dienst ohne Limit); nur wenn es echte Arbeit spart. Den Chef vom Dienst erreichst du mit mcp__buero__cvd ohne Limit.`,
         inputSchema: {
           type: 'object',
           properties: {
@@ -1385,7 +1477,7 @@ export const register: Register = (on, options) => {
       return next(e)
     }
     const budget = sendBudget(self.sent, now, perHour)
-    if (!budget.isAllowed) {
+    if (!budget.isAllowed && rolle !== 'cvd') {
       return { isDelivered: false, reason: limitText(perHour, budget.waitMinutes) }
     }
     const sent = await next(e)
@@ -1405,8 +1497,9 @@ export const register: Register = (on, options) => {
       return next(e)
     }
     const now = await $.clock.now()
+    // the Chef vom Dienst wakes colleagues for a living: no limit for him
     const budget = sendBudget(self.sent, now, perHour)
-    if (!budget.isAllowed) {
+    if (!budget.isAllowed && rolle !== 'cvd') {
       return { deny: limitText(perHour, budget.waitMinutes) }
     }
     const ran = await next(e)
@@ -1502,7 +1595,7 @@ export const register: Register = (on, options) => {
       return { deny: `${target.name} ist gerade nicht erreichbar.` }
     }
     const budget = sendBudget(sender.sent, now, perHour)
-    if (!budget.isAllowed) {
+    if (!budget.isAllowed && rolle !== 'cvd') {
       return { deny: limitText(perHour, budget.waitMinutes) }
     }
     const asSeen = records.find(record => record.id === me) ?? sender
@@ -1540,7 +1633,7 @@ export const register: Register = (on, options) => {
         ? ` ${target.name} arbeitet gerade, und die Cloud stellt Nachrichten erst nach dem laufenden Auftrag zu. Läuft bei ${target.name} die Büro-Mod, reicht sie die Nachricht schon beim nächsten Arbeitsschritt durch. Ob sie gelesen ist, zeigt mcp__buero__kollegen.`
         : ''
 
-    return { result: `Gesendet an ${target.name}.${busy} Noch ${budget.left - 1} Nachrichten in dieser Stunde.` }
+    return { result: `Gesendet an ${target.name}.${busy}${rolle === 'cvd' ? '' : ` Noch ${budget.isAllowed ? budget.left - 1 : 0} Nachrichten in dieser Stunde.`}` }
   }).catch(() => ({ deny: 'Büro: die Nachricht konnte nicht gesendet werden (Fehler in der Mod).' }))
 
   on('prompt.compose', async ($, e, next) => {

@@ -221,7 +221,11 @@
   .log .kind[data-kind="frage"], .log .kind[data-kind="stoerung"] { background: var(--accent); }
   .log .kind[data-kind="fertig"], .log .kind[data-kind="gemergt"] { background: var(--done); }
   .log .kind[data-kind="fehler"] { background: var(--bad); }
-  .log .kind[data-kind="pr"], .log .kind[data-kind="nachricht"], .log .kind[data-kind="post"], .log .kind[data-kind="kommando"] { background: var(--ink); }
+  .log .kind[data-kind="pr"], .log .kind[data-kind="ci"], .log .kind[data-kind="nachricht"], .log .kind[data-kind="post"], .log .kind[data-kind="kommando"] { background: var(--ink); }
+  .ci::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 0 4px 0 2px; background: var(--muted, #8e8e93); vertical-align: baseline; }
+  .ci[data-state="laeuft"]::before { background: #ff9f0a; }
+  .ci[data-state="gruen"]::before { background: #30d158; }
+  .ci[data-state="rot"]::before { background: #ff453a; }
   .log .kind[data-kind="auftrag"], .log .kind[data-kind="uebergabe"], .log .kind[data-kind="besprechung"], .log .kind[data-kind="ablage"], .log .kind[data-kind="regel"] { background: var(--ready); }
   .log .line { min-width: 0; overflow-wrap: anywhere; }
   .log .line b { font-weight: 600; }
@@ -389,6 +393,7 @@
                 <dt>Team</dt><dd id="dTeam"></dd>
                 <dt>Auftrag</dt><dd id="dAuftrag"></dd>
                 <dt>Repo</dt><dd id="dRepo"></dd>
+                <dt>PR</dt><dd id="dPr"></dd>
                 <dt>Stand</dt><dd id="dSummary"></dd>
                 <dt>Seit</dt><dd class="data" id="dSince"></dd>
                 <dt>Verbrauch</dt><dd class="data" id="dUsage"></dd>
@@ -567,7 +572,7 @@
   const Office = (() => {
     /*__OFFICE_LIB__*/
     return {
-      buildOffice, drawOffice, describeOffice, cloudRecords, parseSessionList, clip, moodLabel,
+      buildOffice, drawOffice, describeOffice, cloudRecords, parseSessionList, clip, moodLabel, ciLabel, prLabel,
       MOOD_COLOR, MOOD_LABEL, ROLLE_LABEL, eventsIn, postOf, sameSession, tailOf, dayOf, LEASE_MS, KEEP_MS, CVD_GRACE_MS,
       AUFTRAG_LABEL, KOMMANDO_LABEL, BESPRECHUNG_LABEL, OFFENE_ZUSTAENDE, REGELN_STANDARD,
       auftragOf, kommandoOf, besprechungOf, beitragOf, ablageOf, regelnOf, regelnId, isVeraltet, rolleOf, elternOf, tagValue, taskSummaryOf,
@@ -702,10 +707,20 @@
       return date.getHours() * 60 + date.getMinutes();
     }
 
+    // What sessions wrote about their pull request, with the CI state the
+    // messenger fetched for the ones that sleep, whichever is fresher.
     function reports() {
       const all = new Map(state.snapshot.reports);
       for (const desk of state.desks) {
         if (typeof desk.writer === 'string' && desk.pr && typeof desk.pr.number === 'number') all.set(desk.writer, desk.pr);
+      }
+      for (const [writer, pr] of Object.entries(state.snapshot.prs || {})) {
+        const own = all.get(writer);
+        if (!pr || typeof pr.number !== 'number') continue;
+        if (!own || own.number !== pr.number || own.state !== 'open') continue;
+        const ownAt = own.ci && typeof own.ci.at === 'number' ? own.ci.at : 0;
+        const freshAt = pr.ci && typeof pr.ci.at === 'number' ? pr.ci.at : 0;
+        if (freshAt > ownAt) all.set(writer, { ...own, ci: pr.ci });
       }
       return all;
     }
@@ -753,7 +768,8 @@
       const records = Office.cloudRecords(data.sessions, asOf, reports(), deskInfos()).map(record => ({ ...record, heartbeat: asOf }));
       // a letter goes to the sender, a letter from the boss to the recipient
       const withMail = records.map(record => ({ ...record, sent: lettersFor(record, asOf, now) }));
-      return Office.buildOffice(withMail, asOf, STUCK_MS, undefined, minutesOf(now), latestVersion() || undefined);
+      const meetings = state.besprechungen.filter(({ b }) => b.state === 'offen' && b.bis > now).map(({ b }) => ({ thema: b.thema, teilnehmer: b.teilnehmer, bis: b.bis }));
+      return Office.buildOffice(withMail, asOf, STUCK_MS, undefined, minutesOf(now), latestVersion() || undefined, meetings);
     }
 
     // Visitors who were not in the boss office at the last drawing walk in
@@ -1033,6 +1049,7 @@
       el('dTeam').textContent = worker.eltern ? `gestartet von ${nameOf(worker.eltern)}` : '–';
       el('dAuftrag').textContent = worker.auftrag ? worker.auftrag : '–';
       el('dRepo').textContent = worker.cwd;
+      renderPr(worker);
       el('dSummary').textContent = worker.stand || worker.activity || (worker.mood === 'arbeitet' ? 'arbeitet gerade' : worker.mood === 'bereit' ? 'wartet auf dein Kommando' : '–');
       el('dSince').textContent = since(worker.minutesInMood);
       el('dUsage').textContent = worker.usage || '–';
@@ -1067,6 +1084,33 @@
       const mine = entries().filter(entry => Office.sameSession(entry.sid, worker.id)).slice(0, 12);
       el('dLogWrap').hidden = mine.length === 0;
       el('dLog').replaceChildren(...logItems(mine, false));
+    }
+
+    /** The session's pull request and what CI says about it: a link, a colored dot, the failed runs. */
+    function renderPr(worker) {
+      const box = el('dPr');
+      box.replaceChildren();
+      const report = reports().get(`cse_${worker.id.slice(worker.id.indexOf('_') + 1)}`) || [...reports().entries()].find(([writer]) => Office.sameSession(writer, worker.id))?.[1];
+      const pr = worker.pr || (report && report.state === 'open' ? `PR #${report.number}` : null);
+      if (!pr) { box.textContent = '–'; return; }
+      if (report && report.url) {
+        const a = document.createElement('a');
+        a.href = report.url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = pr;
+        box.append(a);
+      } else {
+        box.append(document.createTextNode(pr));
+      }
+      const ci = worker.ci || (report ? report.ci : undefined);
+      const label = Office.ciLabel(ci);
+      if (label) {
+        const dot = document.createElement('span');
+        dot.className = 'ci';
+        dot.dataset.state = ci.state;
+        dot.textContent = ` ${label}`;
+        box.append(dot);
+      } else if (worker.mood === 'fertig') {
+        box.append(document.createTextNode(' · bereit zum Mergen'));
+      }
     }
 
     function renderLive() {
@@ -1377,6 +1421,18 @@
       }));
     }
 
+    /** What CI says about an order's pull request: from its owner's worker, or the reports. */
+    function ciOfOrder(a) {
+      const number = Number((/#(\d+)/.exec(a.pr || '') || [])[1]);
+      if (!Number.isFinite(number)) return null;
+      const owner = a.owner ? workers().find(one => Office.sameSession(one.id, a.owner)) : null;
+      if (owner && owner.ci && owner.pr === a.pr) return owner.ci;
+      for (const [writer, pr] of reports()) {
+        if (pr.number === number && pr.state === 'open' && pr.ci && (!a.owner || Office.sameSession(writer, a.owner))) return pr.ci;
+      }
+      return null;
+    }
+
     function cardFor(a) {
       const li = document.createElement('li');
       const b = document.createElement('button');
@@ -1390,6 +1446,14 @@
       const small = document.createElement('small');
       small.textContent = [a.repo, a.owner ? nameOf(a.owner) : null, a.pr || null, a.prio === 'hoch' ? 'Prio hoch' : null].filter(Boolean).join(' · ');
       b.append(title, small);
+      const ci = ciOfOrder(a);
+      if (ci) {
+        const dot = document.createElement('span');
+        dot.className = 'ci';
+        dot.dataset.state = ci.state;
+        dot.textContent = Office.ciLabel(ci);
+        small.append(document.createTextNode(' · '), dot);
+      }
       b.addEventListener('click', () => {
         state.taskOpen = state.taskOpen === a.id ? null : a.id;
         renderTasks();
@@ -1454,6 +1518,14 @@
       if (a.branch) meta.append(text(`Branch ${a.branch}`));
       meta.append(text(`Besitzer ${nameOf(a.owner)}`));
       if (a.pr) meta.append(text(a.pr));
+      const ciStand = ciOfOrder(a);
+      if (ciStand) {
+        const dot = document.createElement('span');
+        dot.className = 'ci';
+        dot.dataset.state = ciStand.state;
+        dot.textContent = Office.ciLabel(ciStand);
+        meta.append(dot);
+      }
       meta.append(text(`angelegt ${when(a.createdAt)} von ${nameOf(a.createdBy)}`));
       if (a.grund) meta.append(text(`Grund: ${a.grund}`));
       const checks = document.createElement('ul');
@@ -1979,9 +2051,9 @@
       }
       const data = docs.find(one => Array.isArray(one.sessions));
       if (!data) {
-        state.snapshot = { sessions: null, at: null, writer: null, reports: found, isEmpty: true, problem: null, modVersion: null };
+        state.snapshot = { sessions: null, at: null, writer: null, reports: found, prs: {}, isEmpty: true, problem: null, modVersion: null };
       } else {
-        state.snapshot = { sessions: data.sessions, at: Number(data.writtenAt) || Date.now(), writer: data.writer || null, reports: found, isEmpty: false, problem: null, modVersion: typeof data.modVersion === 'string' ? data.modVersion : null };
+        state.snapshot = { sessions: data.sessions, at: Number(data.writtenAt) || Date.now(), writer: data.writer || null, reports: found, prs: data.prs && typeof data.prs === 'object' ? data.prs : {}, isEmpty: false, problem: null, modVersion: typeof data.modVersion === 'string' ? data.modVersion : null };
       }
       renderAll();
     }
