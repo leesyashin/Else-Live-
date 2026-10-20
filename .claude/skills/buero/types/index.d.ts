@@ -1,11 +1,15 @@
-// The office's shared data: what every session writes about itself, and what
-// the pane draws from.
+// The office's shared data: what every session writes about itself, what the
+// pane and the page draw from, and the documents of the office page's
+// database (orders, commands, meetings, the shelf, the rules).
 
 /** What a session reports about itself. */
 export type Status = 'neu' | 'arbeitet' | 'fertig' | 'frage' | 'freigabe' | 'fehler'
 
 /** What the office shows: the reported status, or what the reader concludes. */
-export type Mood = Status | 'haengt' | 'weg'
+export type Mood = Status | 'haengt' | 'weg' | 'bereit'
+
+/** A session's role in the office, from its cloud tags (`buero:rolle=cvd`). */
+export type Rolle = 'cvd' | 'mitarbeiter' | 'pruefer'
 
 export type AgentRecord = {
   id: string
@@ -27,6 +31,14 @@ export type SentRecord = {
   fromBoss?: boolean
   /** The letter in the office page's database that tells whether it was read (cloud only). */
   letter?: string
+}
+
+/** A session's own status line, set with the `stand` tool. */
+export type Stand = {
+  text: string
+  at: number
+  /** `3/5`, `60 %`, or free text. */
+  fortschritt?: string
 }
 
 /** One session's file: `<config dir>/buero/sessions/<id>.json`. */
@@ -55,6 +67,20 @@ export type SessionRecord = {
   usage?: string
   /** A finished cloud session's pull request that still waits for its merge (`PR #12`). */
   pr?: string
+  rolle?: Rolle
+  /** The session that started this one (`session_…`): its team in the office. */
+  eltern?: string
+  /** The version of the office mod the session runs. */
+  modVersion?: string
+  stand?: Stand
+  /** Context used, in percent. */
+  kontext?: number
+  /** Cost so far, in dollars. */
+  kosten?: number
+  /** The order the session works on (`a12`), from its tag. */
+  auftrag?: string
+  tags?: string[]
+  model?: string
 }
 
 export type WorkerView = {
@@ -78,6 +104,15 @@ export type WorkerView = {
   link?: string
   usage?: string
   pr?: string
+  rolle?: Rolle
+  eltern?: string
+  modVersion?: string
+  /** Runs an older mod than the office knows. */
+  isVeraltet: boolean
+  stand?: string
+  auftrag?: string
+  kontext?: number
+  kosten?: number
 }
 
 export type MessageView = {
@@ -106,6 +141,13 @@ export type EventKind =
   | 'archiviert'
   | 'push'
   | 'nachricht'
+  | 'auftrag'
+  | 'uebergabe'
+  | 'besprechung'
+  | 'ablage'
+  | 'kommando'
+  | 'regel'
+  | 'stoerung'
 
 /** One logbook entry, kept in the office page's database for a week. */
 export type OfficeEvent = {
@@ -136,6 +178,9 @@ export type Post = {
   claimedAt?: number
   deliveredAt?: number
   error?: string
+  /** The recipient's answer, written with the `antwort` tool. */
+  reply?: string
+  repliedAt?: number
 }
 
 /**
@@ -162,6 +207,150 @@ export type Lease = {
   until: number
   /** Per session (id tail): what the logbook last said about it. */
   seen: Record<string, string>
+  /** The Chef vom Dienst (`cse_…`): it takes the lease whenever it is awake. */
+  pinned?: string
+  /** When the Chef vom Dienst was last heard from. */
+  cvdHeartbeat?: number
+  /** The mod version of the holder: the newest the office knows. */
+  modVersion?: string
+}
+
+// Orders: the work of the office as documents, not as prompts.
+
+export type AuftragState = 'entwurf' | 'offen' | 'vergeben' | 'in_arbeit' | 'review' | 'blockiert' | 'fertig' | 'abgebrochen'
+
+export type Verlauf = {
+  at: number
+  /** Who did it: a session id, `chef` for the person, `cvd`. */
+  von: string
+  was: string
+}
+
+/** What a session leaves behind when it hands an order over. */
+export type Uebergabe = {
+  at: number
+  von: string
+  stand: string
+  branch?: string
+  offen: string
+  fallen?: string
+  naechster: string
+}
+
+export type Auftrag = {
+  /** `a12`: the document id. */
+  id: string
+  nr: number
+  titel: string
+  /** Markdown: Ziel, Kontext, Umsetzung. */
+  text: string
+  /** `owner/repo`. */
+  repo: string
+  branch?: string
+  state: AuftragState
+  /** The session working on it (`session_…`). */
+  owner?: string
+  createdBy: string
+  createdAt: number
+  updatedAt: number
+  /** A parent order (`a3`). */
+  eltern?: string
+  /** `PR #12` once there is one. */
+  pr?: string
+  abnahme: string[]
+  prio: 'hoch' | 'normal'
+  faellig?: number
+  verlauf: Verlauf[]
+  uebergabe?: Uebergabe
+  /** Why it is blocked or cancelled. */
+  grund?: string
+  model?: string
+}
+
+export type KommandoState = 'neu' | 'angenommen' | 'in_arbeit' | 'erledigt' | 'abgelehnt' | 'braucht_dich'
+
+/** A structured command the mod carries out itself, without the model. */
+export type KommandoAktion = {
+  typ: 'pausieren' | 'weiter' | 'archivieren' | 'nachricht'
+  /** The session it is about (`session_…`). */
+  session: string
+  text?: string
+}
+
+/** What the person tells the Chef vom Dienst from the office page. */
+export type Kommando = {
+  text: string
+  createdAt: number
+  state: KommandoState
+  /** `chef` from the page, or a session id. */
+  von: string
+  result?: string
+  auftraege?: string[]
+  /** The comment thread of a Sofort command, to answer there too. */
+  kommentar?: string
+  aktion?: KommandoAktion
+  updatedAt?: number
+  /** The session that took it (`cse_…`). */
+  by?: string
+}
+
+export type BesprechungState = 'offen' | 'zusammengefasst' | 'entschieden'
+
+export type Besprechung = {
+  thema: string
+  frage: string
+  /** Who summarizes: a session id, or `cvd`. */
+  moderator: string
+  /** Session ids. */
+  teilnehmer: string[]
+  state: BesprechungState
+  createdAt: number
+  bis: number
+  zusammenfassung?: string
+  entscheidung?: string
+  von: string
+}
+
+export type Beitrag = {
+  von: string
+  name?: string
+  at: number
+  these: string
+  empfehlung: string
+  risiko?: string
+  text?: string
+}
+
+export type AblageArt = 'notiz' | 'link' | 'datei'
+
+export type Ablage = {
+  art: AblageArt
+  titel: string
+  text?: string
+  url?: string
+  /** An id in the office page's asset store. */
+  asset?: string
+  repo?: string
+  tags: string[]
+  von: string
+  at: number
+}
+
+export type AutoMerge = 'nie' | 'gruen' | 'gruen_pruefer'
+
+/** What a repository allows without asking: `regeln/<repo>`. */
+export type Regeln = {
+  repo: string
+  autoMerge: AutoMerge
+  modelle: { cvd?: string; mitarbeiter?: string; pruefer?: string }
+  /** `claude/auftrag-{nr}-{name}` */
+  branchSchema: string
+  pruefbefehle: string[]
+  archivierenNachMerge: boolean
+  maxParallel: number
+  /** Things the person allowed in words, kept as text. */
+  freigaben: string[]
+  updatedAt?: number
 }
 
 declare module 'claude-code' {
