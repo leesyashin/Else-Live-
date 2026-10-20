@@ -13,20 +13,10 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 mod="$root/.claude/skills/buero"
 out="$root/buero-cloud-setup.sh"
 version="$(grep -oE '"version"[[:space:]]*:[[:space:]]*"[^"]+"' "$mod/.claude-plugin/plugin.json" | head -1 | grep -oE '[0-9][^"]*')"
-files=(
-  .claude-plugin/plugin.json
-  hooks/hooks.json
-  hooks/register.tsx
-  hooks/model.ts
-  hooks/art.ts
-  hooks/cloud.ts
-  hooks/post.ts
-  hooks/db.ts
-  hooks/auftraege.ts
-  hooks/besprechung.ts
-  hooks/dienst.ts
-  types/index.d.ts
-)
+# Everything the mod needs to load: the manifest, every hooks module and the
+# type contract. Collected by pattern, so a new module cannot be left out.
+files=(.claude-plugin/plugin.json hooks/hooks.json)
+while IFS= read -r file; do files+=("$file"); done < <(cd "$mod" && ls hooks/*.ts hooks/*.tsx types/*.d.ts | sort)
 
 {
   cat <<HEAD
