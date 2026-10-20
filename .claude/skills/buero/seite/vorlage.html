@@ -7,7 +7,8 @@
   /* Aufbau: eine Navigation an der Seite (auf dem Handy eine Leiste unten), ein Bereich zur Zeit. „Büro“ ist die Startseite:
      Kommando, Zahlen, das Pixel-Büro, daneben wer dich braucht und das Session-Detail. Farben sind die iOS-Systemfarben:
      Grau ist die Tint-Farbe für alles, was du anfassen oder beantworten sollst; Grün arbeitet, Türkis ist fertig, Rot hängt,
-     Mint ist der Chef vom Dienst in Bereitschaft. Achtpunktraster, abgerundete Rechtecke, keine Pillen. */
+     Mint ist der Chef vom Dienst in Bereitschaft. Achtpunktraster, abgerundete Rechtecke, keine Pillen. Immer hell, auch wenn
+     das Gerät dunkel eingestellt ist. */
   :root {
     --bg: #f2f2f7; --surface: #ffffff; --surface-2: #f2f2f7; --ink: #000000; --muted: #6e6e73; --line: #d1d1d6; --frame: #000000;
     --accent: #48484a; --accent-ink: #ffffff; --accent-soft: rgba(72, 72, 74, 0.12);
@@ -18,20 +19,7 @@
     --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
     --radius: 12px; --radius-s: 10px; --radius-btn: 10px; --radius-tag: 6px;
     --nav-h: 0px;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #000000; --surface: #1c1c1e; --surface-2: #2c2c2e; --ink: #ffffff; --muted: #98989d; --line: #38383a; --frame: #ffffff;
-      --accent: #c7c7cc; --accent-ink: #1c1c1e; --accent-soft: rgba(199, 199, 204, 0.18);
-      --work: #30d158; --wait: #c7c7cc; --wait-soft: rgba(199, 199, 204, 0.12); --done: #40c8e0; --bad: #ff453a; --ready: #63e6e2;
-      color-scheme: dark;
-    }
-  }
-  :root[data-theme="dark"] {
-    --bg: #000000; --surface: #1c1c1e; --surface-2: #2c2c2e; --ink: #ffffff; --muted: #98989d; --line: #38383a; --frame: #ffffff;
-    --accent: #c7c7cc; --accent-ink: #1c1c1e; --accent-soft: rgba(199, 199, 204, 0.18);
-    --work: #30d158; --wait: #c7c7cc; --wait-soft: rgba(199, 199, 204, 0.12); --done: #40c8e0; --bad: #ff453a; --ready: #63e6e2;
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   [hidden] { display: none !important; }
@@ -202,7 +190,7 @@
     transition: transform 160ms var(--ease-out), filter 160ms ease, background-color 160ms ease;
   }
   .btn:active { transform: scale(0.97); }
-  @media (hover: hover) and (pointer: fine) { .btn:hover { filter: brightness(0.94); } :root[data-theme="dark"] .btn:hover { filter: brightness(1.12); } }
+  @media (hover: hover) and (pointer: fine) { .btn:hover { filter: brightness(0.94); } }
   a.btn { display: inline-flex; align-items: center; text-decoration: none; }
   .btn.quiet { background: var(--surface-2); color: var(--accent); }
   .btn.small { padding: 6px 12px; min-height: 32px; font-size: 14px; border-radius: 8px; }
@@ -522,18 +510,21 @@
         <section class="panel" id="rules">
           <div class="panel-head">
             <h2 id="rulesTitle">Regeln</h2>
-            <span class="hint">Was ein Repo ohne Nachfrage erlaubt.</span>
+            <span class="hint">Was ein Repo ohne Nachfrage erlaubt. Je Repo ein Satz Regeln; die Auswahl zeigt die Repos deiner Sessions und Aufträge.</span>
           </div>
           <form class="form" id="rulesForm">
-            <label class="field"><span>Repo</span><input type="text" id="rfRepo" list="repoList" placeholder="owner/repo"></label>
             <div class="two">
-              <label class="field"><span>Merge</span><select id="rfMerge"><option value="nie">nie automatisch</option><option value="gruen">bei grüner CI</option><option value="gruen_pruefer">bei grüner CI und Prüfer-Befund</option></select></label>
-              <label class="field"><span>Höchstens parallele Sessions</span><input type="number" id="rfMax" min="1" max="20" value="4"></label>
+              <label class="field"><span>Repo</span><select id="rfRepo"><option value="__neu">anderes Repo …</option></select></label>
+              <label class="field" id="rfRepoNeuField" hidden><span>Neues Repo (owner/repo)</span><input type="text" id="rfRepoNeu" placeholder="owner/repo"></label>
             </div>
             <div class="two">
-              <label class="field"><span>Modell Chef vom Dienst</span><input type="text" id="rfCvd" placeholder="claude-opus-5-5"></label>
-              <label class="field"><span>Modell Mitarbeiter</span><input type="text" id="rfMit" placeholder="claude-opus-5-5"></label>
-              <label class="field"><span>Modell Prüfer</span><input type="text" id="rfPru" placeholder="claude-sonnet-5-5"></label>
+              <label class="field"><span>Automatisch mergen</span><select id="rfMerge"><option value="nie">nie automatisch</option><option value="gruen">bei grüner CI</option><option value="gruen_pruefer">bei grüner CI und Prüfer-Befund</option></select></label>
+              <label class="field"><span>Höchstens parallele Sessions</span><select id="rfMax"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4" selected>4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select></label>
+            </div>
+            <div class="two">
+              <label class="field"><span>Modell Chef vom Dienst</span><select id="rfCvd"><option value="claude-opus-5-5">Opus 5.5</option><option value="claude-sonnet-5-5">Sonnet 5.5</option><option value="claude-haiku-5-5">Haiku 5.5</option><option value="claude-fable-5-1">Fable 5.1</option></select></label>
+              <label class="field"><span>Modell Mitarbeiter</span><select id="rfMit"><option value="claude-opus-5-5">Opus 5.5</option><option value="claude-sonnet-5-5">Sonnet 5.5</option><option value="claude-haiku-5-5">Haiku 5.5</option><option value="claude-fable-5-1">Fable 5.1</option></select></label>
+              <label class="field"><span>Modell Prüfer</span><select id="rfPru"><option value="claude-opus-5-5">Opus 5.5</option><option value="claude-sonnet-5-5">Sonnet 5.5</option><option value="claude-haiku-5-5">Haiku 5.5</option><option value="claude-fable-5-1">Fable 5.1</option></select></label>
             </div>
             <label class="field"><span>Branch-Schema</span><input type="text" id="rfBranch" placeholder="claude/auftrag-{nr}-{name}"></label>
             <label class="field"><span>Prüfbefehle, eine Zeile je Befehl</span><textarea id="rfPruef" placeholder="npm run check&#10;npm test"></textarea></label>
@@ -1786,15 +1777,32 @@
 
     // The rules.
 
+    /** Selects a value in a select; a value the list does not know is added, so saved rules always show. */
+    function setSelect(select, value) {
+      if (value === '' || value === undefined) { select.selectedIndex = 0; return; }
+      if (![...select.options].some(option => option.value === value)) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        select.append(option);
+      }
+      select.value = value;
+    }
+
+    /** The repo the rules form is about: the chosen one, or the one typed for a repo the office does not know yet. */
+    function rulesRepoChosen() {
+      return el('rfRepo').value === '__neu' ? el('rfRepoNeu').value.trim() : el('rfRepo').value;
+    }
+
     function fillRules() {
       const repo = state.rulesRepo;
       const data = repo ? state.regeln.get(Office.regelnId(repo)) : undefined;
       const r = Office.regelnOf(data, repo || '');
       el('rfMerge').value = r.autoMerge;
-      el('rfMax').value = String(r.maxParallel);
-      el('rfCvd').value = r.modelle.cvd || '';
-      el('rfMit').value = r.modelle.mitarbeiter || '';
-      el('rfPru').value = r.modelle.pruefer || '';
+      setSelect(el('rfMax'), String(r.maxParallel));
+      setSelect(el('rfCvd'), r.modelle.cvd || '');
+      setSelect(el('rfMit'), r.modelle.mitarbeiter || '');
+      setSelect(el('rfPru'), r.modelle.pruefer || '');
       el('rfBranch').value = r.branchSchema;
       el('rfPruef').value = r.pruefbefehle.join('\n');
       el('rfArchiv').checked = r.archivierenNachMerge;
@@ -1803,16 +1811,34 @@
     }
 
     function renderRules() {
-      if (state.rulesRepo === '' && repos().length > 0) {
-        state.rulesRepo = repos()[0];
-        el('rfRepo').value = state.rulesRepo;
+      const select = el('rfRepo');
+      const list = repos();
+      const have = [...select.options].map(option => option.value).filter(value => value !== '__neu');
+      if (have.join('|') !== list.join('|')) {
+        const chosen = select.value;
+        select.replaceChildren(...list.map(repo => {
+          const option = document.createElement('option');
+          option.value = repo;
+          option.textContent = repo;
+          return option;
+        }));
+        const other = document.createElement('option');
+        other.value = '__neu';
+        other.textContent = 'anderes Repo …';
+        select.append(other);
+        select.value = list.includes(chosen) ? chosen : (list.includes(state.rulesRepo) ? state.rulesRepo : (list[0] || '__neu'));
+      }
+      if (state.rulesRepo === '' && list.length > 0) {
+        state.rulesRepo = list[0];
+        select.value = state.rulesRepo;
         fillRules();
       }
+      el('rfRepoNeuField').hidden = select.value !== '__neu';
       el('rfSave').disabled = state.db === null;
     }
 
     async function saveRules() {
-      const repo = el('rfRepo').value.trim();
+      const repo = rulesRepoChosen();
       if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw Object.assign(new Error('Repo als owner/repo angeben.'), { code: 'repo' });
       const lines = value => value.split('\n').map(line => line.trim()).filter(Boolean);
       const doc = {
@@ -2148,7 +2174,13 @@
       act(el('sfSave'), el('sfResult'), addToShelf);
     });
     el('rfRepo').addEventListener('change', () => {
-      state.rulesRepo = el('rfRepo').value.trim();
+      el('rfRepoNeuField').hidden = el('rfRepo').value !== '__neu';
+      state.rulesRepo = rulesRepoChosen();
+      if (el('rfRepo').value === '__neu') el('rfRepoNeu').focus();
+      fillRules();
+    });
+    el('rfRepoNeu').addEventListener('change', () => {
+      state.rulesRepo = rulesRepoChosen();
       fillRules();
     });
     el('rulesForm').addEventListener('submit', event => {
