@@ -6,12 +6,12 @@
 <style>
   /* Aufbau: eine Navigation an der Seite (auf dem Handy eine Leiste unten), ein Bereich zur Zeit. „Büro“ ist die Startseite:
      Kommando, Zahlen, das Pixel-Büro, daneben wer dich braucht und das Session-Detail. Farben sind die iOS-Systemfarben:
-     Blau ist die Tint-Farbe für alles, was du anfassen oder beantworten sollst; Grün arbeitet, Türkis ist fertig, Rot hängt,
-     Grau ist der Chef vom Dienst in Bereitschaft. Achtpunktraster, abgerundete Rechtecke, keine Pillen. */
+     Grau ist die Tint-Farbe für alles, was du anfassen oder beantworten sollst; Grün arbeitet, Türkis ist fertig, Rot hängt,
+     Mint ist der Chef vom Dienst in Bereitschaft. Achtpunktraster, abgerundete Rechtecke, keine Pillen. */
   :root {
     --bg: #f2f2f7; --surface: #ffffff; --surface-2: #f2f2f7; --ink: #000000; --muted: #6e6e73; --line: #d1d1d6; --frame: #000000;
-    --accent: #007aff; --accent-ink: #ffffff; --accent-soft: rgba(0, 122, 255, 0.12);
-    --work: #34c759; --wait: #007aff; --wait-soft: rgba(0, 122, 255, 0.1); --done: #30b0c7; --bad: #ff3b30; --ready: #8e8e93;
+    --accent: #48484a; --accent-ink: #ffffff; --accent-soft: rgba(72, 72, 74, 0.12);
+    --work: #34c759; --wait: #48484a; --wait-soft: rgba(72, 72, 74, 0.08); --done: #30b0c7; --bad: #ff3b30; --ready: #00c7be;
     --font-display: "Silkscreen", ui-monospace, "Cascadia Mono", monospace;
     --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, "Segoe UI", sans-serif;
     --font-data: ui-monospace, "SF Mono", "IBM Plex Mono", Menlo, Consolas, monospace;
@@ -22,15 +22,15 @@
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #000000; --surface: #1c1c1e; --surface-2: #2c2c2e; --ink: #ffffff; --muted: #98989d; --line: #38383a; --frame: #ffffff;
-      --accent: #0a84ff; --accent-ink: #ffffff; --accent-soft: rgba(10, 132, 255, 0.2);
-      --work: #30d158; --wait: #0a84ff; --wait-soft: rgba(10, 132, 255, 0.16); --done: #40c8e0; --bad: #ff453a; --ready: #8e8e93;
+      --accent: #c7c7cc; --accent-ink: #1c1c1e; --accent-soft: rgba(199, 199, 204, 0.18);
+      --work: #30d158; --wait: #c7c7cc; --wait-soft: rgba(199, 199, 204, 0.12); --done: #40c8e0; --bad: #ff453a; --ready: #63e6e2;
       color-scheme: dark;
     }
   }
   :root[data-theme="dark"] {
     --bg: #000000; --surface: #1c1c1e; --surface-2: #2c2c2e; --ink: #ffffff; --muted: #98989d; --line: #38383a; --frame: #ffffff;
-    --accent: #0a84ff; --accent-ink: #ffffff; --accent-soft: rgba(10, 132, 255, 0.2);
-    --work: #30d158; --wait: #0a84ff; --wait-soft: rgba(10, 132, 255, 0.16); --done: #40c8e0; --bad: #ff453a; --ready: #8e8e93;
+    --accent: #c7c7cc; --accent-ink: #1c1c1e; --accent-soft: rgba(199, 199, 204, 0.18);
+    --work: #30d158; --wait: #c7c7cc; --wait-soft: rgba(199, 199, 204, 0.12); --done: #40c8e0; --bad: #ff453a; --ready: #63e6e2;
     color-scheme: dark;
   }
 
@@ -158,14 +158,24 @@
   .row[aria-current="true"] { background: var(--accent-soft); }
   .row.child { padding-left: 26px; }
   .row:focus-visible, .btn:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible, .filter:focus-visible, .card:focus-visible, .linkish:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .dot { width: 10px; height: 10px; align-self: center; border-radius: 50%; }
+  .dot { width: 10px; height: 10px; align-self: center; border-radius: 50%; background: var(--muted); }
+  .dot[data-mood="arbeitet"] { background: var(--work); }
+  .dot[data-mood="fertig"] { background: var(--done); }
+  .dot[data-mood="frage"], .dot[data-mood="freigabe"] { background: var(--accent); }
+  .dot[data-mood="fehler"], .dot[data-mood="haengt"] { background: var(--bad); }
+  .dot[data-mood="bereit"] { background: var(--ready); }
   .row strong { font-weight: 600; overflow-wrap: anywhere; }
   .row small { grid-column: 2; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
   .empty { margin: 0; color: var(--muted); font-size: 14px; }
 
   .detail-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
   .detail-head h2 { font-size: 20px; letter-spacing: -0.02em; }
-  .pill { font-size: 12px; font-weight: 600; padding: 3px 9px; color: #fff; border-radius: var(--radius-tag); }
+  .pill { font-size: 12px; font-weight: 600; padding: 3px 9px; color: var(--accent-ink); background: var(--accent); border-radius: var(--radius-tag); }
+  .pill[data-mood="arbeitet"] { background: var(--work); color: #fff; }
+  .pill[data-mood="fertig"] { background: var(--done); color: #fff; }
+  .pill[data-mood="fehler"], .pill[data-mood="haengt"] { background: var(--bad); color: #fff; }
+  .pill[data-mood="neu"], .pill[data-mood="weg"] { background: var(--muted); color: #fff; }
+  .pill[data-mood="bereit"] { background: var(--ready); color: #fff; }
   .task { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
   .facts { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; font-size: 14px; }
   .facts dt { color: var(--muted); }
@@ -824,7 +834,7 @@
       button.dataset.id = worker.id;
       const dot = document.createElement('span');
       dot.className = 'dot';
-      dot.style.background = Office.MOOD_COLOR[worker.mood];
+      dot.dataset.mood = worker.mood;
       const name = document.createElement('strong');
       name.textContent = `${isChild ? '└ ' : ''}${worker.name} · ${worker.project}${worker.rolle === 'cvd' ? ' · CvD' : ''}`;
       const line = document.createElement('small');
@@ -1024,7 +1034,7 @@
       const desk = deskOf(worker.id);
       el('dName').textContent = worker.name;
       el('dPill').textContent = labelOf(worker);
-      el('dPill').style.background = Office.MOOD_COLOR[worker.mood];
+      el('dPill').dataset.mood = worker.mood;
       el('dTask').textContent = worker.task || 'Ohne Titel';
       el('dAsk').hidden = question === '';
       el('dAskText').textContent = question;
