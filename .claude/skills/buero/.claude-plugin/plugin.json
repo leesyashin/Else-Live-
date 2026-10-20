@@ -1,6 +1,6 @@
 {
   "name": "buero",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "author": { "name": "Vincent (leesyashin)" },
   "description": "Pixel-Art-Büro: deine Claude Code Sessions als Mitarbeiter an Schreibtischen, mit Chefbüro für Fragen, Briefkasten für deine Antworten, Logbuch und Absprache zwischen den Sessions.",
   "types": "./types/index.d.ts",

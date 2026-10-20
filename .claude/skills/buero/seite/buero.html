@@ -2,81 +2,107 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-  /* Layout: the command bar leads, the pixel office is the stage, the boards follow; a rail sits beside it on wide screens and below it on phones. */
+  /* Aufbau: eine Navigation an der Seite (auf dem Handy eine Leiste unten), ein Bereich zur Zeit. „Büro“ ist die Startseite:
+     Kommando, Zahlen, das Pixel-Büro, daneben wer dich braucht und das Session-Detail. Farben sind die iOS-Systemfarben:
+     Grau ist die Tint-Farbe für alles, was du anfassen oder beantworten sollst; Grün arbeitet, Türkis ist fertig, Rot hängt,
+     Mint ist der Chef vom Dienst in Bereitschaft. Achtpunktraster, abgerundete Rechtecke, keine Pillen. */
   :root {
-    --bg: #e8ecf2;
-    --surface: #ffffff;
-    --ink: #1a2132;
-    --muted: #586174;
-    --line: #cdd4e0;
-    --frame: #2d2d38;
-    --accent: #a8841a;
-    --accent-ink: #1a1400;
-    --accent-soft: #f4e7b8;
-    --work: #2e8b45;
-    --wait: #c06f00;
-    --done: #3a6fc4;
-    --bad: #c62828;
-    --ready: #00867a;
+    --bg: #f2f2f7; --surface: #ffffff; --surface-2: #f2f2f7; --ink: #000000; --muted: #6e6e73; --line: #d1d1d6; --frame: #000000;
+    --accent: #48484a; --accent-ink: #ffffff; --accent-soft: rgba(72, 72, 74, 0.12);
+    --work: #34c759; --wait: #48484a; --wait-soft: rgba(72, 72, 74, 0.08); --done: #30b0c7; --bad: #ff3b30; --ready: #00c7be;
     --font-display: "Silkscreen", ui-monospace, "Cascadia Mono", monospace;
-    --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-    --font-data: "IBM Plex Mono", ui-monospace, "Cascadia Mono", monospace;
+    --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, "Segoe UI", sans-serif;
+    --font-data: ui-monospace, "SF Mono", "IBM Plex Mono", Menlo, Consolas, monospace;
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --radius: 12px; --radius-s: 10px; --radius-btn: 10px; --radius-tag: 6px;
+    --nav-h: 0px;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #0f1420; --surface: #172033; --ink: #e5e9f1; --muted: #9aa4b8; --line: #2a3550;
-      --frame: #050608; --accent: #e0bd45; --accent-ink: #1a1400; --accent-soft: #3a3214;
-      --work: #5cc46f; --wait: #f0a030; --done: #7aa7f0; --bad: #ff6b6b; --ready: #2ee6c8;
+      --bg: #000000; --surface: #1c1c1e; --surface-2: #2c2c2e; --ink: #ffffff; --muted: #98989d; --line: #38383a; --frame: #ffffff;
+      --accent: #c7c7cc; --accent-ink: #1c1c1e; --accent-soft: rgba(199, 199, 204, 0.18);
+      --work: #30d158; --wait: #c7c7cc; --wait-soft: rgba(199, 199, 204, 0.12); --done: #40c8e0; --bad: #ff453a; --ready: #63e6e2;
       color-scheme: dark;
     }
   }
   :root[data-theme="dark"] {
-    --bg: #0f1420; --surface: #172033; --ink: #e5e9f1; --muted: #9aa4b8; --line: #2a3550;
-    --frame: #050608; --accent: #e0bd45; --accent-ink: #1a1400; --accent-soft: #3a3214;
-    --work: #5cc46f; --wait: #f0a030; --done: #7aa7f0; --bad: #ff6b6b; --ready: #2ee6c8;
+    --bg: #000000; --surface: #1c1c1e; --surface-2: #2c2c2e; --ink: #ffffff; --muted: #98989d; --line: #38383a; --frame: #ffffff;
+    --accent: #c7c7cc; --accent-ink: #1c1c1e; --accent-soft: rgba(199, 199, 204, 0.18);
+    --work: #30d158; --wait: #c7c7cc; --wait-soft: rgba(199, 199, 204, 0.12); --done: #40c8e0; --bad: #ff453a; --ready: #63e6e2;
     color-scheme: dark;
   }
 
   [hidden] { display: none !important; }
-  body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.45; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
   .app {
-    max-width: 1240px; margin: 0 auto;
-    padding-block: 18px 32px;
+    max-width: 1280px; margin: 0 auto;
+    padding-block: 16px calc(48px + var(--nav-h));
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
     display: grid; gap: 16px;
   }
-  .bar { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
-  .brand { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 34px; letter-spacing: 0.04em; line-height: 1; }
-  .brand small { display: block; margin-top: 6px; font-family: var(--font-body); font-weight: 500; font-size: 13px; letter-spacing: 0.02em; color: var(--muted); }
-  .live { margin: 0; display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-data); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .live::before { content: ""; width: 8px; height: 8px; background: var(--muted); }
+  .bar { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+  .brand { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 24px; letter-spacing: 0.04em; line-height: 1; display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+  .brand small { font-family: var(--font-body); font-weight: 500; font-size: 13px; letter-spacing: 0; color: var(--muted); }
+  .status { display: grid; gap: 2px; justify-items: end; }
+  .live { margin: 0; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .live::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
   .live[data-state="live"]::before { background: var(--work); }
   .live[data-state="problem"]::before { background: var(--bad); }
-  .live[data-state="stale"]::before { background: var(--wait); }
-  @media (prefers-reduced-motion: no-preference) {
-    .live[data-state="live"]::before { animation: blink 2s steps(2) infinite; }
-  }
+  .live[data-state="stale"]::before { background: var(--accent); }
+  @media (prefers-reduced-motion: no-preference) { .live[data-state="live"]::before { animation: blink 2s steps(2) infinite; } }
   @keyframes blink { 50% { opacity: 0.25; } }
+  .courier { margin: 0; font-size: 12px; color: var(--muted); }
+  .courier[data-state="off"] { color: var(--accent); }
+  .offline { margin: 0; padding: 10px 14px; background: var(--bad); color: #fff; font-size: 13px; font-weight: 600; border-radius: var(--radius-s); }
 
-  .offline { margin: 0; padding: 8px 12px; background: var(--bad); color: #fff; font-size: 13px; font-weight: 600; }
+  /* Navigation und Bereiche. */
+  .shell { display: grid; gap: 16px; align-items: start; }
+  @media (min-width: 900px) {
+    .shell { grid-template-columns: 224px minmax(0, 1fr); }
+    .nav { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); }
+    .nav .more { display: none; }
+  }
+  .nav ul { display: grid; gap: 2px; margin: 0; padding: 8px; list-style: none; background: var(--surface); border-radius: var(--radius); }
+  .nav a { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: baseline; padding: 10px 12px; border-radius: 8px; color: var(--ink); text-decoration: none; font-weight: 500; font-size: 15px; transition: background-color 120ms ease; }
+  .nav a .n { font-family: var(--font-data); font-weight: 400; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .nav a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .nav a[aria-current="page"] .n { color: var(--accent); }
+  .nav a .n[data-hot] { color: var(--accent); font-weight: 600; }
+  @media (hover: hover) and (pointer: fine) { .nav a:hover { background: var(--surface-2); } .nav a[aria-current="page"]:hover { background: var(--accent-soft); } }
+  .views { display: grid; min-width: 0; }
+  .view { display: grid; gap: 16px; min-width: 0; align-content: start; }
+  .view h2.view-title { font-size: 22px; letter-spacing: -0.02em; }
+  @media (max-width: 899px) {
+    :root { --nav-h: 64px; }
+    .nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; padding: 0 max(8px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(8px, env(safe-area-inset-left, 0px)); background-color: color-mix(in srgb, var(--surface) 86%, transparent); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--line); }
+    .nav ul { grid-template-columns: repeat(4, minmax(0, 1fr)); background: transparent; padding: 6px 0; border-radius: 0; }
+    .nav li:nth-child(n + 5) { display: none; }
+    .nav a { grid-template-columns: 1fr; text-align: center; padding: 8px 2px; font-size: 12px; gap: 0; }
+    .nav a .n { display: none; }
+    .nav a .long { display: none; }
+    .nav a[aria-current="page"] { background: transparent; }
+  }
+  .more-list { display: grid; gap: 2px; margin: 0; padding: 8px; list-style: none; background: var(--surface); border-radius: var(--radius); }
+  .more-list a { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 12px; border-radius: 8px; color: var(--ink); text-decoration: none; font-weight: 500; }
+  .more-list a::after { content: "›"; color: var(--muted); }
 
-  /* The command bar: what you tell the Chef vom Dienst, and what became of it. */
-  .cmdbar { background: var(--surface); border: 3px solid var(--frame); box-shadow: 5px 5px 0 var(--line); padding: 12px 14px; display: grid; gap: 10px; }
-  .cmdbar h2 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 14px; letter-spacing: 0.06em; text-transform: uppercase; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; align-items: baseline; }
-  .cmdbar h2 span { font-family: var(--font-body); font-size: 12px; letter-spacing: 0; text-transform: none; color: var(--muted); font-weight: 500; }
-  .cmdbar h2 span[data-state="on"] { color: var(--ready); }
-  .cmdbar h2 span[data-state="off"] { color: var(--wait); }
+  /* Kommando: was du dem Chef vom Dienst sagst, und was daraus wurde. */
+  .cmdbar { background: var(--surface); border-radius: var(--radius); padding: 16px; display: grid; gap: 12px; }
+  .cmdbar h2 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; align-items: baseline; }
+  .cmdbar h2 span { font-size: 12.5px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+  .cmdbar h2 span[data-state="on"] { color: var(--work); }
+  .cmdbar h2 span[data-state="off"] { color: var(--muted); }
   .cmd-form { display: grid; gap: 8px; }
-  .cmd-form textarea { min-height: 56px; font-size: 16px; }
+  .cmd-form textarea { min-height: 48px; font-size: 16px; }
   .cmd-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .btn.sofort { background: var(--wait); color: #fff; }
-  .chat { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-  .chat li { display: grid; gap: 3px; padding: 7px 10px; border-left: 3px solid var(--line); background: var(--bg); font-size: 14px; }
-  .chat li[data-state="neu"], .chat li[data-state="angenommen"], .chat li[data-state="in_arbeit"] { border-left-color: var(--accent); }
-  .chat li[data-state="braucht_dich"] { border-left-color: var(--wait); background: var(--accent-soft); }
+  .btn.sofort { background: var(--accent-soft); color: var(--accent); }
+  .chat { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .chat li { display: grid; gap: 3px; padding: 10px 12px; border-left: 3px solid var(--line); background: var(--surface-2); border-radius: var(--radius-s); font-size: 14px; }
+  .chat li[data-state="neu"], .chat li[data-state="angenommen"], .chat li[data-state="in_arbeit"] { border-left-color: var(--muted); }
+  .chat li[data-state="braucht_dich"] { border-left-color: var(--accent); background: var(--wait-soft); }
   .chat li[data-state="erledigt"] { border-left-color: var(--work); }
   .chat li[data-state="abgelehnt"] { border-left-color: var(--bad); }
   .chat .meta { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
@@ -84,138 +110,158 @@
   .chat .answer { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); }
   .chat .answer::before { content: "↳ "; color: var(--muted); }
   .chat .hint { font-size: 12px; }
-  @media (max-width: 979px) {
-    .cmdbar { position: sticky; top: 0; z-index: 5; box-shadow: 0 6px 0 var(--line); }
-    .cmdbar .chat li:nth-child(n + 4) { display: none; }
-    .cmdbar[data-all] .chat li:nth-child(n + 4) { display: grid; }
-  }
+  .cmdbar .chat li:nth-child(n + 4) { display: none; }
+  .cmdbar[data-all] .chat li:nth-child(n + 4) { display: grid; }
 
+  /* Die Zahlen. */
   .chips { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
-  .chip { background: var(--surface); border: 1px solid var(--line); padding: 10px 12px; display: grid; gap: 2px; }
-  .chip b { font-family: var(--font-display); font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums; }
-  .chip span { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  .chip { background: var(--surface); border-radius: var(--radius-s); padding: 10px 14px; display: grid; gap: 0; border: 1px solid transparent; }
+  .chip b { font-size: 24px; line-height: 1.1; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+  .chip span { font-size: 12px; letter-spacing: 0.02em; color: var(--muted); }
   .chip[data-kind="work"] b { color: var(--work); }
-  .chip[data-kind="wait"] b { color: var(--wait); }
+  .chip[data-kind="wait"] b { color: var(--accent); }
   .chip[data-kind="done"] b { color: var(--done); }
   .chip[data-kind="bad"] b { color: var(--bad); }
   .chip[data-kind="cost"] b { color: var(--ink); font-size: 20px; padding-top: 4px; }
-  .chip[data-kind="wait"][data-hot] { border-color: var(--wait); box-shadow: inset 0 -3px 0 var(--wait); }
+  .chip[data-kind="wait"][data-hot] { border-color: var(--accent); }
 
-  .layout { display: grid; gap: 16px; align-items: start; }
-  @media (min-width: 980px) { .layout { grid-template-columns: minmax(0, 1fr) 340px; } }
-
-  .stage { margin: 0; min-width: 0; position: relative; border: 4px solid var(--frame); box-shadow: 6px 6px 0 var(--line); background: #c9a67a; }
+  /* Die Bühne und daneben, wer dich braucht. */
+  .buero-grid { display: grid; gap: 16px; align-items: start; }
+  @media (min-width: 1100px) { .buero-grid { grid-template-columns: minmax(0, 1fr) 340px; } }
+  .main-col { display: grid; gap: 16px; min-width: 0; align-content: start; }
+  .rail { display: grid; gap: 16px; min-width: 0; }
+  .stage { margin: 0; min-width: 0; position: relative; border-radius: var(--radius); overflow: hidden; background: #c9a67a; }
   .stage svg { display: block; width: 100%; height: auto; }
   .stage .worker { cursor: pointer; }
-  .stage .worker:hover { filter: brightness(1.08); }
+  @media (hover: hover) and (pointer: fine) { .stage .worker:hover { filter: brightness(1.08); } }
   .stage .worker.is-selected { filter: drop-shadow(0 0 2px #ffe066) drop-shadow(0 0 1px #000); }
-  .stale { margin: 0; padding: 8px 12px; background: var(--accent-soft); color: var(--ink); border-bottom: 3px solid var(--wait); font-size: 14px; }
+  .stale { margin: 0; padding: 8px 12px; background: var(--wait-soft); color: var(--ink); border-bottom: 2px solid var(--accent); font-size: 14px; }
   .notice {
     position: absolute; left: 50%; top: 58%; transform: translate(-50%, -50%);
-    width: min(88%, 420px); margin: 0; padding: 14px 16px; display: grid; gap: 10px;
-    background: var(--surface); color: var(--ink); border: 3px solid var(--frame); box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.25);
+    width: min(88%, 420px); margin: 0; padding: 16px; display: grid; gap: 10px;
+    background: var(--surface); color: var(--ink); border-radius: var(--radius); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
     font-size: 14px;
   }
 
-  .rail { display: grid; gap: 16px; min-width: 0; }
-  .panel { background: var(--surface); border: 1px solid var(--line); padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
-  .panel h2 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 14px; letter-spacing: 0.06em; text-transform: uppercase; }
-  .panel.waiting { border-color: var(--wait); box-shadow: inset 4px 0 0 var(--wait); }
-  .panel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+  /* Panels, Listen, Zeilen. */
+  .panel { background: var(--surface); border-radius: var(--radius); padding: 16px; display: grid; gap: 12px; min-width: 0; }
+  .panel h2 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+  .panel.waiting { box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
   .list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
   .row {
     width: 100%; display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 2px 10px; align-items: baseline;
-    padding: 9px 8px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
+    padding: 9px 10px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 8px;
+    transition: background-color 120ms ease;
   }
-  .row:hover { background: var(--bg); }
+  @media (hover: hover) and (pointer: fine) { .row:hover { background: var(--surface-2); } }
   .row[aria-current="true"] { background: var(--accent-soft); }
-  .row.child { padding-left: 24px; }
-  .row:focus-visible, .btn:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible, .filter:focus-visible, .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .dot { width: 10px; height: 10px; align-self: center; }
+  .row.child { padding-left: 26px; }
+  .row:focus-visible, .btn:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible, .filter:focus-visible, .card:focus-visible, .linkish:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .dot { width: 10px; height: 10px; align-self: center; border-radius: 50%; background: var(--muted); }
+  .dot[data-mood="arbeitet"] { background: var(--work); }
+  .dot[data-mood="fertig"] { background: var(--done); }
+  .dot[data-mood="frage"], .dot[data-mood="freigabe"] { background: var(--accent); }
+  .dot[data-mood="fehler"], .dot[data-mood="haengt"] { background: var(--bad); }
+  .dot[data-mood="bereit"] { background: var(--ready); }
   .row strong { font-weight: 600; overflow-wrap: anywhere; }
   .row small { grid-column: 2; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
   .empty { margin: 0; color: var(--muted); font-size: 14px; }
 
   .detail-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
-  .detail-head h2 { font-size: 18px; text-transform: none; letter-spacing: 0.02em; }
-  .pill { font-size: 12px; font-weight: 600; padding: 2px 8px; color: #fff; }
+  .detail-head h2 { font-size: 20px; letter-spacing: -0.02em; }
+  .pill { font-size: 12px; font-weight: 600; padding: 3px 9px; color: var(--accent-ink); background: var(--accent); border-radius: var(--radius-tag); }
+  .pill[data-mood="arbeitet"] { background: var(--work); color: #fff; }
+  .pill[data-mood="fertig"] { background: var(--done); color: #fff; }
+  .pill[data-mood="fehler"], .pill[data-mood="haengt"] { background: var(--bad); color: #fff; }
+  .pill[data-mood="neu"], .pill[data-mood="weg"] { background: var(--muted); color: #fff; }
+  .pill[data-mood="bereit"] { background: var(--ready); color: #fff; }
   .task { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
   .facts { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; font-size: 14px; }
   .facts dt { color: var(--muted); }
   .facts dd { margin: 0; overflow-wrap: anywhere; }
   .facts dd.data { font-family: var(--font-data); font-size: 13px; font-variant-numeric: tabular-nums; }
   .facts dd .old { color: var(--bad); font-weight: 600; }
-  .ask { margin: 0; padding: 8px 10px; display: grid; gap: 4px; background: var(--accent-soft); border-left: 3px solid var(--wait); overflow-wrap: anywhere; }
-  .ask-head { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--wait); }
+  .ask { margin: 0; padding: 10px 12px; display: grid; gap: 4px; background: var(--wait-soft); border-left: 3px solid var(--accent); border-radius: var(--radius-s); overflow-wrap: anywhere; }
+  .ask-head { font-size: 11.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
   .ask p { margin: 0; white-space: pre-wrap; max-height: 16em; overflow-y: auto; }
-  .open-link { color: var(--ink); font-weight: 600; }
+  .open-link { color: var(--accent); font-weight: 600; }
   .compose { display: grid; gap: 8px; }
   .compose label { font-size: 13px; color: var(--muted); }
-  textarea, input[type="text"], input[type="number"], input[type="url"], select { width: 100%; box-sizing: border-box; padding: 9px 10px; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); }
+  textarea, input[type="text"], input[type="number"], input[type="url"], select {
+    width: 100%; box-sizing: border-box; padding: 10px 12px; font: inherit; font-size: 15px; color: var(--ink); background: var(--surface-2); border: 1px solid transparent; border-radius: var(--radius-btn);
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+  }
   textarea { min-height: 72px; resize: vertical; }
+  textarea:focus-visible, input:focus-visible, select:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  input[type="file"] { font: inherit; font-size: 14px; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .btn { font: inherit; font-weight: 600; padding: 9px 14px; min-height: 40px; cursor: pointer; border: 2px solid var(--frame); background: var(--accent); color: var(--accent-ink); box-shadow: 3px 3px 0 var(--frame); }
-  .btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--frame); }
-  a.btn { display: inline-block; text-decoration: none; }
-  .btn.quiet { background: var(--surface); color: var(--ink); }
-  .btn.small { padding: 5px 10px; min-height: 32px; font-size: 13px; box-shadow: 2px 2px 0 var(--frame); }
-  .btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: 3px 3px 0 var(--frame); }
+  .btn {
+    font: inherit; font-weight: 600; font-size: 15px; padding: 8px 16px; min-height: 40px; cursor: pointer; border: 0; border-radius: var(--radius-btn);
+    background: var(--accent); color: var(--accent-ink);
+    transition: transform 160ms var(--ease-out), filter 160ms ease, background-color 160ms ease;
+  }
+  .btn:active { transform: scale(0.97); }
+  @media (hover: hover) and (pointer: fine) { .btn:hover { filter: brightness(0.94); } :root[data-theme="dark"] .btn:hover { filter: brightness(1.12); } }
+  a.btn { display: inline-flex; align-items: center; text-decoration: none; }
+  .btn.quiet { background: var(--surface-2); color: var(--accent); }
+  .btn.small { padding: 6px 12px; min-height: 32px; font-size: 14px; border-radius: 8px; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
   .result { margin: 0; font-size: 13px; color: var(--muted); }
   .result[data-tone="bad"] { color: var(--bad); }
   .result[data-tone="good"] { color: var(--work); }
-  .hint { margin: 0; font-size: 12px; color: var(--muted); }
-
-  .status { display: grid; gap: 2px; justify-items: end; }
-  .courier { margin: 0; font-size: 12px; color: var(--muted); }
-  .courier[data-state="off"] { color: var(--wait); }
-  .main-col { display: grid; gap: 16px; min-width: 0; align-content: start; }
+  .hint { margin: 0; font-size: 12.5px; color: var(--muted); }
   .sub { margin: 0; font-size: 13px; font-weight: 600; }
-  .posts, .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .posts { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
   .posts li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: baseline; font-size: 14px; }
   .posts .text { overflow-wrap: anywhere; }
   .posts small { grid-column: 1 / -1; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-  .posts .reply { grid-column: 1 / -1; font-size: 13px; padding: 4px 8px; background: var(--bg); border-left: 3px solid var(--work); white-space: pre-wrap; overflow-wrap: anywhere; }
-  .state { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 1px 6px; border: 1px solid currentColor; white-space: nowrap; }
-  .state[data-state="neu"], .state[data-state="unterwegs"], .state[data-state="angenommen"], .state[data-state="in_arbeit"], .state[data-state="vergeben"] { color: var(--wait); }
+  .posts .reply { grid-column: 1 / -1; font-size: 13px; padding: 6px 10px; background: var(--surface-2); border-left: 3px solid var(--work); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .state { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 7px; border-radius: var(--radius-tag); background: var(--surface-2); white-space: nowrap; }
+  .state[data-state="neu"], .state[data-state="unterwegs"], .state[data-state="angenommen"], .state[data-state="in_arbeit"], .state[data-state="vergeben"] { color: var(--muted); }
   .state[data-state="zugestellt"], .state[data-state="erledigt"], .state[data-state="fertig"], .state[data-state="entschieden"] { color: var(--work); }
   .state[data-state="fehler"], .state[data-state="unklar"], .state[data-state="abgelehnt"], .state[data-state="blockiert"], .state[data-state="abgebrochen"] { color: var(--bad); }
-  .state[data-state="braucht_dich"] { color: var(--wait); background: var(--accent-soft); }
+  .state[data-state="braucht_dich"] { color: var(--accent-ink); background: var(--accent); }
   .state[data-state="review"], .state[data-state="zusammengefasst"] { color: var(--done); }
   .state[data-state="offen"] { color: var(--muted); }
-  .linkish { font: inherit; font-size: 12px; color: var(--muted); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; justify-self: start; }
+  .linkish { font: inherit; font-size: 13px; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; justify-self: start; }
+  .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
   .log li { display: grid; grid-template-columns: 3.4em 10px minmax(0, 1fr); gap: 2px 8px; align-items: baseline; font-size: 14px; }
   .log time { font-family: var(--font-data); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .log .kind { width: 10px; height: 10px; align-self: center; background: var(--muted); }
+  .log .kind { width: 10px; height: 10px; align-self: center; border-radius: 50%; background: var(--muted); }
   .log .kind[data-kind="arbeitet"] { background: var(--work); }
-  .log .kind[data-kind="frage"], .log .kind[data-kind="stoerung"] { background: var(--wait); }
+  .log .kind[data-kind="frage"], .log .kind[data-kind="stoerung"] { background: var(--accent); }
   .log .kind[data-kind="fertig"], .log .kind[data-kind="gemergt"] { background: var(--done); }
   .log .kind[data-kind="fehler"] { background: var(--bad); }
-  .log .kind[data-kind="pr"], .log .kind[data-kind="nachricht"], .log .kind[data-kind="post"], .log .kind[data-kind="kommando"] { background: var(--accent); }
+  .log .kind[data-kind="pr"], .log .kind[data-kind="nachricht"], .log .kind[data-kind="post"], .log .kind[data-kind="kommando"] { background: var(--ink); }
   .log .kind[data-kind="auftrag"], .log .kind[data-kind="uebergabe"], .log .kind[data-kind="besprechung"], .log .kind[data-kind="ablage"], .log .kind[data-kind="regel"] { background: var(--ready); }
   .log .line { min-width: 0; overflow-wrap: anywhere; }
   .log .line b { font-weight: 600; }
   .log .line .repo { color: var(--muted); font-size: 13px; }
-  .log li.day { grid-template-columns: minmax(0, 1fr); padding-top: 6px; border-top: 1px solid var(--line); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  .log li.day { grid-template-columns: minmax(0, 1fr); padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
   .log li.day:first-child { border-top: 0; padding-top: 0; }
 
-  /* Boards: orders, meetings, the shelf, the rules. */
+  /* Bretter: Aufträge, Besprechungen, Ablage, Regeln. */
   .filters { display: flex; flex-wrap: wrap; gap: 6px; }
-  .filter { font: inherit; font-size: 13px; padding: 6px 12px; min-height: 36px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
-  .filter[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); font-weight: 600; }
+  .filter { font: inherit; font-size: 14px; font-weight: 500; padding: 6px 12px; min-height: 32px; border: 0; background: var(--surface-2); color: var(--ink); cursor: pointer; border-radius: 8px; transition: transform 160ms var(--ease-out), background-color 160ms ease; }
+  .filter:active { transform: scale(0.97); }
+  .filter[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
   .filter b { font-family: var(--font-data); font-weight: 500; margin-left: 4px; color: var(--muted); }
+  .filter[aria-pressed="true"] b { color: rgba(255, 255, 255, 0.8); }
   .kanban { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
   .col { display: grid; gap: 6px; align-content: start; min-width: 0; }
-  .col h3 { margin: 0; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; }
+  .col h3 { margin: 0; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; font-weight: 600; }
   .cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-  .card { width: 100%; text-align: left; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-left-width: 4px; padding: 8px 10px; display: grid; gap: 3px; cursor: pointer; font-size: 13px; }
-  .card[aria-current="true"] { border-color: var(--accent); background: var(--accent-soft); }
+  .card { width: 100%; text-align: left; font: inherit; color: inherit; background: var(--surface-2); border: 0; border-left: 4px solid var(--line); border-radius: var(--radius-s); padding: 10px 12px; display: grid; gap: 3px; cursor: pointer; font-size: 13px; transition: transform 160ms var(--ease-out), background-color 120ms ease; }
+  .card:active { transform: scale(0.98); }
+  .card[aria-current="true"] { background: var(--accent-soft); border-left-color: var(--accent); }
   .card b { font-weight: 600; overflow-wrap: anywhere; }
   .card small { color: var(--muted); overflow-wrap: anywhere; }
-  .card[data-prio="hoch"] { border-left-color: var(--wait); }
+  .card[data-prio="hoch"] { border-left-color: var(--accent); }
   .card[data-state="blockiert"], .card[data-state="abgebrochen"] { border-left-color: var(--bad); }
   .card[data-state="in_arbeit"] { border-left-color: var(--work); }
   .card[data-state="review"], .card[data-state="fertig"] { border-left-color: var(--done); }
-  .detail-box { display: grid; gap: 8px; padding: 12px; background: var(--bg); border: 1px solid var(--line); border-top: 3px solid var(--accent); }
+  .detail-box { display: grid; gap: 8px; padding: 14px; background: var(--surface-2); border-radius: var(--radius-s); border-top: 3px solid var(--accent); }
   .detail-box h3 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
   .detail-box .meta { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
   .prose { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; max-height: 24em; overflow-y: auto; }
@@ -225,28 +271,27 @@
   .field > span { font-weight: 600; }
   .two { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
   .check { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--ink); }
-  .check input { width: 20px; height: 20px; }
-  .meeting { display: grid; gap: 6px; padding: 10px; background: var(--bg); border: 1px solid var(--line); }
+  .check input { width: 20px; height: 20px; accent-color: var(--accent); }
+  .meeting { display: grid; gap: 8px; padding: 12px; background: var(--surface-2); border-radius: var(--radius-s); }
   .meeting header { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; justify-content: space-between; }
   .meeting h3 { margin: 0; font-size: 15px; overflow-wrap: anywhere; }
   .meeting .q { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
-  .beitrag { display: grid; gap: 2px; padding: 8px 10px; background: var(--surface); border-left: 3px solid var(--done); font-size: 14px; overflow-wrap: anywhere; }
+  .beitrag { display: grid; gap: 2px; padding: 8px 10px; background: var(--surface); border-left: 3px solid var(--done); border-radius: 6px; font-size: 14px; overflow-wrap: anywhere; }
   .beitrag b { font-size: 13px; }
-  .shelf-item { display: grid; gap: 6px; padding: 10px; background: var(--bg); border: 1px solid var(--line); font-size: 14px; }
+  .shelf-item { display: grid; gap: 6px; padding: 12px; background: var(--surface-2); border-radius: var(--radius-s); font-size: 14px; }
   .shelf-item header { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
   .shelf-item header b { overflow-wrap: anywhere; }
   .shelf-item .tags { color: var(--muted); font-size: 12px; }
-  .shelf-item img, .shelf-item video { max-width: 100%; height: auto; max-height: 320px; display: block; border: 1px solid var(--line); background: #000; }
-  .shelf-item a { color: var(--ink); overflow-wrap: anywhere; }
+  .shelf-item img, .shelf-item video { max-width: 100%; height: auto; max-height: 320px; display: block; border-radius: 8px; background: #000; }
+  .shelf-item a { color: var(--accent); overflow-wrap: anywhere; }
   .costs table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .costs th, .costs td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  .costs th, .costs td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); }
   .costs td.num, .costs th.num { text-align: right; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
   .costs tr:last-child td { border-bottom: 0; font-weight: 600; }
 
   @media (max-width: 560px) {
     .chips { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .status { justify-items: start; }
-    .brand { font-size: 28px; }
     .two { grid-template-columns: 1fr; }
     .kanban { grid-template-columns: 1fr; }
   }
@@ -263,229 +308,268 @@
     </div>
   </header>
 
-  <section class="cmdbar" id="cmdbar" aria-labelledby="cmdTitle">
-    <h2 id="cmdTitle">Kommando <span id="cvdLine" data-state="off">Chef vom Dienst: noch kein Stand</span></h2>
-    <form class="cmd-form" id="cmdForm">
-      <label for="cmdText" class="hint">Sag dem Chef vom Dienst, was passieren soll. Er legt Aufträge an, holt Sessions, verteilt, prüft und meldet sich, wenn er dich braucht.</label>
-      <textarea id="cmdText" name="cmdText" placeholder="z. B. Hol jemanden für die Login-Seite im Repo asker." autocomplete="off"></textarea>
-      <div class="cmd-actions">
-        <button class="btn" id="cmdSend" type="submit">Senden</button>
-        <button class="btn sofort" id="cmdSofort" type="button" title="Weckt den Chef vom Dienst über einen Kommentar der Seite">Sofort</button>
-        <button class="btn quiet small" id="cmdFormulate" type="button" hidden>Ausformulieren</button>
-        <span class="result" id="cmdResult" hidden></span>
-      </div>
-    </form>
-    <ul class="chat" id="cmdList"></ul>
-    <p class="empty" id="cmdEmpty">Noch kein Kommando. Was du hier schreibst, landet beim Chef vom Dienst; seine Antwort steht dann hier darunter.</p>
-    <button class="linkish" id="cmdMore" type="button" hidden>Ältere Kommandos zeigen</button>
-  </section>
+  <div class="shell">
+    <nav class="nav" aria-label="Bereiche">
+      <ul>
+        <li><a href="#buero" data-view="buero" aria-current="page">Büro <b class="n" id="navWait"></b></a></li>
+        <li><a href="#auftraege" data-view="auftraege">Aufträge <b class="n" id="navTasks"></b></a></li>
+        <li><a href="#brett" data-view="brett"><span><span class="long">Schwarzes </span>Brett</span></a></li>
+        <li class="more"><a href="#mehr" data-view="mehr">Mehr</a></li>
+        <li><a href="#besprechungen" data-view="besprechungen">Besprechungen <b class="n" id="navMeetings"></b></a></li>
+        <li><a href="#ablage" data-view="ablage">Ablage <b class="n" id="navShelf"></b></a></li>
+        <li><a href="#regeln" data-view="regeln">Regeln</a></li>
+        <li><a href="#mitarbeiter" data-view="mitarbeiter">Mitarbeiter <b class="n" id="navRoster"></b></a></li>
+      </ul>
+    </nav>
 
-  <section class="chips" aria-label="Überblick">
-    <div class="chip" data-kind="work"><b id="countWork">–</b><span>arbeiten</span></div>
-    <div class="chip" data-kind="wait" id="chipWait"><b id="countWait">–</b><span>warten auf dich</span></div>
-    <div class="chip" data-kind="done"><b id="countDone">–</b><span>fertig</span></div>
-    <div class="chip" data-kind="bad"><b id="countBad">–</b><span>hängen</span></div>
-    <div class="chip" data-kind="cost"><b id="countCost">–</b><span>Kosten im Büro</span></div>
-  </section>
+    <div class="views">
+      <section class="view" data-view="buero" aria-label="Büro">
+        <section class="cmdbar" id="cmdbar" aria-labelledby="cmdTitle">
+          <h2 id="cmdTitle">Kommando <span id="cvdLine" data-state="off">Chef vom Dienst: noch kein Stand</span></h2>
+          <form class="cmd-form" id="cmdForm">
+            <label for="cmdText" class="hint">Sag dem Chef vom Dienst, was passieren soll. Er legt Aufträge an, holt Sessions, verteilt, prüft und meldet sich, wenn er dich braucht.</label>
+            <textarea id="cmdText" name="cmdText" placeholder="z. B. Hol jemanden für die Login-Seite im Repo asker." autocomplete="off"></textarea>
+            <div class="cmd-actions">
+              <button class="btn" id="cmdSend" type="submit">Senden</button>
+              <button class="btn sofort" id="cmdSofort" type="button" title="Weckt den Chef vom Dienst über einen Kommentar der Seite">Sofort</button>
+              <button class="btn quiet small" id="cmdFormulate" type="button" hidden>Ausformulieren</button>
+              <span class="result" id="cmdResult" hidden></span>
+            </div>
+          </form>
+          <ul class="chat" id="cmdList"></ul>
+          <p class="empty" id="cmdEmpty">Noch kein Kommando. Was du hier schreibst, landet beim Chef vom Dienst; seine Antwort steht dann hier darunter.</p>
+          <button class="linkish" id="cmdMore" type="button" hidden>Ältere Kommandos zeigen</button>
+        </section>
 
-  <main class="layout">
-    <div class="main-col">
-      <figure class="stage" id="stageWrap">
-        <p class="stale" id="stale" hidden></p>
-        <div id="stage"></div>
-        <div class="notice" id="notice">
-          <span id="noticeText">Ich verbinde mich mit deinen Sessions …</span>
-          <div class="actions" id="noticeActions" hidden>
-            <button class="btn" id="perms" type="button">Berechtigungen öffnen</button>
-            <button class="btn quiet" id="allow" type="button">Zugriff erlauben</button>
-            <a class="btn quiet" id="connectors" href="https://claude.ai/customize/connectors" target="_blank" rel="noopener">Connector-Einstellungen ↗</a>
+        <section class="chips" aria-label="Überblick">
+          <div class="chip" data-kind="work"><b id="countWork">–</b><span>arbeiten</span></div>
+          <div class="chip" data-kind="wait" id="chipWait"><b id="countWait">–</b><span>warten auf dich</span></div>
+          <div class="chip" data-kind="done"><b id="countDone">–</b><span>fertig</span></div>
+          <div class="chip" data-kind="bad"><b id="countBad">–</b><span>hängen</span></div>
+          <div class="chip" data-kind="cost"><b id="countCost">–</b><span>Kosten im Büro</span></div>
+        </section>
+
+        <div class="buero-grid">
+          <div class="main-col">
+            <figure class="stage" id="stageWrap">
+              <p class="stale" id="stale" hidden></p>
+              <div id="stage"></div>
+              <div class="notice" id="notice">
+                <span id="noticeText">Ich verbinde mich mit deinen Sessions …</span>
+                <div class="actions" id="noticeActions" hidden>
+                  <button class="btn" id="perms" type="button">Berechtigungen öffnen</button>
+                  <button class="btn quiet" id="allow" type="button">Zugriff erlauben</button>
+                  <a class="btn quiet" id="connectors" href="https://claude.ai/customize/connectors" target="_blank" rel="noopener">Connector-Einstellungen ↗</a>
+                </div>
+              </div>
+            </figure>
           </div>
+
+          <aside class="rail">
+            <section class="panel waiting" id="waitingPanel" hidden>
+              <h2>Für dich</h2>
+              <ul class="list" id="waitingList"></ul>
+            </section>
+
+            <section class="panel" id="detail" hidden aria-live="polite">
+              <div class="detail-head">
+                <h2 id="dName"></h2>
+                <span class="pill" id="dPill"></span>
+              </div>
+              <p class="task" id="dTask"></p>
+              <div class="ask" id="dAsk" hidden>
+                <span class="ask-head">Frage an dich</span>
+                <p id="dAskText"></p>
+              </div>
+              <form class="compose" id="compose" hidden>
+                <label for="message" id="messageLabel">Antwort</label>
+                <textarea id="message" name="message" placeholder="z. B. Ja, nimm Variante B."></textarea>
+                <div class="actions">
+                  <button class="btn" id="send" type="submit">Senden</button>
+                  <button class="btn sofort small" id="sendNow" type="button" title="Unterbricht die Session und stellt die Nachricht über den Chef vom Dienst sofort zu">Sofort</button>
+                </div>
+                <p class="result" id="sendResult" hidden></p>
+                <p class="hint" id="composeHint">Senden kommt als Büro-Nachricht an (15 Sekunden). Sofort geht über den Chef vom Dienst und unterbricht den laufenden Schritt. Auswahl-Dialoge, Freigaben und Merges auf main erledigst du am sichersten in der Session selbst.</p>
+              </form>
+              <p class="hint" id="noCompose">Antworten kannst du über „Session öffnen“. Direkt aus dem Büro geht es, sobald die Seite ihren Speicher nutzen darf.</p>
+              <div id="dPostsWrap" hidden>
+                <h3 class="sub">Deine Nachrichten</h3>
+                <ul class="posts" id="dPosts"></ul>
+              </div>
+              <dl class="facts">
+                <dt>Rolle</dt><dd id="dRolle"></dd>
+                <dt>Team</dt><dd id="dTeam"></dd>
+                <dt>Auftrag</dt><dd id="dAuftrag"></dd>
+                <dt>Repo</dt><dd id="dRepo"></dd>
+                <dt>Stand</dt><dd id="dSummary"></dd>
+                <dt>Seit</dt><dd class="data" id="dSince"></dd>
+                <dt>Verbrauch</dt><dd class="data" id="dUsage"></dd>
+                <dt>Mod</dt><dd class="data" id="dVersion"></dd>
+              </dl>
+              <div class="actions" id="dActions">
+                <button class="btn quiet small" id="dPause" type="button">Pausieren</button>
+                <button class="btn quiet small" id="dResume" type="button">Weiter</button>
+                <button class="btn quiet small" id="dArchive" type="button">Archivieren</button>
+              </div>
+              <p class="result" id="dActionResult" hidden></p>
+              <a class="open-link" id="dLink" href="https://claude.ai/code" target="_blank" rel="noopener">Session öffnen ↗</a>
+              <div id="dLogWrap" hidden>
+                <h3 class="sub">Verlauf</h3>
+                <ul class="log" id="dLog"></ul>
+              </div>
+              <div class="actions">
+                <button class="btn quiet" id="close" type="button">Schließen</button>
+              </div>
+            </section>
+          </aside>
         </div>
-      </figure>
-
-      <section class="panel" id="tasks" aria-labelledby="tasksTitle">
-        <div class="panel-head">
-          <h2 id="tasksTitle">Aufgabenbrett</h2>
-          <div class="actions">
-            <span class="hint">Aufträge sind Dokumente mit Ziel, Abnahme und Verlauf.</span>
-            <button class="btn quiet small" id="taskNew" type="button">Neuer Auftrag</button>
-          </div>
-        </div>
-        <form class="form" id="taskForm" hidden>
-          <label class="field"><span>Titel</span><input type="text" id="tfTitel" maxlength="120" placeholder="z. B. Login-Seite bauen" required></label>
-          <label class="field"><span>Text: Ziel, Kontext, Umsetzung</span><textarea id="tfText" placeholder="Ziel: … Kontext: … Umsetzung: …" required></textarea></label>
-          <div class="two">
-            <label class="field"><span>Repo (owner/repo)</span><input type="text" id="tfRepo" list="repoList" placeholder="leesyashin/asker" required></label>
-            <label class="field"><span>Prio</span><select id="tfPrio"><option value="normal">normal</option><option value="hoch">hoch</option></select></label>
-          </div>
-          <label class="field"><span>Abnahme, eine Zeile je Kriterium</span><textarea id="tfAbnahme" placeholder="Tests grün&#10;Seite lädt auf dem iPhone" required></textarea></label>
-          <div class="actions">
-            <button class="btn" type="submit" id="tfSave">Auf das Brett</button>
-            <button class="btn quiet" type="button" id="tfCancel">Abbrechen</button>
-            <span class="result" id="tfResult" hidden></span>
-          </div>
-        </form>
-        <datalist id="repoList"></datalist>
-        <div class="filters" id="taskFilters"></div>
-        <div class="kanban" id="kanban"></div>
-        <p class="empty" id="tasksEmpty">Noch kein Auftrag. Leg einen an oder sag es dem Chef vom Dienst.</p>
-        <div class="detail-box" id="taskDetail" hidden></div>
       </section>
 
-      <section class="panel" id="meetings" aria-labelledby="meetingsTitle">
-        <div class="panel-head">
-          <h2 id="meetingsTitle">Besprechungsraum</h2>
-          <button class="btn quiet small" id="meetingNew" type="button">Neue Besprechung</button>
-        </div>
-        <form class="form" id="meetingForm" hidden>
-          <label class="field"><span>Thema</span><input type="text" id="mfThema" maxlength="120" placeholder="z. B. Menü" required></label>
-          <label class="field"><span>Die Frage, auf die du eine Antwort willst</span><textarea id="mfFrage" placeholder="A oder B für das Menü?" required></textarea></label>
-          <label class="field"><span>Teilnehmer (Namen, Session-IDs, „alle“ oder „repo:asker“)</span><input type="text" id="mfTeilnehmer" value="alle"></label>
-          <div class="actions">
-            <button class="btn" type="submit">Eröffnen lassen</button>
-            <button class="btn quiet" type="button" id="mfCancel">Abbrechen</button>
-            <span class="result" id="mfResult" hidden></span>
+      <section class="view" data-view="auftraege" hidden aria-labelledby="tasksTitle">
+        <section class="panel" id="tasks">
+          <div class="panel-head">
+            <h2 id="tasksTitle">Aufgabenbrett</h2>
+            <div class="actions">
+              <span class="hint">Aufträge sind Dokumente mit Ziel, Abnahme und Verlauf.</span>
+              <button class="btn quiet small" id="taskNew" type="button">Neuer Auftrag</button>
+            </div>
           </div>
-          <p class="hint">Der Chef vom Dienst eröffnet die Besprechung, lädt ein und fasst zusammen. Entscheiden tust du.</p>
-        </form>
-        <div class="list" id="meetingList"></div>
-        <p class="empty" id="meetingsEmpty">Keine Besprechung. Eine Frage, mehrere Sessions, eine Zusammenfassung, deine Entscheidung.</p>
+          <form class="form" id="taskForm" hidden>
+            <label class="field"><span>Titel</span><input type="text" id="tfTitel" maxlength="120" placeholder="z. B. Login-Seite bauen" required></label>
+            <label class="field"><span>Text: Ziel, Kontext, Umsetzung</span><textarea id="tfText" placeholder="Ziel: … Kontext: … Umsetzung: …" required></textarea></label>
+            <div class="two">
+              <label class="field"><span>Repo (owner/repo)</span><input type="text" id="tfRepo" list="repoList" placeholder="leesyashin/asker" required></label>
+              <label class="field"><span>Prio</span><select id="tfPrio"><option value="normal">normal</option><option value="hoch">hoch</option></select></label>
+            </div>
+            <label class="field"><span>Abnahme, eine Zeile je Kriterium</span><textarea id="tfAbnahme" placeholder="Tests grün&#10;Seite lädt auf dem iPhone" required></textarea></label>
+            <div class="actions">
+              <button class="btn" type="submit" id="tfSave">Auf das Brett</button>
+              <button class="btn quiet" type="button" id="tfCancel">Abbrechen</button>
+              <span class="result" id="tfResult" hidden></span>
+            </div>
+          </form>
+          <datalist id="repoList"></datalist>
+          <div class="filters" id="taskFilters"></div>
+          <div class="kanban" id="kanban"></div>
+          <p class="empty" id="tasksEmpty">Noch kein Auftrag. Leg einen an oder sag es dem Chef vom Dienst.</p>
+          <div class="detail-box" id="taskDetail" hidden></div>
+        </section>
       </section>
 
-      <section class="panel" id="shelf" aria-labelledby="shelfTitle">
-        <div class="panel-head">
-          <h2 id="shelfTitle">Ablage</h2>
-          <button class="btn quiet small" id="shelfNew" type="button">Hinzufügen</button>
-        </div>
-        <form class="form" id="shelfForm" hidden>
-          <div class="two">
-            <label class="field"><span>Art</span><select id="sfArt"><option value="notiz">Notiz</option><option value="link">Link</option><option value="datei">Datei</option></select></label>
-            <label class="field"><span>Repo (optional)</span><input type="text" id="sfRepo" list="repoList" placeholder="owner/repo"></label>
+      <section class="view" data-view="besprechungen" hidden aria-labelledby="meetingsTitle">
+        <section class="panel" id="meetings">
+          <div class="panel-head">
+            <h2 id="meetingsTitle">Besprechungsraum</h2>
+            <button class="btn quiet small" id="meetingNew" type="button">Neue Besprechung</button>
           </div>
-          <label class="field"><span>Titel</span><input type="text" id="sfTitel" maxlength="120" required></label>
-          <label class="field" id="sfTextField"><span>Text</span><textarea id="sfText"></textarea></label>
-          <label class="field" id="sfUrlField" hidden><span>URL</span><input type="url" id="sfUrl" placeholder="https://…"></label>
-          <label class="field" id="sfFileField" hidden><span>Datei (bis 20 MB)</span><input type="file" id="sfFile"></label>
-          <label class="field"><span>Tags, mit Komma</span><input type="text" id="sfTags" placeholder="design, menü"></label>
-          <div class="actions">
-            <button class="btn" type="submit" id="sfSave">Ablegen</button>
-            <button class="btn quiet" type="button" id="sfCancel">Abbrechen</button>
-            <span class="result" id="sfResult" hidden></span>
-          </div>
-        </form>
-        <div class="filters" id="shelfFilters"></div>
-        <div class="list" id="shelfList"></div>
-        <p class="empty" id="shelfEmpty">Die Ablage ist leer. Notizen, Links und Dateien, die alle Sessions sehen.</p>
+          <form class="form" id="meetingForm" hidden>
+            <label class="field"><span>Thema</span><input type="text" id="mfThema" maxlength="120" placeholder="z. B. Menü" required></label>
+            <label class="field"><span>Die Frage, auf die du eine Antwort willst</span><textarea id="mfFrage" placeholder="A oder B für das Menü?" required></textarea></label>
+            <label class="field"><span>Teilnehmer (Namen, Session-IDs, „alle“ oder „repo:asker“)</span><input type="text" id="mfTeilnehmer" value="alle"></label>
+            <div class="actions">
+              <button class="btn" type="submit">Eröffnen lassen</button>
+              <button class="btn quiet" type="button" id="mfCancel">Abbrechen</button>
+              <span class="result" id="mfResult" hidden></span>
+            </div>
+            <p class="hint">Der Chef vom Dienst eröffnet die Besprechung, lädt ein und fasst zusammen. Entscheiden tust du.</p>
+          </form>
+          <div class="list" id="meetingList"></div>
+          <p class="empty" id="meetingsEmpty">Keine Besprechung. Eine Frage, mehrere Sessions, eine Zusammenfassung, deine Entscheidung.</p>
+        </section>
       </section>
 
-      <section class="panel" id="rules" aria-labelledby="rulesTitle">
-        <div class="panel-head">
-          <h2 id="rulesTitle">Regeln</h2>
-          <span class="hint">Was ein Repo ohne Nachfrage erlaubt.</span>
-        </div>
-        <form class="form" id="rulesForm">
-          <label class="field"><span>Repo</span><input type="text" id="rfRepo" list="repoList" placeholder="owner/repo"></label>
-          <div class="two">
-            <label class="field"><span>Merge</span><select id="rfMerge"><option value="nie">nie automatisch</option><option value="gruen">bei grüner CI</option><option value="gruen_pruefer">bei grüner CI und Prüfer-Befund</option></select></label>
-            <label class="field"><span>Höchstens parallele Sessions</span><input type="number" id="rfMax" min="1" max="20" value="4"></label>
+      <section class="view" data-view="ablage" hidden aria-labelledby="shelfTitle">
+        <section class="panel" id="shelf">
+          <div class="panel-head">
+            <h2 id="shelfTitle">Ablage</h2>
+            <button class="btn quiet small" id="shelfNew" type="button">Hinzufügen</button>
           </div>
-          <div class="two">
-            <label class="field"><span>Modell Chef vom Dienst</span><input type="text" id="rfCvd" placeholder="claude-opus-5-5"></label>
-            <label class="field"><span>Modell Mitarbeiter</span><input type="text" id="rfMit" placeholder="claude-opus-5-5"></label>
-            <label class="field"><span>Modell Prüfer</span><input type="text" id="rfPru" placeholder="claude-sonnet-5-5"></label>
-          </div>
-          <label class="field"><span>Branch-Schema</span><input type="text" id="rfBranch" placeholder="claude/auftrag-{nr}-{name}"></label>
-          <label class="field"><span>Prüfbefehle, eine Zeile je Befehl</span><textarea id="rfPruef" placeholder="npm run check&#10;npm test"></textarea></label>
-          <label class="check"><input type="checkbox" id="rfArchiv" checked><span>Session nach dem Merge archivieren</span></label>
-          <label class="field"><span>Freigaben in Worten, eine je Zeile</span><textarea id="rfFrei" placeholder="Darf Branches claude/* löschen"></textarea></label>
-          <div class="actions">
-            <button class="btn" type="submit" id="rfSave">Regeln speichern</button>
-            <span class="result" id="rfResult" hidden></span>
-          </div>
-        </form>
+          <form class="form" id="shelfForm" hidden>
+            <div class="two">
+              <label class="field"><span>Art</span><select id="sfArt"><option value="notiz">Notiz</option><option value="link">Link</option><option value="datei">Datei</option></select></label>
+              <label class="field"><span>Repo (optional)</span><input type="text" id="sfRepo" list="repoList" placeholder="owner/repo"></label>
+            </div>
+            <label class="field"><span>Titel</span><input type="text" id="sfTitel" maxlength="120" required></label>
+            <label class="field" id="sfTextField"><span>Text</span><textarea id="sfText"></textarea></label>
+            <label class="field" id="sfUrlField" hidden><span>URL</span><input type="url" id="sfUrl" placeholder="https://…"></label>
+            <label class="field" id="sfFileField" hidden><span>Datei (bis 20 MB)</span><input type="file" id="sfFile"></label>
+            <label class="field"><span>Tags, mit Komma</span><input type="text" id="sfTags" placeholder="design, menü"></label>
+            <div class="actions">
+              <button class="btn" type="submit" id="sfSave">Ablegen</button>
+              <button class="btn quiet" type="button" id="sfCancel">Abbrechen</button>
+              <span class="result" id="sfResult" hidden></span>
+            </div>
+          </form>
+          <div class="filters" id="shelfFilters"></div>
+          <div class="list" id="shelfList"></div>
+          <p class="empty" id="shelfEmpty">Die Ablage ist leer. Notizen, Links und Dateien, die alle Sessions sehen.</p>
+        </section>
       </section>
 
-      <section class="panel" id="board" aria-labelledby="boardTitle">
-        <div class="panel-head">
-          <h2 id="boardTitle">Schwarzes Brett</h2>
-          <span class="hint">was im Büro passiert, die letzten 7 Tage</span>
-        </div>
-        <ul class="log" id="boardList"></ul>
-        <p class="empty" id="boardEmpty">Hier steht, wer wieder arbeitet, wer pusht, welche PRs aufgehen und gemergt werden, und was ihr euch schreibt. Es füllt sich, sobald eine Cloud-Session mit der Büro-Mod läuft.</p>
-        <button class="btn quiet" id="boardMore" type="button" hidden>Ältere zeigen</button>
+      <section class="view" data-view="brett" hidden aria-labelledby="boardTitle">
+        <section class="panel" id="board">
+          <div class="panel-head">
+            <h2 id="boardTitle">Schwarzes Brett</h2>
+            <span class="hint">was im Büro passiert, die letzten 7 Tage</span>
+          </div>
+          <ul class="log" id="boardList"></ul>
+          <p class="empty" id="boardEmpty">Hier steht, wer wieder arbeitet, wer pusht, welche PRs aufgehen und gemergt werden, und was ihr euch schreibt. Es füllt sich, sobald eine Cloud-Session mit der Büro-Mod läuft.</p>
+          <button class="btn quiet" id="boardMore" type="button" hidden>Ältere zeigen</button>
+        </section>
+      </section>
+
+      <section class="view" data-view="regeln" hidden aria-labelledby="rulesTitle">
+        <section class="panel" id="rules">
+          <div class="panel-head">
+            <h2 id="rulesTitle">Regeln</h2>
+            <span class="hint">Was ein Repo ohne Nachfrage erlaubt.</span>
+          </div>
+          <form class="form" id="rulesForm">
+            <label class="field"><span>Repo</span><input type="text" id="rfRepo" list="repoList" placeholder="owner/repo"></label>
+            <div class="two">
+              <label class="field"><span>Merge</span><select id="rfMerge"><option value="nie">nie automatisch</option><option value="gruen">bei grüner CI</option><option value="gruen_pruefer">bei grüner CI und Prüfer-Befund</option></select></label>
+              <label class="field"><span>Höchstens parallele Sessions</span><input type="number" id="rfMax" min="1" max="20" value="4"></label>
+            </div>
+            <div class="two">
+              <label class="field"><span>Modell Chef vom Dienst</span><input type="text" id="rfCvd" placeholder="claude-opus-5-5"></label>
+              <label class="field"><span>Modell Mitarbeiter</span><input type="text" id="rfMit" placeholder="claude-opus-5-5"></label>
+              <label class="field"><span>Modell Prüfer</span><input type="text" id="rfPru" placeholder="claude-sonnet-5-5"></label>
+            </div>
+            <label class="field"><span>Branch-Schema</span><input type="text" id="rfBranch" placeholder="claude/auftrag-{nr}-{name}"></label>
+            <label class="field"><span>Prüfbefehle, eine Zeile je Befehl</span><textarea id="rfPruef" placeholder="npm run check&#10;npm test"></textarea></label>
+            <label class="check"><input type="checkbox" id="rfArchiv" checked><span>Session nach dem Merge archivieren</span></label>
+            <label class="field"><span>Freigaben in Worten, eine je Zeile</span><textarea id="rfFrei" placeholder="Darf Branches claude/* löschen"></textarea></label>
+            <div class="actions">
+              <button class="btn" type="submit" id="rfSave">Regeln speichern</button>
+              <span class="result" id="rfResult" hidden></span>
+            </div>
+          </form>
+        </section>
+      </section>
+
+      <section class="view" data-view="mitarbeiter" hidden aria-label="Mitarbeiter">
+        <section class="panel">
+          <h2>Alle Mitarbeiter</h2>
+          <ul class="list" id="roster"></ul>
+          <p class="empty" id="rosterEmpty">Sobald deine Sessions geladen sind, stehen sie hier.</p>
+        </section>
+        <section class="panel costs" id="costs" hidden>
+          <h2>Kosten</h2>
+          <table id="costTable"></table>
+          <p class="hint">Kontext und Kosten der Sessions, die gerade im Büro sind, wie die Cloud sie meldet.</p>
+        </section>
+      </section>
+
+      <section class="view" data-view="mehr" hidden aria-label="Mehr">
+        <ul class="more-list">
+          <li><a href="#besprechungen" data-view="besprechungen">Besprechungen</a></li>
+          <li><a href="#ablage" data-view="ablage">Ablage</a></li>
+          <li><a href="#regeln" data-view="regeln">Regeln</a></li>
+          <li><a href="#mitarbeiter" data-view="mitarbeiter">Mitarbeiter und Kosten</a></li>
+        </ul>
       </section>
     </div>
-
-    <aside class="rail">
-      <section class="panel waiting" id="waitingPanel" hidden>
-        <h2>Im Chefbüro</h2>
-        <ul class="list" id="waitingList"></ul>
-      </section>
-
-      <section class="panel" id="detail" hidden aria-live="polite">
-        <div class="detail-head">
-          <h2 id="dName"></h2>
-          <span class="pill" id="dPill"></span>
-        </div>
-        <p class="task" id="dTask"></p>
-        <div class="ask" id="dAsk" hidden>
-          <span class="ask-head">Frage an dich</span>
-          <p id="dAskText"></p>
-        </div>
-        <form class="compose" id="compose" hidden>
-          <label for="message" id="messageLabel">Antwort</label>
-          <textarea id="message" name="message" placeholder="z. B. Ja, nimm Variante B."></textarea>
-          <div class="actions">
-            <button class="btn" id="send" type="submit">Senden</button>
-            <button class="btn sofort small" id="sendNow" type="button" title="Unterbricht die Session und stellt die Nachricht über den Chef vom Dienst sofort zu">Sofort</button>
-          </div>
-          <p class="result" id="sendResult" hidden></p>
-          <p class="hint" id="composeHint">Senden kommt als Büro-Nachricht an (15 Sekunden). Sofort geht über den Chef vom Dienst und unterbricht den laufenden Schritt. Auswahl-Dialoge, Freigaben und Merges auf main erledigst du am sichersten in der Session selbst.</p>
-        </form>
-        <p class="hint" id="noCompose">Antworten kannst du über „Session öffnen“. Direkt aus dem Büro geht es, sobald die Seite ihren Speicher nutzen darf.</p>
-        <div id="dPostsWrap" hidden>
-          <h3 class="sub">Deine Nachrichten</h3>
-          <ul class="posts" id="dPosts"></ul>
-        </div>
-        <dl class="facts">
-          <dt>Rolle</dt><dd id="dRolle"></dd>
-          <dt>Team</dt><dd id="dTeam"></dd>
-          <dt>Auftrag</dt><dd id="dAuftrag"></dd>
-          <dt>Repo</dt><dd id="dRepo"></dd>
-          <dt>Stand</dt><dd id="dSummary"></dd>
-          <dt>Seit</dt><dd class="data" id="dSince"></dd>
-          <dt>Verbrauch</dt><dd class="data" id="dUsage"></dd>
-          <dt>Mod</dt><dd class="data" id="dVersion"></dd>
-        </dl>
-        <div class="actions" id="dActions">
-          <button class="btn quiet small" id="dPause" type="button">Pausieren</button>
-          <button class="btn quiet small" id="dResume" type="button">Weiter</button>
-          <button class="btn quiet small" id="dArchive" type="button">Archivieren</button>
-        </div>
-        <p class="result" id="dActionResult" hidden></p>
-        <a class="open-link" id="dLink" href="https://claude.ai/code" target="_blank" rel="noopener">Session öffnen ↗</a>
-        <div id="dLogWrap" hidden>
-          <h3 class="sub">Verlauf</h3>
-          <ul class="log" id="dLog"></ul>
-        </div>
-        <div class="actions">
-          <button class="btn quiet" id="close" type="button">Schließen</button>
-        </div>
-      </section>
-
-      <section class="panel">
-        <h2>Alle Mitarbeiter</h2>
-        <ul class="list" id="roster"></ul>
-        <p class="empty" id="rosterEmpty">Sobald deine Sessions geladen sind, stehen sie hier.</p>
-      </section>
-
-      <section class="panel costs" id="costs" hidden>
-        <h2>Kosten</h2>
-        <table id="costTable"></table>
-        <p class="hint">Kontext und Kosten der Sessions, die gerade im Büro sind, wie die Cloud sie meldet.</p>
-      </section>
-    </aside>
-  </main>
+  </div>
 </div>
 
 <script>
@@ -2626,7 +2710,7 @@
             [22, 42, 62, 82].map(y => rect(310, y, 44, 3, '#6b4630') + rect(310, y, 44, 1, '#8a5c3e')).join('') +
             rect(308, 2, 48, 2, '#7a5034') + rect(308, 2, 2, 92, '#6e482e'));
     }
-    function bossOffice(ctx, office, visitors, arriving) {
+    function bossOffice(ctx, office, visitors, arriving, cvd) {
         const minutes = office.clockMinutes;
         const hourAngle = ((minutes / 60) % 12) * 30;
         const minuteAngle = (minutes % 60) * 6;
@@ -2692,6 +2776,7 @@
             rect(296, 90, 6, 2, '#8aa4b3') + rect(296, 160, 6, 2, '#8aa4b3') +
             rect(296, TOP_H - 4, 34, 4, '#bfe3f2') + rect(384, TOP_H - 4, WIDTH - 384, 4, '#bfe3f2') + rect(296, TOP_H - 4, WIDTH - 296, 1, '#e8f6fc', ' opacity="0.7"') +
             rect(326, TOP_H - 12, 4, 12, '#8aa4b3') + rect(384, TOP_H - 12, 4, 12, '#8aa4b3');
+        out += cvdDesk(ctx, cvd);
         for (let slot = 0; slot < MAX_VISITORS; slot += 1) {
             const seat = guestSeat(slot);
             const view = visitors[slot];
@@ -2701,6 +2786,55 @@
             out += text(590, 214, `+${visitors.length - MAX_VISITORS}`, 10, '#ffffff', ' text-anchor="end" font-weight="bold"');
         }
         return out;
+    }
+    /**
+     * The Chef vom Dienst sits in the boss office, at a desk of his own under the
+     * bookshelf, turned to the room with the headset on. Empty when none is awake.
+     */
+    function cvdDesk(ctx, view) {
+        const X = 263;
+        const Y = 48;
+        const ox = X + 57;
+        const front = Y + 46;
+        const light = view === undefined ? '#555' : MOOD_COLOR[view.mood];
+        const steam = (x, begin) => `<rect x="${x}" y="118" width="2" height="3" fill="#ffffff" opacity="0">` +
+            frames(ctx, 'opacity', [0, 0.8, 0.5, 0], [0, 0.25, 0.6, 0.9], 2.2, begin) +
+            frames(ctx, 'y', [118, 115, 112, 109], [0, 0.25, 0.6, 0.9], 2.2, begin) +
+            '</rect>';
+        const furniture = 
+        // a small rug of its own
+        rect(300, 100, 76, 70, '#5a4a3a', ' opacity="0.35"') +
+            rect(304, 104, 68, 62, '#93393a') + rect(306, 106, 64, 58, '#7d2f2f') +
+            rect(308, 108, 60, 1, '#c9a227') + rect(308, 161, 60, 1, '#c9a227') + rect(308, 108, 1, 54, '#c9a227') + rect(367, 108, 1, 54, '#c9a227') +
+            use(ctx, 'chairHigh', X, Y);
+        const person = view === undefined
+            ? ''
+            : seatedFront(ctx, view, paletteOf(view), ox, front, false) +
+                `<path d="M${ox + 9} ${front + 10} a9 9 0 0 1 18 0" fill="none" stroke="#1a1a1a" stroke-width="2"/>` +
+                rect(ox + 7, front + 9, 3, 5, '#1a1a1a') + rect(ox + 26, front + 9, 3, 5, '#1a1a1a') +
+                `<rect x="${ox + 26}" y="${front + 14}" width="2" height="2" fill="${light}">${view.mood === 'bereit' ? frames(ctx, 'opacity', [1, 0.3], [0, 0.5], 1.8) : ''}</rect>`;
+        const desk = shadow(338, 160, 34, 4) +
+            rect(306, 130, 64, 14, '#6b3e26') + rect(306, 130, 64, 2, '#875136') + rect(312, 136, 20, 1, '#5e3520') + rect(344, 139, 18, 1, '#5e3520') +
+            rect(306, 144, 64, 2, '#8a5536') + rect(306, 146, 64, 10, '#4e2c1a') + rect(306, 155, 64, 1, '#38200f') +
+            rect(309, 148, 18, 6, '#5a3420') + rect(349, 148, 18, 6, '#5a3420') +
+            rect(329, 147, 18, 8, '#c9a227') + rect(330, 148, 16, 6, '#e0bd45') +
+            text(338, 153, 'CvD', 5.5, '#3a2a00', ' text-anchor="middle" font-weight="bold"') +
+            // laptop, phone with a cord to the headset, mug
+            rect(309, 117, 20, 13, '#c5cad3', ' rx="1"') + rect(310, 118, 18, 1, '#e4e8ee') + rect(327, 118, 1, 12, '#a9afba') + rect(318, 122, 3, 3, '#9aa2ae') +
+            rect(307, 130, 24, 2, '#aab0ba') +
+            rect(352, 123, 11, 7, '#2a2a30') + rect(352, 121, 11, 2, '#3a3a42') + rect(354, 124, 3, 1, light) +
+            rect(343, 122, 6, 7, '#ffffff') + rect(343, 122, 6, 1, '#6b3e1e') + rect(349, 124, 2, 3, '#e6e6e6') + steam(344, 0.3) + steam(347, 1.4);
+        const mark = view !== undefined && (view.mood === 'frage' || view.mood === 'freigabe')
+            ? bubble(ctx, 329, 74, view.mood === 'freigabe' ? 'OK?' : '?', view.mood === 'freigabe' ? '#ffe066' : '#ffb84d', '#222')
+            : '';
+        const tag = view === undefined
+            ? ''
+            : rect(338 - 17, 158, 34, 11, '#1d2333', ' opacity="0.78" rx="2"') +
+                text(338, 166, clip(view.name, 7), 8, '#ffffff', ' text-anchor="middle" font-weight="bold"');
+        if (view === undefined) {
+            return furniture + desk;
+        }
+        return `<g data-worker="${escapeXml(view.id)}" class="worker">${tooltip(view)}${furniture}${person}${desk}${tag}${mark}</g>`;
     }
     /** A worker waiting in the boss office, seated on a guest chair; walks in when it just arrived. */
     function visitor(ctx, view, seat, isArriving) {
@@ -3142,12 +3276,16 @@
      */
     function drawOffice(office, isAnimated = true, arriving = [], limit = SOURCE_LIMIT) {
         const ctx = { isAnimated, need: new Set() };
-        const all = office.workers;
+        const cvd = office.workers.find(view => view.rolle === 'cvd');
+        const all = office.workers.filter(view => view !== cvd);
         const atDesks = all.slice(0, MAX_DESKS);
         const visitors = all.filter(view => view.mood === 'frage' || view.mood === 'freigabe');
         const slots = Math.max(COLS, Math.ceil(atDesks.length / COLS) * COLS);
         const height = TOP_H + (slots / COLS) * CELL_H + 6;
         const at = new Map([['chef', { x: 470, y: 70 }]]);
+        if (cvd !== undefined) {
+            at.set(cvd.id, { x: 338, y: 112 });
+        }
         let desks = '';
         for (let i = 0; i < slots; i += 1) {
             const origin = deskOrigin(i);
@@ -3174,7 +3312,7 @@
         const more = all.length > MAX_DESKS
             ? text(WIDTH - 8, height - 10, `+${all.length - MAX_DESKS} weitere`, 11, '#3a2a14', ' text-anchor="end" font-weight="bold"')
             : '';
-        const body = background(ctx, height, office) + bossOffice(ctx, office, visitors, new Set(arriving)) + desks + flights(office, at, ctx) + more;
+        const body = background(ctx, height, office) + bossOffice(ctx, office, visitors, new Set(arriving), cvd) + desks + flights(office, at, ctx) + more;
         const svg = compact(`<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${height}" ` +
             `viewBox="0 0 ${WIDTH} ${height}" shape-rendering="crispEdges" ` +
             `font-family="ui-monospace, Menlo, Consolas, monospace">${defsOf(ctx)}${body}</svg>`);
@@ -3491,7 +3629,7 @@
       button.dataset.id = worker.id;
       const dot = document.createElement('span');
       dot.className = 'dot';
-      dot.style.background = Office.MOOD_COLOR[worker.mood];
+      dot.dataset.mood = worker.mood;
       const name = document.createElement('strong');
       name.textContent = `${isChild ? '└ ' : ''}${worker.name} · ${worker.project}${worker.rolle === 'cvd' ? ' · CvD' : ''}`;
       const line = document.createElement('small');
@@ -3691,7 +3829,7 @@
       const desk = deskOf(worker.id);
       el('dName').textContent = worker.name;
       el('dPill').textContent = labelOf(worker);
-      el('dPill').style.background = Office.MOOD_COLOR[worker.mood];
+      el('dPill').dataset.mood = worker.mood;
       el('dTask').textContent = worker.task || 'Ohne Titel';
       el('dAsk').hidden = question === '';
       el('dAskText').textContent = question;
@@ -4892,5 +5030,69 @@
       renderAll();
     }
     start();
+  })();
+</script>
+
+<script>
+  // Die Bereiche der Seite: ein Bereich zur Zeit, die Navigation führt. Ohne Animation, das wird den ganzen Tag benutzt.
+  (() => {
+    const links = [...document.querySelectorAll('.nav a[data-view], .more-list a[data-view]')];
+    const views = [...document.querySelectorAll('.view[data-view]')];
+    const names = new Set(views.map(view => view.dataset.view));
+    let current = '';
+
+    function show(name, shouldScroll) {
+      if (!names.has(name)) name = 'buero';
+      current = name;
+      for (const view of views) view.hidden = view.dataset.view !== name;
+      for (const link of document.querySelectorAll('.nav a[data-view]')) {
+        const isHere = link.dataset.view === name || (name === 'mehr' ? false : link.dataset.view === 'mehr' && !isInBar(name));
+        if (isHere) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
+      }
+      try { localStorage.setItem('buero-bereich', name); } catch (e) {}
+      if (shouldScroll) window.scrollTo({ top: 0 });
+    }
+    function isInBar(name) { return ['buero', 'auftraege', 'brett'].includes(name); }
+    function recall() { try { return localStorage.getItem('buero-bereich') || ''; } catch (e) { return ''; } }
+
+    for (const link of links) {
+      link.addEventListener('click', event => {
+        event.preventDefault();
+        show(link.dataset.view, true);
+      });
+    }
+
+    // Die Zähler in der Navigation spiegeln die Bereiche.
+    const countOf = (selector) => document.querySelectorAll(selector).length;
+    function updateCounts() {
+      const wait = Number(document.getElementById('countWait').textContent) || 0;
+      const nWait = document.getElementById('navWait');
+      nWait.textContent = wait > 0 ? String(wait) : '';
+      nWait.toggleAttribute('data-hot', wait > 0);
+      const set = (id, n) => { document.getElementById(id).textContent = n > 0 ? String(n) : ''; };
+      set('navTasks', countOf('#kanban .card'));
+      set('navMeetings', countOf('#meetingList .meeting'));
+      set('navShelf', countOf('#shelfList .shelf-item'));
+      set('navRoster', countOf('#roster .row'));
+    }
+    let pending = 0;
+    const observer = new MutationObserver(() => {
+      cancelAnimationFrame(pending);
+      pending = requestAnimationFrame(updateCounts);
+    });
+    observer.observe(document.querySelector('.views'), { childList: true, subtree: true, characterData: true });
+
+    // Wählst du jemanden aus (im Büro, auf dem Brett, in der Liste), zeigt das Büro sein Detail.
+    const detail = document.getElementById('detail');
+    new MutationObserver(() => {
+      if (!detail.hidden && current !== 'buero') {
+        show('buero', false);
+        detail.scrollIntoView({ block: 'nearest' });
+      }
+    }).observe(detail, { attributes: true, attributeFilter: ['hidden'] });
+
+    const fromHash = location.hash.replace('#', '');
+    show(names.has(fromHash) ? fromHash : recall() || 'buero', false);
+    updateCounts();
   })();
 </script>
