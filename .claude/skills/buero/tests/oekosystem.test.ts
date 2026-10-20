@@ -1,5 +1,4 @@
-import { expect, mock, test } from 'claude-code/testing'
-import type { On } from 'claude-code'
+import { expect, test } from 'claude-code/testing'
 
 import type { Auftrag } from '../types'
 import {
@@ -23,22 +22,9 @@ import type { CloudSession } from '../hooks/cloud'
 import { cloudRecords, elternOf, parseSession, parseSessionPage, rolleOf, tagValue, trimSession } from '../hooks/cloud'
 import { colleaguesText, compareVersions, isVeraltet, moodOf, resolveRecipient, workerOf } from '../hooks/model'
 import { leaseOf, mayLead } from '../hooks/post'
+import { MINUTE, START, START_EVENT, mockStore, mockWorld, session } from './welt'
 
-const START = Date.UTC(2026, 9, 20, 12, 0)
-const MINUTE = 60_000
 
-function session(id: string, patch: Partial<CloudSession> = {}): CloudSession {
-  return {
-    id,
-    title: `Titel ${id}`,
-    session_status: 'SESSION_STATUS_RUNNING',
-    status_bucket: 'SESSION_STATUS_BUCKET_WORKING',
-    created_at: '2026-10-20T10:00:00Z',
-    updated_at: '2026-10-20T11:59:00Z',
-    session_context: { outcomes: [{ git_repository: { git_info: { repo: 'leesyashin/Else-Live-', branches: ['claude/x'] } } }], model: 'claude-opus-5-5' },
-    ...patch,
-  }
-}
 
 test('tags give a session its role, its team and its order', () => {
   const tags = ['config:auto-create-pr:draft', 'buero:rolle=cvd', 'buero:auftrag=a12', 'buero:eltern=session_01ELTERN']
@@ -226,8 +212,7 @@ test('meetings need a question and people, the shelf needs a place for each kind
 
 test('a Chef vom Dienst session takes the office over, and another session keeps off while it is around', async ($, on) => {
   const files = new Map<string, string>()
-  const HOME = '/home/chef'
-  const clock = mockWorld(on, files, HOME, 'cse_01CVD')
+  const clock = mockWorld(on, files, 'cse_01CVD')
   const db = mockStore(on)
   const sessions = [session('session_01CVD', { tags: ['buero:rolle=cvd'] }), session('session_01OTHER')]
   on('mcp.call', ($, e) => {
@@ -243,7 +228,7 @@ test('a Chef vom Dienst session takes the office over, and another session keeps
   // someone else keeps the office, with a lease that still runs
   db.put('leitung/bote', { holder: 'cse_01OTHER', until: START + 10 * MINUTE, seen: {} })
 
-  await $.session.start({ cwd: '/home/chef/code/Else-Live-', surface: 'desktop', isInteractive: true })
+  await $.session.start(START_EVENT)
   await clock.advance(5000)
   const lease = db.get('leitung/bote')
   expect(lease?.holder).toBe('cse_01CVD')
@@ -253,117 +238,3 @@ test('a Chef vom Dienst session takes the office over, and another session keeps
   const listed = JSON.stringify(await $.tool.call({ tool: 'mcp__buero__kollegen' }))
   expect(listed).toContain('session_01OTHER')
 })
-
-/** The world beneath the mod for these tests: a clock, a home folder and files in memory. */
-function mockWorld(on: On, files: Map<string, string>, HOME: string, cloudId: string) {
-  const clock = mock.clock(on, { now: START })
-  mock.env(on, { HOME, CLAUDE_CODE_REMOTE_SESSION_ID: cloudId })
-  on('session.id', () => ({ value: 'sess-cvd-0001' }))
-  on('session.root', () => ({ value: '/home/chef/code/Else-Live-' }))
-  on('fs.read', ($, e) => {
-    const text = files.get(e.path)
-
-    return text === undefined ? { deny: `ENOENT: ${e.path}` } : { value: text }
-  })
-  on('fs.write', ($, e) => {
-    files.set(e.path, e.text)
-
-    return { value: undefined }
-  })
-  on('fs.list', ($, e) => ({
-    value: [...files.keys()]
-      .filter(path => path.startsWith(`${e.path}/`))
-      .map(path => ({ name: path.slice(e.path.length + 1), kind: 'file' as const, size: 1, mtimeMs: clock.now(), isLink: false })),
-  }))
-  on('command.register', ($, e) => ({ value: { command: e.name } }))
-  on('tool.register', ($, e) => ({ value: { tool: e.name } }))
-  on('agent.list', () => ({ value: [] }))
-  on('ui.panes', () => ({ value: [] }))
-  on('ui.open', () => ({ value: { isPlaced: true as const } }))
-  on('ui.log', () => ({ value: undefined }))
-  on('session.start', ($, e) => ({ cwd: e.cwd }))
-  on('session.end', ($, e) => ({ sessionId: e.sessionId }))
-  on('turn.start', ($, e) => ({ turnId: e.turnId }))
-  on('turn.complete', ($, e) => ({ text: e.answer }))
-  on('prompt.submit', ($, e) => ({ text: e.text }))
-
-  return clock
-}
-
-/** The office page's database as ArtifactData answers it, from memory. */
-function mockStore(on: On) {
-  const docs = new Map<string, { data: Record<string, unknown>; version: number }>()
-  const lines = (collection: string, found: [string, { data: Record<string, unknown>; version: number }][]) =>
-    found.length === 0
-      ? `No documents matched in collection "${collection}".`
-      : `${found.length} documents from collection "${collection}":\n=== BEGIN ARTIFACT DB t — data ===\n` +
-        found.map(([path, doc]) => JSON.stringify({ id: path.split('/').at(-1), data: doc.data, version: doc.version })).join('\n') +
-        '\n=== END ARTIFACT DB t ==='
-  const matches = (data: Record<string, unknown>, [field, op, value]: [string, string, unknown]) => {
-    const have = data[field]
-    switch (op) {
-      case '==':
-        return have === value
-      case 'in':
-        return Array.isArray(value) && value.includes(have)
-      case '<':
-        return typeof have === typeof value && (have as number) < (value as number)
-      case '>=':
-        return typeof have === typeof value && (have as number) >= (value as number)
-      default:
-        throw new Error(`op ${op}`)
-    }
-  }
-  on('tool.call', { tool: 'ArtifactData' }, ($, e) => {
-    const input = e as unknown as {
-      action: string
-      collection: string
-      doc_id?: string
-      data?: Record<string, unknown>
-      if_version?: number
-      query?: { where?: [string, string, unknown][] }
-    }
-    const path = `${input.collection}/${input.doc_id ?? ''}`
-    const doc = docs.get(path)
-    const answer = (text: string) => ({ result: text, text })
-    switch (input.action) {
-      case 'get':
-        return answer(doc === undefined ? `No document "${input.doc_id}" in collection "${input.collection}".` : lines(input.collection, [[path, doc]]))
-      case 'query': {
-        const found = [...docs].filter(
-          ([key, one]) =>
-            key.startsWith(`${input.collection}/`) &&
-            !key.slice(input.collection.length + 1).includes('/') &&
-            (input.query?.where ?? []).every(clause => matches(one.data, clause)),
-        )
-
-        return answer(lines(input.collection, found))
-      }
-      default: {
-        if (doc !== undefined && input.if_version === undefined) {
-          return answer(`db write failed (version_mismatch): ${path} already exists and this write carried no if_version — nothing was written.`)
-        }
-        if (doc !== undefined && input.if_version !== doc.version) {
-          return answer(`db write failed (version_mismatch): the document is no longer at version ${input.if_version} — it is now at version ${doc.version}; nothing was written.`)
-        }
-        if (input.action === 'delete') {
-          docs.delete(path)
-
-          return answer(`Database delete committed: "${input.collection}"/"${input.doc_id}".`)
-        }
-        if (input.action === 'update' && doc === undefined) {
-          return answer(`db write failed (not_found): no document ${path}.`)
-        }
-        const version = (doc?.version ?? 0) + 1
-        docs.set(path, { data: input.action === 'update' ? { ...doc?.data, ...input.data } : { ...input.data }, version })
-
-        return answer(`Database ${input.action} committed: "${input.collection}"/"${input.doc_id}". The document is now at version ${version}.`)
-      }
-    }
-  })
-
-  return {
-    get: (path: string) => docs.get(path)?.data as Record<string, any> | undefined,
-    put: (path: string, data: Record<string, unknown>) => docs.set(path, { data, version: (docs.get(path)?.version ?? 0) + 1 }),
-  }
-}

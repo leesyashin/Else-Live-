@@ -23,8 +23,28 @@ import {
   tagValue,
   trimSession,
 } from './cloud'
+import { kommandoIn } from './auftraege'
 import type { Owned } from './db'
 import { OFFICE_URL, byCreated, dbGet, dbQuery, dbWrite, keep, owned, settle, textOf, unsaved } from './db'
+import type { DienstCtx } from './dienst'
+import {
+  DIENST_TOOLS,
+  abgebenTool,
+  ablegenTool,
+  antwortTool,
+  auftragTool,
+  besprechungTool,
+  claimKommando,
+  closeOpenKommandos,
+  cvdTool,
+  dienstTick,
+  holenTool,
+  kommandoTool,
+  mergeVerdict,
+  pruneDienst,
+  regelTool,
+  standTool,
+} from './dienst'
 import type { Doc } from './post'
 import {
   LEASE_MS,
@@ -151,6 +171,13 @@ let latestVersion = ''
 /** What sessions wrote on their desks, as the messenger last read them. */
 let deskInfos = new Map<string, DeskInfo>()
 let isVeraltetTold = false
+let isKontextTold = false
+/** The Chef vom Dienst as the lease names it (`cse_…`). */
+let leasePinned: string | undefined
+/** The last post from the person this session received, for the `antwort` tool. */
+let lastPostId: string | undefined
+/** The clock as last read, for notes made without `$` in hand. */
+let lastNow = 0
 
 let ticker: Timer | undefined
 let isTicking = false
@@ -302,6 +329,10 @@ async function cloudList($: $, now: number, maxAge = CLOUD_EVERY_MS): Promise<Se
     const reports = new Map(ownPr === undefined ? [] : [[cloudSelf, ownPr] as const])
     cloudCache = { at: now, sessions, records: cloudRecords(sessions, now, reports, deskInfos) }
     cloudError = undefined
+    const me = cloudCache.records.find(record => sameSession(record.id, cloudSelf))
+    if (me?.kontext !== undefined && me.kontext !== self?.kontext) {
+      change({ kontext: me.kontext, kosten: me.kosten })
+    }
   } catch (error) {
     cloudError = clip(String(error), 300)
     $.ui.log(`buero: list_sessions: ${cloudError}`, { to: 'debug' })
@@ -471,13 +502,17 @@ function addEvents(events: readonly OfficeEvent[]): void {
 
 /** Notes something this session did, which only it knows: a push, a PR, a message. */
 async function note($: $, kind: EventKind, text: string): Promise<void> {
+  noteAt(kind, text, await $.clock.now())
+}
+
+function noteAt(kind: EventKind, text: string, at: number): void {
   if (cloudSelf === '') {
     return
   }
   const mine = ownSession()
   addEvents([
     {
-      at: await $.clock.now(),
+      at,
       sid: idOfSelf(),
       title: clip(mine?.title ?? self?.task ?? '', 120),
       repo: mine === undefined ? (self?.project ?? 'ohne Repo') : repoOfSession(mine),
@@ -542,6 +577,7 @@ async function carry($: $, doc: Doc, post: Post, via: 'selbst' | 'bote'): Promis
   }
   let error: string | undefined
   if (via === 'selbst') {
+    lastPostId = doc.id
     try {
       const entered = await $.prompt.submit({ text: bossMessage(post.text) })
       error = 'drop' in entered && entered.drop !== undefined ? clip(String(entered.drop), 200) : undefined
@@ -599,6 +635,7 @@ async function hold($: $, doc: Doc, post: Post): Promise<void> {
   const claimedAt = await $.clock.now()
   const claimed = await dbWrite($, 'update', 'post', doc.id, { state: 'unterwegs', by: cloudSelf, via: 'selbst', claimedAt }, doc.version)
   if (claimed.isDone) {
+    lastPostId = doc.id
     arrived.push({ text: bossMessage(post.text), post: doc.id })
   }
 }
@@ -816,6 +853,7 @@ async function runOffice($: $, now: number, seen: Readonly<Record<string, string
   if (now - prunedAt > PRUNE_EVERY_MS) {
     prunedAt = now
     await safe($, 'aufräumen', () => prune($, now))
+    await safe($, 'aufräumen dienst', () => pruneDienst($, now))
   }
 
   return told.seen
@@ -829,6 +867,7 @@ async function lead($: $, now: number): Promise<void> {
   const found = await dbGet($, 'leitung', 'bote')
   const lease = leaseOf(found?.data)
   noteLatest(lease?.modVersion)
+  leasePinned = lease?.pinned
   const isCvd = rolle === 'cvd'
   if (!mayLead(lease, cloudSelf, now, isCvd)) {
     isLeader = false
@@ -877,6 +916,7 @@ async function tick($: $): Promise<void> {
   isTicking = true
   try {
     const now = await $.clock.now()
+    lastNow = now
     if (!isRoleKnown) {
       await safe($, 'rolle', () => readRole($))
     }
@@ -885,6 +925,7 @@ async function tick($: $): Promise<void> {
       await cloudList($, now, LIST_EVERY_MS)
     }
     await safe($, 'eigene post', () => fetchOwnMail($))
+    await safe($, 'dienst', () => dienstTick($, ctx, now))
     await safe($, 'schreibtisch', () => writeDesk($, now))
     await safe($, 'logbuch', () => flushLogs($, now))
     await safe($, 'neuigkeiten', () => readNews($, now))
@@ -906,9 +947,19 @@ async function newsContext($: $): Promise<string | undefined> {
   if (warn !== undefined) {
     isVeraltetTold = true
   }
+  const kontext = self?.kontext
+  const full =
+    !isKontextTold && kontext !== undefined && kontext >= 80
+      ? `[Büro] Dein Kontext ist zu ${kontext} % voll. Bring deinen Stand in Ordnung und gib bald ab: mcp__buero__abgeben mit Stand, Branch, offenen Punkten und nächstem Schritt, damit eine neue Session weitermachen kann.`
+      : undefined
+  if (full !== undefined) {
+    isKontextTold = true
+  }
+  const warned = [warn, full].filter((one): one is string => one !== undefined)
+  const warnText = warned.length === 0 ? undefined : warned.join('\n')
   const mine = ownSession()
   if (mine === undefined) {
-    return warn
+    return warnText
   }
   const now = await $.clock.now()
   const told = newsFor({
@@ -922,11 +973,49 @@ async function newsContext($: $): Promise<string | undefined> {
   })
   newsSince = Math.max(newsSince, ...news.map(event => event.at))
   if (told === undefined) {
-    return warn
+    return warnText
   }
   newsTold = told.told
 
-  return warn === undefined ? told.text : `${warn}\n${told.text}`
+  return warnText === undefined ? told.text : `${warnText}\n${told.text}`
+}
+
+/** What the service borrows from this module. */
+const ctx: DienstCtx = {
+  cloudSelf: () => cloudSelf,
+  self: () => self,
+  change,
+  records: () => {
+    const mine = self
+    const listed = cloudCache?.records ?? []
+
+    return listed.map(record =>
+      mine !== undefined && sameSession(record.id, cloudSelf)
+        ? { ...record, agents: mine.agents, sent: mine.sent, receivedAt: mine.receivedAt, receivedText: mine.receivedText }
+        : record,
+    )
+  },
+  idOfSelf,
+  rolle: () => rolle,
+  auftragTag: () => auftragTag,
+  setAuftragTag: id => {
+    auftragTag = id
+    change({ auftrag: id })
+  },
+  cvdId: () => (rolle === 'cvd' ? idOfSelf() : leasePinned === undefined ? undefined : `session_${tailOf(leasePinned)}`),
+  repo: () => {
+    const mine = ownSession()
+    const repo = mine === undefined ? undefined : repoOfSession(mine)
+
+    return repo === undefined || repo === 'ohne Repo' ? undefined : repo
+  },
+  note: (kind, text) => noteAt(kind, text, lastNow || Date.now()),
+  arrive: text => {
+    arrived.push({ text })
+  },
+  isBusy: () => self?.status === 'arbeitet',
+  stuckMs: () => stuckMs,
+  lastPost: () => lastPostId,
 }
 
 /** Takes this session's desk: a new record, or the one a reload left behind. */
@@ -1052,7 +1141,7 @@ export const register: Register = (on, options) => {
       })
       await $.tool.register({
         name: 'nachricht',
-        description: `Schickt einem Büro-Kollegen (einer anderen Claude-Code-Session) eine kurze Nachricht. Höchstens ${perHour} pro Stunde; nur wenn es echte Arbeit spart.`,
+        description: `Schickt einem Büro-Kollegen (einer anderen Claude-Code-Session) eine kurze Nachricht. Höchstens ${perHour} pro Stunde; nur wenn es echte Arbeit spart. Den Chef vom Dienst erreichst du mit mcp__buero__cvd ohne Limit.`,
         inputSchema: {
           type: 'object',
           properties: {
@@ -1063,6 +1152,9 @@ export const register: Register = (on, options) => {
         },
         isDeferred: false,
       })
+      for (const tool of DIENST_TOOLS) {
+        await $.tool.register({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema as never, isDeferred: tool.isDeferred })
+      }
       await join($)
       heartbeat?.cancel()
       heartbeat = $.clock.every(HEARTBEAT_MS, () => void beat($))
@@ -1105,6 +1197,10 @@ export const register: Register = (on, options) => {
       if (cloudSelf !== '' && e.command === undefined && e.isMeta !== true) {
         context = await newsContext($)
       }
+      const named = rolle === 'cvd' ? kommandoIn(e.text) : undefined
+      if (named !== undefined) {
+        await claimKommando($, ctx, named, await $.clock.now())
+      }
     })
 
     return next(context === undefined ? e : { ...e, context: [...(e.context ?? []), context] })
@@ -1138,6 +1234,9 @@ export const register: Register = (on, options) => {
         e.reason === 'aborted' ? 'abgebrochen' : e.reason === 'error' ? 'Fehler beim Modell-Aufruf' : ''
       await setStatus($, e.reason === 'error' ? 'fehler' : 'fertig', { activity, question: undefined })
       afterTurn($)
+      if (rolle === 'cvd') {
+        void safe($, 'kommandos schließen', () => closeOpenKommandos($, ctx, e.answer))
+      }
     })
 
     return next(e)
@@ -1191,6 +1290,16 @@ export const register: Register = (on, options) => {
     const url = typeof e.input === 'object' && e.input !== null ? (e.input as { url?: unknown }).url : undefined
     if (next.origin.plugin === 'buero' && (String(e.tool) === 'ArtifactData' || String(e.tool) === 'ArtifactComments') && url === OFFICE_URL) {
       return { decision: 'allow' as const, reason: 'Die Büro-Mod pflegt ihre eigene Büro-Seite.' }
+    }
+    if (next.origin.plugin === 'buero' && String(e.tool) === 'PushNotification') {
+      return { decision: 'allow' as const, reason: 'Die Büro-Mod meldet, wer auf dich wartet.' }
+    }
+    if (String(e.tool) === 'mcp__github__merge_pull_request' && next.origin.plugin !== 'buero') {
+      const input = typeof e.input === 'object' && e.input !== null ? (e.input as Record<string, unknown>) : {}
+      const refused = await mergeVerdict($, ctx, input, await $.clock.now()).catch(() => undefined)
+      if (refused !== undefined) {
+        return { decision: 'deny' as const, reason: refused }
+      }
     }
     const verdict = await next(e)
     await safe($, 'check', async () => {
@@ -1432,9 +1541,21 @@ export const register: Register = (on, options) => {
     }
 
     return {
-      sections: [...composed.sections, { id: 'buero:team', text: teamPrompt(perHour, where(), cloudSelf !== ''), scope: 'session' as const }],
+      sections: [...composed.sections, { id: 'buero:team', text: teamPrompt(perHour, where(), cloudSelf !== '', rolle), scope: 'session' as const }],
     }
   })
+
+  // The service's tools (dienst.ts).
+  on('tool.call', { tool: 'mcp__buero__stand' }, ($, e) => standTool($, ctx, e)).catch(() => ({ deny: 'Büro: der Stand ließ sich nicht setzen.' }))
+  on('tool.call', { tool: 'mcp__buero__cvd' }, ($, e) => cvdTool($, ctx, e)).catch(() => ({ deny: 'Büro: die Meldung an den Chef vom Dienst ist gescheitert.' }))
+  on('tool.call', { tool: 'mcp__buero__antwort' }, ($, e) => antwortTool($, ctx, e)).catch(() => ({ deny: 'Büro: die Antwort ließ sich nicht speichern.' }))
+  on('tool.call', { tool: 'mcp__buero__auftrag' }, ($, e) => auftragTool($, ctx, e)).catch(() => ({ deny: 'Büro: das Werkzeug auftrag ist gerade gestört.' }))
+  on('tool.call', { tool: 'mcp__buero__kollegen_holen' }, ($, e) => holenTool($, ctx, e)).catch(() => ({ deny: 'Büro: die Session ließ sich nicht holen (Fehler in der Mod).' }))
+  on('tool.call', { tool: 'mcp__buero__abgeben' }, ($, e) => abgebenTool($, ctx, e)).catch(() => ({ deny: 'Büro: das Abgeben ist gescheitert (Fehler in der Mod).' }))
+  on('tool.call', { tool: 'mcp__buero__kommando' }, ($, e) => kommandoTool($, ctx, e)).catch(() => ({ deny: 'Büro: das Kommando ließ sich nicht abschließen.' }))
+  on('tool.call', { tool: 'mcp__buero__besprechung' }, ($, e) => besprechungTool($, ctx, e)).catch(() => ({ deny: 'Büro: die Besprechung ist gestört (Fehler in der Mod).' }))
+  on('tool.call', { tool: 'mcp__buero__ablegen' }, ($, e) => ablegenTool($, ctx, e)).catch(() => ({ deny: 'Büro: die Ablage ist gestört (Fehler in der Mod).' }))
+  on('tool.call', { tool: 'mcp__buero__regel' }, ($, e) => regelTool($, ctx, e)).catch(() => ({ deny: 'Büro: die Regeln ließen sich nicht lesen oder setzen.' }))
 
   on('command.run', { command: 'buero' }, async $ => {
     const opened = await $.ui.open({ id: PANE, title: 'Büro' })
