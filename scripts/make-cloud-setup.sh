@@ -4,7 +4,8 @@
 # every cloud session loads it. The script first tries to fetch the newest mod
 # from main on GitHub (the cloud's proxy allows that only in sessions whose
 # own repository is Else-Live-, the Chef vom Dienst among them) and falls back
-# to the copy embedded here. Run it again after changing the mod.
+# to the copy embedded here as a compressed archive, so the script stays small
+# enough to paste. Run it again after changing the mod.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -69,19 +70,16 @@ install_buero_from_github() {
 install_buero() {
   local dir="\$HOME/.claude/skills/buero"
   rm -rf "\$dir"
-  mkdir -p "\$dir/.claude-plugin" "\$dir/hooks" "\$dir/types"
+  mkdir -p "\$dir"
+  base64 -d <<'BUERO_ARCHIV_ENDE' | tar -xzf - -C "\$dir"
 HEAD
-  for file in "${files[@]}"; do
-    if grep -q '^BUERO_DATEI_ENDE$' "$mod/$file"; then
-      echo "$file contains the heredoc delimiter" >&2
-      exit 1
-    fi
-    printf "\n  cat > \"\$dir/%s\" <<'BUERO_DATEI_ENDE'\n" "$file"
-    cat "$mod/$file"
-    printf 'BUERO_DATEI_ENDE\n'
-  done
+  tar -czf - -C "$mod" "${files[@]}" | base64 -w 76
   cat <<'TAIL'
-
+BUERO_ARCHIV_ENDE
+  if [ ! -f "$dir/hooks/register.tsx" ]; then
+    echo "Büro-Mod: Archiv ließ sich nicht entpacken." >&2
+    return 1
+  fi
   echo "Büro-Mod (eingebettet) installiert: $dir"
 }
 
