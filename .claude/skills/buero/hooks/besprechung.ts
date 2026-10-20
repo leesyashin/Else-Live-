@@ -2,7 +2,7 @@
 // notes, links and files they share. Pure, like auftraege.ts.
 
 import type { Ablage, AblageArt, Beitrag, Besprechung, BesprechungState } from '../types'
-import { clip } from './model'
+import { ago, clip } from './model'
 
 export const BESPRECHUNG_LABEL: Record<BesprechungState, string> = {
   offen: 'offen',
@@ -100,18 +100,6 @@ export function einladungText(id: string, b: Besprechung, now: number): string {
   )
 }
 
-function ago(at: number, now: number): string {
-  const minutes = Math.max(0, Math.round((now - at) / 60_000))
-  if (minutes < 1) {
-    return 'gerade eben'
-  }
-  if (minutes < 60) {
-    return `vor ${minutes} Min.`
-  }
-  const hours = Math.floor(minutes / 60)
-
-  return hours < 24 ? `vor ${hours} Std.` : `vor ${Math.floor(hours / 24)} Tg.`
-}
 
 /** A meeting in full: question, contributions, summary, decision. */
 export function besprechungText(id: string, b: Besprechung, beitraege: readonly Beitrag[], now: number, names: ReadonlyMap<string, string> = new Map()): string {

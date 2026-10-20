@@ -122,17 +122,21 @@ export function checkRunsIn(text: string, now: number): CiStand | undefined {
   }
 }
 
-/** Whether a pull request can be merged, out of a `pull_request_read get` answer: `dirty` means conflicts. */
-export function mergeStateIn(text: string): { mergeable?: boolean; mergeableState?: string; headSha?: string; isDraft?: boolean } | undefined {
+/** A pull request as `pull_request_read get` answers it: whether it is open, merged or closed, and whether it can be merged (`dirty` means conflicts). */
+export type PrState = { state: OwnPr['state']; mergeable?: boolean; mergeableState?: string; headSha?: string; isDraft?: boolean }
+
+export function mergeStateIn(text: string): PrState | undefined {
   const start = text.indexOf('{')
   const end = text.lastIndexOf('}')
   if (start < 0 || end <= start) {
     return undefined
   }
   try {
-    const value = JSON.parse(text.slice(start, end + 1)) as { mergeable?: unknown; mergeable_state?: unknown; head?: { sha?: unknown }; draft?: unknown }
+    const value = JSON.parse(text.slice(start, end + 1)) as { state?: unknown; merged?: unknown; merged_at?: unknown; mergeable?: unknown; mergeable_state?: unknown; head?: { sha?: unknown }; draft?: unknown }
+    const isMerged = value.merged === true || (typeof value.merged_at === 'string' && value.merged_at !== '')
 
     return {
+      state: isMerged ? 'merged' : value.state === 'open' ? 'open' : 'closed',
       mergeable: typeof value.mergeable === 'boolean' ? value.mergeable : undefined,
       mergeableState: typeof value.mergeable_state === 'string' ? value.mergeable_state : undefined,
       headSha: typeof value.head?.sha === 'string' ? value.head.sha : undefined,
@@ -372,13 +376,14 @@ export function cloudRecords(
     taken.push(name)
     const summary = session.post_turn_summary ?? session.external_metadata?.post_turn_summary
     const status = STATUS_BY_BUCKET[session.status_bucket ?? ''] ?? 'neu'
-    const updated = time(session.updated_at, now)
+    const desk = deskFor(desks, id)
+    // a session that just wrote its status line is at work, whatever the cloud's timestamp says
+    const updated = Math.max(time(session.updated_at, now), desk?.stand?.at ?? 0)
     const repo = repoOf(session)
     const branch = session.session_context?.outcomes?.[0]?.git_repository?.git_info?.branches?.[0]
     const detail = summary?.status_detail || summary?.recent_action || ''
     const question =
       status === 'frage' ? clip(summary?.needs_action || detail || 'wartet auf dich', 200) : undefined
-    const desk = deskFor(desks, id)
     const stand = desk?.stand !== undefined && now - desk.stand.at <= STAND_MS ? desk.stand : undefined
     const live = stand?.text ?? taskSummaryOf(session) ?? ''
     const kosten = session.external_metadata?.usage?.cost_usd

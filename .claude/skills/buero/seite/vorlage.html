@@ -585,10 +585,10 @@
   const Office = (() => {
     /*__OFFICE_LIB__*/
     return {
-      buildOffice, drawOffice, describeOffice, cloudRecords, parseSessionList, clip, moodLabel, ciLabel, prLabel,
-      MOOD_COLOR, MOOD_LABEL, ROLLE_LABEL, eventsIn, postOf, sameSession, tailOf, dayOf, LEASE_MS, KEEP_MS, CVD_GRACE_MS,
-      AUFTRAG_LABEL, KOMMANDO_LABEL, BESPRECHUNG_LABEL, OFFENE_ZUSTAENDE, REGELN_STANDARD,
-      auftragOf, kommandoOf, besprechungOf, beitragOf, ablageOf, regelnOf, regelnId, isVeraltet, rolleOf, elternOf, tagValue, taskSummaryOf,
+      buildOffice, drawOffice, describeOffice, cloudRecords, parseSessionList, clip, moodLabel, ciLabel,
+      ROLLE_LABEL, eventsIn, postOf, sameSession, tailOf, dayOf, LEASE_MS, KEEP_MS, CVD_GRACE_MS,
+      AUFTRAG_LABEL, KOMMANDO_LABEL, BESPRECHUNG_LABEL, REGELN_STANDARD,
+      auftragOf, kommandoOf, besprechungOf, beitragOf, ablageOf, regelnOf, regelnId, rolleOf,
     };
   })();
 
@@ -1110,7 +1110,7 @@
     function renderPr(worker) {
       const box = el('dPr');
       box.replaceChildren();
-      const report = reports().get(`cse_${worker.id.slice(worker.id.indexOf('_') + 1)}`) || [...reports().entries()].find(([writer]) => Office.sameSession(writer, worker.id))?.[1];
+      const report = [...reports().entries()].find(([writer]) => Office.sameSession(writer, worker.id))?.[1];
       const pr = worker.pr || (report && report.state === 'open' ? `PR #${report.number}` : null);
       if (!pr) { box.textContent = '–'; return; }
       if (report && report.url) {
@@ -1566,7 +1566,7 @@
       const shown = done.slice(0, DONE_PAGE * state.taskDonePages);
       const ul = document.createElement('ul');
       ul.className = 'done-list';
-      ul.replaceChildren(...shown.map(rowFor));
+      ul.replaceChildren(...shown.map(doneRowFor));
       box.append(ul);
       if (shown.length < done.length) {
         const left = done.length - shown.length;
@@ -1575,7 +1575,7 @@
     }
 
     /** One line for a done order: id, title, state, PR, when; opens the detail like a card. */
-    function rowFor(a) {
+    function doneRowFor(a) {
       const li = document.createElement('li');
       const b = document.createElement('button');
       b.type = 'button';

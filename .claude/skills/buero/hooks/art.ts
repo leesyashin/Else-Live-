@@ -1331,7 +1331,16 @@ function nameTag(x: number, y: number, view: WorkerView | undefined, isAway = fa
     rect(x + 24, y + 115, 2, 1, '#ffffff', ' opacity="0.6"') +
     text(x + 34, y + 120, clip(name, 15), 10, '#222', ' font-weight="bold"') +
     text(x + 26, y + 130, clip(line, 26), 7, '#555') +
+    (view.rolle === 'pruefer' ? lens(x + 126, y + 116) : '') +
     '</g>'
+  )
+}
+
+/** The magnifying glass a Prüfer carries on the name tag. */
+function lens(cx: number, cy: number): string {
+  return (
+    `<circle cx="${cx}" cy="${cy}" r="4" fill="#dff1ff" stroke="#2a2230" stroke-width="1.5"/>` +
+    `<line x1="${cx + 3}" y1="${cy + 3}" x2="${cx + 7}" y2="${cy + 7}" stroke="#2a2230" stroke-width="2"/>`
   )
 }
 

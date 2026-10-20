@@ -5,7 +5,7 @@
 
 import type { EventKind, Lease, Letter, OfficeEvent, Post, SessionRecord } from '../types'
 import type { CloudSession, Delivery } from './cloud'
-import { baseName, bossMessage, clip, prLabel } from './model'
+import { ago, baseName, bossMessage, clip, prLabel } from './model'
 
 /** The messenger holds its lease this long without renewing it. */
 export const LEASE_MS = 90_000
@@ -428,18 +428,6 @@ function clip2(text: string): string {
   return text.length <= 2000 ? text : `${text.slice(0, 1999)}…`
 }
 
-function ago(at: number, now: number): string {
-  const minutes = Math.max(0, Math.round((now - at) / ONE_MINUTE))
-  if (minutes < 1) {
-    return 'gerade eben'
-  }
-  if (minutes < 60) {
-    return `vor ${minutes} Min.`
-  }
-  const hours = Math.floor(minutes / 60)
-
-  return hours < 24 ? `vor ${hours} Std.` : `vor ${Math.floor(hours / 24)} Tg.`
-}
 
 function sameRepo(a: string, b: string): boolean {
   return a !== 'ohne Repo' && baseName(a).toLowerCase() === baseName(b).toLowerCase()

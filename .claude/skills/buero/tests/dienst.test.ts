@@ -14,6 +14,7 @@ test('the Chef vom Dienst carries out commands from the page and hands the rest 
   const other = session('session_01OTHER')
   const calls: string[] = []
   const prompts: string[] = []
+  const contexts: string[] = []
   on('mcp.call', ($, e) => {
     calls.push(`${e.tool} ${JSON.stringify(e.args)}`)
     switch (e.tool) {
@@ -27,6 +28,7 @@ test('the Chef vom Dienst carries out commands from the page and hands the rest 
   })
   on('prompt.submit', ($, e) => {
     prompts.push(e.text)
+    contexts.push((e.context ?? []).join('\n'))
 
     return { text: e.text }
   })
@@ -68,6 +70,18 @@ test('the Chef vom Dienst carries out commands from the page and hands the rest 
   const before = prompts.length
   await clock.advance(15_000)
   expect(prompts.slice(before).some(text => text.includes('k-4'))).toBe(false)
+  // the comment for a command the round already took tells the model so, instead of running it twice
+  await $.prompt.submit({ text: 'Kommentar auf der Büro-Seite, Kommando k-4: Stopp Anton', wait: false, origin: { kind: 'composer' } } as never)
+  expect(contexts.at(-1)).toContain('Kommando k-4 ist schon in Bearbeitung')
+  // a command that arrives while the model works waits for an idle model
+  await $.turn.start({ text: 'arbeite', turnId: 't2' })
+  db.put('kommandos/k-5', { text: 'Was macht Max?', createdAt: START + 4, state: 'neu', von: 'chef' })
+  await clock.advance(15_000)
+  expect(db.get('kommandos/k-5')?.state).toBe('neu')
+  await $.turn.complete({ reason: 'answer', answer: 'fertig', durationMs: 10, isAborted: false, turnId: 't2' })
+  await clock.advance(15_000)
+  expect(db.get('kommandos/k-5')?.state).toBe('angenommen')
+  expect(prompts.some(text => text.includes('[Büro] Kommando k-5 vom Chef'))).toBe(true)
 })
 
 test('orders are created, handed to a new session, taken, handed over and ruled', async ($, on) => {
@@ -131,6 +145,11 @@ test('orders are created, handed to a new session, taken, handed over and ruled'
   const given = await $.tool.call({ tool: 'mcp__buero__abgeben', an: 'cvd', stand: 'Modell fertig', offen: 'Kasse', naechster: 'Kasse bauen' } as never)
   expect(JSON.stringify(given)).toContain('Chef vom Dienst weiß Bescheid')
   expect(db.get('auftraege/a2')?.state).toBe('offen')
+  // a review order whose owner is gone gets a continuation: it is handed to the new session, not left as it was
+  db.put('auftraege/a1', { ...(db.get('auftraege/a1') ?? {}), state: 'review', pr: 'PR #4' })
+  const again = await $.tool.call({ tool: 'mcp__buero__kollegen_holen', auftrag: 'a1' } as never)
+  expect(JSON.stringify(again)).toContain('session_01NEW')
+  expect(db.get('auftraege/a1')?.state).toBe('vergeben')
   expect(db.get('auftraege/a2')?.uebergabe?.stand).toBe('Modell fertig')
   expect(calls.some(one => one.tool === 'send_message' && one.args.session_id === 'session_01CVD' && String(one.args.message).includes('abgegeben'))).toBe(true)
 
@@ -221,7 +240,7 @@ test('the round reports stuck and failed colleagues, unaccepted and reviewable o
       // PR #9 has conflicts with main, PR #10 is green and clean
       const isDirty = e.args.pullNumber === 9
       if (e.args.method === 'get') {
-        return said(JSON.stringify({ number: e.args.pullNumber, mergeable: !isDirty, mergeable_state: isDirty ? 'dirty' : 'clean', draft: !isDirty, head: { sha: `sha${String(e.args.pullNumber)}` } }))
+        return said(JSON.stringify({ number: e.args.pullNumber, state: 'open', mergeable: !isDirty, mergeable_state: isDirty ? 'dirty' : 'clean', draft: !isDirty, head: { sha: `sha${String(e.args.pullNumber)}` } }))
       }
 
       return said(JSON.stringify({ total_count: 1, check_runs: [{ name: 'bauen', status: 'completed', conclusion: 'success' }] }))

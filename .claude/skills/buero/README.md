@@ -52,7 +52,7 @@ Ist kein Chef vom Dienst und keine andere Session mit der Mod wach, sagt die Sei
 | Neue Session | etwa eine Minute | `create_session` mit Prompt aus dem Auftrag, Tags, Branch, Modell |
 | GitHub an Session | Sekunden | `subscribe_pr_activity` in der Kind-Session |
 | Zeit | Minutentakt, Wecker stündlich | `send_later`, geplante Aufgaben |
-| An dich | Sekunden | Push vom Chef vom Dienst, wenn jemand auf dich wartet, ein Auftrag fertig ist oder er dich braucht |
+| An dich | Sekunden | Push vom Chef vom Dienst, wenn jemand auf dich wartet, er dich braucht (`braucht_dich`), ein PR bei Regel „nie“ bereit ist, eine Besprechung zusammengefasst ist oder er abgelöst wird |
 
 ## Was eine Session kann
 
@@ -90,7 +90,7 @@ Ein Auftrag ist ein Dokument mit Ziel, Kontext, Umsetzung und Abnahme (Vorlage i
 1. **Anlegen**: du auf der Seite, der Chef vom Dienst aus einem Kommando, oder eine Session mit `auftrag anlegen`.
 2. **Vergeben**: `kollegen_holen` startet eine Session mit dem Auftrag als Prompt; bleibt die Annahme zehn Minuten aus, meldet es der Chef vom Dienst.
 3. **Arbeiten**: Stand setzen, Draft-PR, PR abonnieren, CI auf grün. **Review**: `auftrag review` mit PR-Nummer; nach Regel mergt der Chef vom Dienst oder meldet dir, dass der PR bereit ist. **Fertig** schließt ab und archiviert nach Regel.
-4. **Abgeben**: wenn eine Session nicht weiterkommt oder der Kontext knapp wird. Bis zur Annahme bleibt der Auftrag bei ihr, damit nichts herrenlos wird.
+4. **Abgeben**: wenn eine Session nicht weiterkommt oder der Kontext knapp wird. Der Auftrag steht sofort als vergeben beim Empfänger; nimmt er ihn nicht binnen zehn Minuten an, meldet es der Rundgang dem Chef vom Dienst, damit nichts herrenlos wird. Eine Fortsetzung geht auch aus Review (`kollegen_holen`), etwa wenn die Besitzer-Session weg ist.
 
 Eine Auftrags-Session darf nur mergen, wenn die Regel des Repos es erlaubt; die Mod blockt den Merge sonst und sagt, wie es weitergeht.
 

@@ -82,37 +82,6 @@ export async function settle($: $, collection: string, id: string, data: Record<
   return (await dbWrite($, 'update', collection, id, data, doc.version)).isDone
 }
 
-/**
- * Reads, changes and writes one document, again when someone wrote it
- * meanwhile. `change` answers the fields to merge, or undefined to leave it.
- */
-export async function revise(
-  $: $,
-  collection: string,
-  id: string,
-  change: (data: Record<string, unknown>) => Record<string, unknown> | undefined,
-): Promise<Doc | undefined> {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const doc = await dbGet($, collection, id)
-    if (doc === undefined) {
-      return undefined
-    }
-    const patch = change(doc.data)
-    if (patch === undefined) {
-      return doc
-    }
-    const outcome = await dbWrite($, 'update', collection, id, patch, doc.version)
-    if (outcome.isDone) {
-      return { id, data: { ...doc.data, ...patch }, version: outcome.version ?? doc.version + 1 }
-    }
-    if (!outcome.isStale) {
-      throw new Error(outcome.reason)
-    }
-  }
-
-  return undefined
-}
-
 /** A document of the office page only this session writes, whole, at the version it last saw. */
 export type Owned = { collection: string; id: string; version: number | undefined; isKnown: boolean; last: string }
 

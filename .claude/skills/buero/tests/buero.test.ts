@@ -518,7 +518,8 @@ test('CI is read from the check runs, shown with the PR, and noted in the logboo
   expect(moodLabel({ mood: 'fertig', pr: 'PR #8', ci: running })).toBe('PR #8, CI läuft (1/2)')
   expect(moodLabel({ mood: 'fertig', pr: 'PR #8', ci: red })).toBe('PR #8, CI rot (bauen)')
   expect(moodLabel({ mood: 'fertig', pr: 'PR #8', ci: green })).toBe('PR #8 grün, bereit zum Mergen')
-  expect(mergeStateIn('{"mergeable":false,"mergeable_state":"dirty","draft":true,"head":{"sha":"abc"}}')).toEqual({ mergeable: false, mergeableState: 'dirty', headSha: 'abc', isDraft: true })
+  expect(mergeStateIn('{"state":"open","mergeable":false,"mergeable_state":"dirty","draft":true,"head":{"sha":"abc"}}')).toEqual({ state: 'open', mergeable: false, mergeableState: 'dirty', headSha: 'abc', isDraft: true })
+  expect(mergeStateIn('{"state":"closed","merged":true,"merged_at":"2026-10-20T19:00:00Z"}')?.state).toBe('merged')
 
   // the Chef vom Dienst merges other people's pull requests: none of them is his own
   const cvd = finished('session_01CVD', 'hat PR #18 gemergt; PR #21 wartet auf grün', { tags: ['buero:rolle=cvd'] })

@@ -3,7 +3,7 @@
 // the prompt a child session is started with. No `$` in here.
 
 import type { Auftrag, AuftragState, Kommando, KommandoAktion, KommandoState, Regeln, Uebergabe, Verlauf } from '../types'
-import { clip } from './model'
+import { ago, clip } from './model'
 
 export const AUFTRAG_LABEL: Record<AuftragState, string> = {
   entwurf: 'Entwurf',
@@ -32,7 +32,7 @@ const FOLGE: Record<AuftragAktion, { von: readonly AuftragState[]; nach: Auftrag
   anlegen: { von: [], nach: 'offen' },
   aendern: { von: ['entwurf', 'offen', 'vergeben', 'in_arbeit', 'review', 'blockiert'], nach: 'offen' },
   freigeben: { von: ['entwurf'], nach: 'offen' },
-  vergeben: { von: ['offen', 'vergeben', 'blockiert', 'in_arbeit'], nach: 'vergeben' },
+  vergeben: { von: ['offen', 'vergeben', 'blockiert', 'in_arbeit', 'review'], nach: 'vergeben' },
   annehmen: { von: ['offen', 'vergeben', 'blockiert'], nach: 'in_arbeit' },
   review: { von: ['in_arbeit', 'blockiert'], nach: 'review' },
   blockieren: { von: ['vergeben', 'in_arbeit', 'review'], nach: 'blockiert' },
@@ -276,18 +276,6 @@ export function regelnText(regeln: Regeln): string {
   ].join('\n')
 }
 
-function ago(at: number, now: number): string {
-  const minutes = Math.max(0, Math.round((now - at) / 60_000))
-  if (minutes < 1) {
-    return 'gerade eben'
-  }
-  if (minutes < 60) {
-    return `vor ${minutes} Min.`
-  }
-  const hours = Math.floor(minutes / 60)
-
-  return hours < 24 ? `vor ${hours} Std.` : `vor ${Math.floor(hours / 24)} Tg.`
-}
 
 /** One order in full, as `auftrag zeigen` answers. `names` turns session ids into names. */
 export function auftragText(auftrag: Auftrag, now: number, names: ReadonlyMap<string, string> = new Map()): string {
@@ -389,6 +377,15 @@ export function kindPrompt(input: {
   return lines.join('\n')
 }
 
+/** What a repository's rule means for a reviewable pull request, in one clause, for the Chef vom Dienst. */
+export function mergeRuleText(regeln: Regeln): string {
+  return regeln.autoMerge === 'nie'
+    ? 'nicht automatisch mergen; melde dem Chef, dass der PR bereit ist'
+    : regeln.autoMerge === 'gruen'
+      ? 'bei grün und konfliktfrei sofort mergen (merge_pull_request, merge_method merge), dann mcp__buero__auftrag aktion=abschliessen'
+      : 'Prüfer holen; bei grün und gutem Befund mergen, dann aktion=abschliessen'
+}
+
 /** The repository the Chef vom Dienst lives in, and the name his wake-up task carries. */
 export const CVD_REPO = 'leesyashin/Else-Live-'
 export const CVD_TITEL = 'Chef vom Dienst'
@@ -402,17 +399,22 @@ export const ABLOESE_PROZENT = 75
  * learns who he replaces; the mod archives the predecessor once the
  * successor keeps the office.
  */
-export function cvdPrompt(input: { vorgaenger?: string; grund?: string } = {}): string {
+export function cvdPrompt(input: { vorgaenger?: string; grund?: string; ohneEinrichtung?: boolean } = {}): string {
+  const einrichtung = input.ohneEinrichtung
+    ? []
+    : [
+        'Einrichtung, einmal jetzt und nach jedem Neustart des Containers:',
+        '1. Prüfe mit get_session (ohne Argument), ob diese Session den Tag "buero:rolle=cvd" trägt; fehlt er, setze ihn mit set_session_tags. Die Mod erkennt dich daran innerhalb einer Minute; den Wecker „Chef vom Dienst wach halten“ bindet sie dann selbst an dich.',
+        '2. Bereitschaft: Starte mit Bash (run_in_background=true, timeout=7200000) `sleep 7100; echo "Bereitschaft abgelaufen"`. Meldet die Hintergrundaufgabe das Ende, starte sofort den nächsten; die Mod erinnert dich, wenn keiner läuft. Nie zwei gleichzeitig (pgrep -f "^sleep 7100").',
+        '3. Antworte mit einer Zeile: „Bereit.“',
+        '',
+      ]
   const lines = [
     'Du bist der Chef vom Dienst (CvD) im Claude-Büro von Vincent. Du schreibst keinen Code und pushst nichts, außer er befiehlt es ausdrücklich. Du hältst das Büro am Laufen, verteilst Aufträge und führst seine Kommandos aus.',
     '',
     'Die Büro-Mod läuft in dieser Session. Sie hält als Bote die Büro-Seite aktuell, stellt Post zu, liest die Kommandos der Seite, meldet dir Störungen, wacht über die PRs der Aufträge in Review und hält die Watch auf die Seite, damit Kommentare dich wecken. Deine Werkzeuge: mcp__buero__kollegen, nachricht, auftrag, kollegen_holen, abgeben, stand, kommando, besprechung, ablegen, regel.',
     '',
-    'Einrichtung, einmal jetzt und nach jedem Neustart des Containers:',
-    '1. Prüfe mit get_session (ohne Argument), ob diese Session den Tag "buero:rolle=cvd" trägt; fehlt er, setze ihn mit set_session_tags. Die Mod erkennt dich daran innerhalb einer Minute; den Wecker „Chef vom Dienst wach halten“ bindet sie dann selbst an dich.',
-    '2. Bereitschaft: Starte mit Bash (run_in_background=true, timeout=7200000) `sleep 7100; echo "Bereitschaft abgelaufen"`. Meldet die Hintergrundaufgabe das Ende, starte sofort den nächsten; die Mod erinnert dich, wenn keiner läuft. Nie zwei gleichzeitig (pgrep -f "^sleep 7100").',
-    '3. Antworte mit einer Zeile: „Bereit.“',
-    '',
+    ...einrichtung,
     'Dein Dienst:',
     '- Kommandos kommen als „[Büro] Kommando k-… vom Chef“ (von der Seite) oder als Kommentar der Büro-Seite, der dich weckt. Führ sie aus und schließe jedes mit mcp__buero__kommando: aktion=erledigt mit ergebnis (ein bis drei Zeilen), aktion=braucht_dich mit der Frage, aktion=abgelehnt mit Grund. Bei einem Kommentar antwortet die Mod im Thread.',
     '- Mitarbeiter holen („Hol jemanden für X“): Lege den Auftrag an (mcp__buero__auftrag aktion=anlegen: Titel, Text mit Ziel, Kontext und Umsetzung, repo als owner/repo, abnahme als prüfbare Punkte) und hol die Session (mcp__buero__kollegen_holen auftrag=<id>). Prüfer: ein Auftrag „Prüfe PR #n gegen Auftrag a…“, Session mit dem Prüfer-Modell der Regel.',
@@ -482,13 +484,6 @@ export function kommandoPrompt(id: string, kommando: Kommando): string {
 /** The id of a command named in a comment or prompt (`Kommando k-…`). */
 export function kommandoIn(text: string): string | undefined {
   return /\bKommando (k-[A-Za-z0-9-]+)/.exec(text)?.[1]
-}
-
-/** What the person reads on the page while the command runs: short, in the page's words. */
-export function kommandoSummary(kommando: Kommando): string {
-  const result = kommando.result === undefined ? '' : `: ${clip(kommando.result, 200)}`
-
-  return `${KOMMANDO_LABEL[kommando.state]}${result}`
 }
 
 /** Orders too long untouched since they were handed out: the Chef vom Dienst hears about them once. */

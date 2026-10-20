@@ -22,6 +22,7 @@ import {
   kindPrompt,
   kommandoOf,
   kommandoPrompt,
+  mergeRuleText,
   naechsteNummer,
   neuerAuftrag,
   nichtAngenommen,
@@ -43,9 +44,10 @@ import {
   neueAblage,
   neueBesprechung,
 } from './besprechung'
-import { CLOUD_SERVER, checkRunsIn, mergeStateIn, parseSession, sameSession } from './cloud'
+import { CLOUD_SERVER, parseSession, sameSession } from './cloud'
+import { fetchCi, fetchPr } from './github'
 import { OFFICE_URL, dbCreate, dbGet, dbQuery, dbWrite, textOf, unsaved } from './db'
-import { clip, colleagueMessage, isActive, moodOf, resolveRecipient } from './model'
+import { clip, colleagueMessage, isActive, moodOf, resolveRecipient, withSent } from './model'
 import { letterId, tailOf } from './post'
 
 type $ = EngineInterface
@@ -83,6 +85,8 @@ export type DienstCtx = {
   /** A Chef vom Dienst that started its successor: it keeps the office no longer. */
   isRetiring: () => boolean
   retire: () => void
+  /** Whether this session holds the office (the messenger's lease) right now. */
+  isLeader: () => boolean
 }
 
 /** What a tool answers. */
@@ -125,7 +129,10 @@ const STALE_KOMMANDO_MS = 15 * 60_000
 /** The pull request of an order under review is looked at this often, and this many per round. */
 const PR_WATCH_MS = 3 * 60_000
 const PR_WATCH_PER_ROUND = 4
-const GITHUB_SERVER = 'github'
+/** A retired Chef vom Dienst whose successor never shows up takes the office back after this long. */
+export const ABLOESE_FRIST_MS = 10 * 60_000
+/** Keys of disturbances already reported, kept this many at most. */
+const ALERTED_MAX = 500
 
 const openKommandos = new Map<string, number>()
 const alerted = new Map<string, number>()
@@ -422,6 +429,13 @@ async function sendLetter($: $, ctx: DienstCtx, target: SessionRecord, body: str
   if (refused !== undefined && filed !== undefined) {
     await dbWrite($, 'delete', 'kollegenpost', letter, undefined, filed).catch(() => undefined)
   }
+  if (refused === undefined) {
+    // on the stage and in the receipts like any letter; the office's own letters do not count toward the limit
+    const own = ctx.self()
+    if (own !== undefined) {
+      ctx.change({ sent: withSent(own.sent, { at: now, to: target.id, toId: target.id, text: clip(body, 200), counts: false, ...(filed === undefined ? {} : { letter }) }) })
+    }
+  }
 
   return refused
 }
@@ -472,7 +486,7 @@ async function holen(
   const now = await $.clock.now()
   const regeln = await loadRegeln($, auftrag.repo, now)
   const records = ctx.records()
-  const busy = records.filter(one => one.auftrag !== undefined && one.status === 'arbeitet' && one.project.toLowerCase() === auftrag.repo.split('/').at(-1)?.toLowerCase())
+  const busy = records.filter(one => one.auftrag !== undefined && isActive(one, now) && one.status !== 'fertig' && one.status !== 'fehler' && one.project.toLowerCase() === auftrag.repo.split('/').at(-1)?.toLowerCase())
   if (busy.length >= regeln.maxParallel) {
     return { deny: `Im Repo ${auftrag.repo} arbeiten schon ${busy.length} Auftrags-Sessions; die Regel erlaubt ${regeln.maxParallel}. Warte, oder lass den Chef die Regel ändern.` }
   }
@@ -558,9 +572,9 @@ export async function abloesen($: $, ctx: DienstCtx, grund: string, model?: stri
 }
 
 /** A successor's first duty: archive the predecessor once this session keeps the office. */
-async function archiveVorgaenger($: $, ctx: DienstCtx): Promise<void> {
+async function archiveVorgaenger($: $, ctx: DienstCtx, now: number): Promise<void> {
   const old = ctx.vorgaenger()
-  if (old === undefined) {
+  if (old === undefined || !ctx.isLeader() || !alertOnce(`vorgaenger:${old}`, now)) {
     return
   }
   const answer = await $.mcp.call(CLOUD_SERVER, 'archive_session', { session_id: old })
@@ -570,6 +584,7 @@ async function archiveVorgaenger($: $, ctx: DienstCtx): Promise<void> {
 
     return
   }
+  alerted.delete(`vorgaenger:${old}`)
   ctx.clearVorgaenger()
   ctx.note('archiviert', `hat den Vorgänger ${old} archiviert`)
 }
@@ -607,7 +622,7 @@ async function bindWecker($: $, ctx: DienstCtx): Promise<void> {
       cron_expression: '0 */3 * * *',
       persistent_session_id: me,
       initiation: 'own_followup',
-      prompt: 'Bereitschafts-Check: Prüfe, ob der Wachhalter (sleep 7100) läuft, sonst starte ihn neu. Prüfe mit mcp__buero__kollegen, ob du Bote bist. Antworte mit einer Zeile.',
+      prompt: 'Bereitschafts-Check: Prüfe, ob der Wachhalter (sleep 7100) läuft, sonst starte ihn neu. Antworte mit einer Zeile.',
     })
     if (made.isError) {
       throw new Error(clip(await unsaved($, textOf(made)), 200))
@@ -799,8 +814,8 @@ export async function auftragTool($: $, ctx: DienstCtx, e: unknown): Promise<Too
     ctx.note('auftrag', `Auftrag ${id} ${AUFTRAG_LABEL[updated.state]}${updated.pr === undefined ? '' : ` (${updated.pr})`}`)
     const regeln = await loadRegeln($, updated.repo, now)
     if (step.aktion === 'review' || step.aktion === 'abschliessen' || step.aktion === 'blockieren' || step.aktion === 'abbrechen') {
-      const merge = regeln.autoMerge === 'nie' ? 'Regel: nicht automatisch mergen.' : regeln.autoMerge === 'gruen' ? 'Regel: bei grüner CI mergen.' : 'Regel: bei grüner CI und Prüfer-Befund mergen.'
-      await tellCvd($, ctx, `Auftrag ${id} (${updated.titel}) ist ${AUFTRAG_LABEL[updated.state]}${updated.pr === undefined ? '' : `, ${updated.pr}`}${updated.grund === undefined ? '' : `: ${updated.grund}`}. ${merge}`)
+      const merge = updated.state === 'review' ? ` Regel: ${mergeRuleText(regeln)}.${updated.pr === undefined ? '' : ' Die PR-Wache meldet dir, sobald der PR grün und konfliktfrei ist.'}` : ''
+      await tellCvd($, ctx, `Auftrag ${id} (${updated.titel}) ist ${AUFTRAG_LABEL[updated.state]}${updated.pr === undefined ? '' : `, ${updated.pr}`}${updated.grund === undefined ? '' : `: ${updated.grund}`}.${merge}`)
     }
     const ablage = step.aktion === 'annehmen' ? await ablageHint($, updated.repo, now) : ''
 
@@ -891,7 +906,7 @@ export async function abgebenTool($: $, ctx: DienstCtx, e: unknown): Promise<Too
     ctx.note('uebergabe', `hat Auftrag ${id} an ${target.name} abgegeben`)
 
     return refused === undefined
-      ? { result: `Auftrag ${id} an ${target.name} abgegeben; bis zur Annahme bleibt er bei dir auf dem Brett.` }
+      ? { result: `Auftrag ${id} an ${target.name} abgegeben: er steht als vergeben bei ${target.name}; nimmt ${target.name} ihn nicht binnen 10 Minuten an, meldet es der Chef vom Dienst.` }
       : { result: `Auftrag ${id} ist ${target.name} zugeordnet, aber die Nachricht kam nicht an (${refused}); der Chef vom Dienst sieht es beim Rundgang.` }
   }
 }
@@ -1179,19 +1194,28 @@ async function answerThread($: $, thread: string, text: string, isResolved: bool
 }
 
 /** A command named in a prompt (a Sofort comment) is taken before the round would hand it over again. */
-export async function claimKommando($: $, ctx: DienstCtx, id: string, now: number): Promise<void> {
+export async function claimKommando($: $, ctx: DienstCtx, id: string, now: number): Promise<KommandoState | undefined> {
   const doc = await dbGet($, 'kommandos', id)
   const kommando = kommandoOf(doc?.data)
-  if (doc === undefined || kommando === undefined || kommando.state !== 'neu') {
-    return
+  if (doc === undefined || kommando === undefined) {
+    return undefined
+  }
+  if (kommando.state !== 'neu') {
+    return kommando.state
   }
   const outcome = await dbWrite($, 'update', 'kommandos', id, { state: 'angenommen', updatedAt: now, by: ctx.cloudSelf() }, doc.version)
   if (outcome.isDone) {
     openKommandos.set(id, now)
   }
+
+  return 'neu'
 }
 
-/** Hands text to the Chef vom Dienst's model: into the running turn, or as a prompt of its own. */
+/**
+ * Hands text to the Chef vom Dienst's model: into the running turn (the next
+ * tool result carries it; what the turn does not read comes as a prompt after
+ * it), or as a prompt of its own.
+ */
 async function handToModel($: $, ctx: DienstCtx, text: string): Promise<void> {
   if (ctx.isBusy()) {
     ctx.arrive(text)
@@ -1237,6 +1261,8 @@ async function runAktion($: $, kommando: Kommando): Promise<{ state: KommandoSta
 
 /** New commands from the page: structured ones the mod carries out, the rest goes to the model. */
 async function readKommandos($: $, ctx: DienstCtx, now: number): Promise<void> {
+  // a command for the model goes to an idle one, and one per round: a turn that ends without reading it would close it with an unrelated answer
+  let isHanded = ctx.isBusy()
   const docs = (await dbQuery($, 'kommandos', { where: [['state', '==', 'neu']], limit: 20 }))
     .sort((a, b) => Number(a.data.createdAt) - Number(b.data.createdAt))
     .slice(0, KOMMANDOS_PER_TICK)
@@ -1248,18 +1274,19 @@ async function readKommandos($: $, ctx: DienstCtx, now: number): Promise<void> {
   })
   for (const doc of stale) {
     const kommando = kommandoOf(doc.data)
-    if (kommando === undefined) {
+    if (kommando === undefined || isHanded) {
       continue
     }
     const bumped = await dbWrite($, 'update', 'kommandos', doc.id, { updatedAt: now, by: ctx.cloudSelf() }, doc.version)
     if (bumped.isDone) {
       openKommandos.set(doc.id, now)
+      isHanded = true
       await handToModel($, ctx, kommandoPrompt(doc.id, kommando))
     }
   }
   for (const doc of docs) {
     const kommando = kommandoOf(doc.data)
-    if (kommando === undefined) {
+    if (kommando === undefined || (kommando.aktion === undefined && isHanded)) {
       continue
     }
     const claimed = await dbWrite($, 'update', 'kommandos', doc.id, { state: kommando.aktion === undefined ? 'angenommen' : 'in_arbeit', updatedAt: now, by: ctx.cloudSelf() }, doc.version)
@@ -1272,6 +1299,7 @@ async function readKommandos($: $, ctx: DienstCtx, now: number): Promise<void> {
       continue
     }
     openKommandos.set(doc.id, now)
+    isHanded = true
     await handToModel($, ctx, kommandoPrompt(doc.id, kommando))
   }
 }
@@ -1299,20 +1327,18 @@ function alertOnce(key: string, now: number): boolean {
     return false
   }
   alerted.set(key, now)
+  if (alerted.size > ALERTED_MAX) {
+    for (const [old, at] of alerted) {
+      if (now - at >= ALERT_AGAIN_MS) {
+        alerted.delete(old)
+      }
+    }
+  }
 
   return true
 }
 
-/** What a repository's rule means for a reviewable pull request, in one clause. */
-function mergeRuleText(regeln: Regeln): string {
-  return regeln.autoMerge === 'nie'
-    ? 'nicht automatisch mergen; melde dem Chef, dass der PR bereit ist'
-    : regeln.autoMerge === 'gruen'
-      ? 'bei grün und konfliktfrei sofort mergen (merge_pull_request, merge_method merge), dann mcp__buero__auftrag aktion=abschliessen'
-      : 'Prüfer holen; bei grün und gutem Befund mergen, dann aktion=abschliessen'
-}
-
-/** Stuck or failed sessions, orders not accepted, orders ready for review: the Chef vom Dienst hears of each once. */
+/** Stuck or failed sessions, orders not accepted, orders ready for review: the Chef vom Dienst hears of each once per half hour, review and blocked orders once per PR or reason. */
 async function stoerungen($: $, ctx: DienstCtx, now: number): Promise<void> {
   const records = ctx.records()
   const lines: string[] = []
@@ -1339,14 +1365,15 @@ async function stoerungen($: $, ctx: DienstCtx, now: number): Promise<void> {
     }
   }
   for (const auftrag of open.filter(one => one.state === 'review' || one.state === 'blockiert')) {
-    if (alertOnce(`${auftrag.state}:${auftrag.id}:${auftrag.updatedAt}`, now)) {
+    const key = auftrag.state === 'review' ? `review:${auftrag.id}:${auftrag.pr ?? ''}` : `blockiert:${auftrag.id}:${auftrag.grund ?? ''}`
+    if (alertOnce(key, now)) {
       const regeln = await loadRegeln($, auftrag.repo, now)
       lines.push(
         auftrag.state === 'review'
           ? `Auftrag ${auftrag.id} (${auftrag.titel}) ist bereit zum Review${auftrag.pr === undefined ? '' : `: ${auftrag.pr}`} in ${auftrag.repo}. Regel: ${mergeRuleText(regeln)}.${auftrag.pr === undefined ? ' Ohne PR-Nummer wacht die PR-Wache nicht: frag den Besitzer nach dem PR.' : ' Die PR-Wache meldet dir, sobald der PR grün und konfliktfrei ist, und schreibt dem Besitzer bei Konflikt oder roter CI.'}`
           : `Auftrag ${auftrag.id} (${auftrag.titel}) ist blockiert: ${auftrag.grund ?? ''}. Entscheide oder frag den Chef (mcp__buero__kommando aktion=braucht_dich, wenn ein Kommando offen ist, sonst eine kurze Meldung).`,
       )
-      if (auftrag.state === 'review') {
+      if (auftrag.state === 'review' && regeln.autoMerge === 'nie') {
         await push($, `review:${auftrag.id}`, `Auftrag ${auftrag.id} bereit: ${auftrag.pr ?? 'PR offen'} (${auftrag.titel})`, now)
       }
     }
@@ -1369,7 +1396,7 @@ async function watchPullRequests($: $, ctx: DienstCtx, open: readonly Auftrag[],
   for (const auftrag of open) {
     const number = Number(/#(\d+)/.exec(auftrag.pr ?? '')?.[1])
     const [owner, repo] = auftrag.repo.split('/')
-    if (!Number.isFinite(number) || !owner || !repo || (auftrag.state !== 'review' && auftrag.state !== 'in_arbeit')) {
+    if (!Number.isFinite(number) || !owner || !repo || auftrag.state !== 'review') {
       continue
     }
     if (now - (prWatched.get(auftrag.id) ?? 0) < PR_WATCH_MS || looked >= PR_WATCH_PER_ROUND) {
@@ -1377,17 +1404,17 @@ async function watchPullRequests($: $, ctx: DienstCtx, open: readonly Auftrag[],
     }
     prWatched.set(auftrag.id, now)
     looked += 1
-    let state: ReturnType<typeof mergeStateIn>
-    let ci: ReturnType<typeof checkRunsIn>
-    try {
-      const got = await $.mcp.call(GITHUB_SERVER, 'pull_request_read', { method: 'get', owner, repo, pullNumber: number })
-      state = got.isError ? undefined : mergeStateIn(await unsaved($, textOf(got)))
-      const runs = await $.mcp.call(GITHUB_SERVER, 'pull_request_read', { method: 'get_check_runs', owner, repo, pullNumber: number, perPage: 100 })
-      ci = runs.isError ? undefined : checkRunsIn(await unsaved($, textOf(runs)), now)
-    } catch (error) {
-      $.ui.log(`buero: pr-wache ${auftrag.pr ?? ''}: ${String(error)}`, { to: 'debug' })
+    const state = await fetchPr($, owner, repo, number)
+    if (state === undefined) {
       continue
     }
+    if (state.state !== 'open') {
+      if (alertOnce(`zu:${auftrag.id}:${number}`, now)) {
+        lines.push(`${auftrag.pr ?? `PR #${number}`} (Auftrag ${auftrag.id}) ist ${state.state === 'merged' ? 'gemergt' : 'geschlossen'}, der Auftrag steht aber noch auf Review: schließ ihn ab (mcp__buero__auftrag aktion=abschliessen${state.state === 'merged' ? '' : ' oder aktion=abbrechen mit Grund'}).`)
+      }
+      continue
+    }
+    const ci = await fetchCi($, owner, repo, number, now)
     const head = state?.headSha ?? 'kopf'
     const pr = auftrag.pr ?? `PR #${number}`
     const ownerRecord = auftrag.owner === undefined ? undefined : records.find(one => sameSession(one.id, auftrag.owner ?? '') && isActive(one, now))
@@ -1469,8 +1496,16 @@ export async function dienstTick($: $, ctx: DienstCtx, now: number): Promise<voi
       $.ui.log(`buero: wecker: ${String(error)}`, { to: 'debug' })
     }
   }
+  // a successor started elsewhere (kollegen_holen auftrag=cvd in another session) carries this session as its predecessor
+  const successor = ctx.records().find(one => one.rolle === 'cvd' && isActive(one, now) && (one.tags ?? []).some(tag => tag === `buero:vorgaenger=${ctx.idOfSelf()}`))
+  if (successor !== undefined) {
+    ctx.retire()
+    ctx.note('stoerung', `Ablösung: ${successor.name} (${successor.id}) übernimmt, diese Session hält das Büro nicht mehr`)
+
+    return
+  }
   if (ctx.vorgaenger() !== undefined) {
-    await archiveVorgaenger($, ctx)
+    await archiveVorgaenger($, ctx, now)
   }
   const kontext = ctx.self()?.kontext
   if (kontext !== undefined && kontext >= ABLOESE_PROZENT && !ctx.isBusy() && openKommandos.size === 0 && alertOnce('abloesung', now)) {
@@ -1528,7 +1563,17 @@ export async function pruneDienst($: $, now: number): Promise<void> {
   ]
   for (const [collection, query] of rounds) {
     for (const doc of await dbQuery($, collection, query)) {
+      if (collection === 'besprechungen') {
+        for (const beitrag of await dbQuery($, `besprechungen/${doc.id}/beitraege`, { limit: 100 })) {
+          await dbWrite($, 'delete', `besprechungen/${doc.id}/beitraege`, beitrag.id, undefined, beitrag.version)
+        }
+      }
       await dbWrite($, 'delete', collection, doc.id, undefined, doc.version)
+    }
+  }
+  for (const [id, at] of prWatched) {
+    if (now - at > DAY_MS) {
+      prWatched.delete(id)
     }
   }
 }

@@ -96,7 +96,6 @@ export function isVeraltet(version: string | undefined, latest: string | undefin
   return version !== undefined && latest !== undefined && version !== '' && latest !== '' && compareVersions(version, latest) < 0
 }
 
-/** A mood in words; a finished cloud session with an open pull request says so. */
 /** `CI läuft (2/5)`, `CI grün`, `CI rot: bauen`; undefined without any check. */
 export function ciLabel(ci: CiStand | undefined): string | undefined {
   if (ci === undefined || ci.state === 'keine') {
@@ -123,6 +122,7 @@ export function prLabel(pr: string, ci: CiStand | undefined): string {
   }
 }
 
+/** A mood in words; a finished cloud session with an open pull request says so, with what CI says. */
 export function moodLabel(view: { mood: Mood; pr?: string; ci?: CiStand }): string {
   return view.mood === 'fertig' && view.pr !== undefined ? prLabel(view.pr, view.ci) : MOOD_LABEL[view.mood]
 }
@@ -167,6 +167,20 @@ export function baseName(path: string): string {
   const parts = path.split(/[\\/]+/).filter(part => part !== '')
 
   return parts.at(-1) ?? path
+}
+
+/** `gerade eben`, `vor 3 Min.`, `vor 2 Std.`, `vor 1 Tg.` */
+export function ago(at: number, now: number): string {
+  const minutes = Math.max(0, Math.round((now - at) / MINUTE_MS))
+  if (minutes < 1) {
+    return 'gerade eben'
+  }
+  if (minutes < 60) {
+    return `vor ${minutes} Min.`
+  }
+  const hours = Math.floor(minutes / 60)
+
+  return hours < 24 ? `vor ${hours} Std.` : `vor ${Math.floor(hours / 24)} Tg.`
 }
 
 export function clip(text: string, max: number): string {
