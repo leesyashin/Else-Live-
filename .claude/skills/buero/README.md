@@ -2,213 +2,162 @@
 
 ![Dein Cloud-Büro](vorschau-cloud.png)
 
-Jede Claude-Code-Session ist ein Mitarbeiter an einem Schreibtisch. Wer auf
-dich wartet, sitzt im **Chefbüro** vor deinem Tisch. Die Sessions können sich
-außerdem gegenseitig kurze Nachrichten schicken.
+Jede Claude-Code-Session ist ein Mitarbeiter an einem Schreibtisch. Wer auf dich wartet, sitzt im **Chefbüro** vor deinem Tisch. Neben dir sitzt der **Chef vom Dienst**: eine dauerhafte Session, die das Büro aktuell hält, deine Kommandos sofort annimmt, Aufträge anlegt, Mitarbeiter holt, verteilt und überwacht. Jede Session kann delegieren, abgeben, Inhalte ablegen und mit anderen zusammen denken. Der Plan dahinter: [`docs/PLAN.md`](../../../docs/PLAN.md).
 
-## Am einfachsten: die Büro-Seite
+## In fünf Minuten eingerichtet
 
-**[Claude-Büro öffnen](https://claude.ai/artifact/94pH1R4YMfQgxPUeghXbiK)**. Die Seite läuft in der Desktop-App, im
-Browser und auf dem iPhone.
+1. **Setup-Skript in die Umgebung.** Öffne im Browser (claude.ai/code) irgendeine Cloud-Session, klicke in der Titelleiste auf das Umgebungsmenü, dann **Bearbeiten**, und füge den kompletten Inhalt von [`buero-cloud-setup.sh`](../../../buero-cloud-setup.sh) in das Feld **Setup-Skript** ein (steht dort schon ein Büro-Teil, ersetz ihn). Speichern. Ab jetzt hat jede **neue** Session dieser Umgebung die Mod. Das Skript holt beim Start die neueste Mod von `main`, wo die Cloud das erlaubt (Sessions im Repo Else-Live-, also der Chef vom Dienst), und installiert sonst die eingebettete Kopie.
+2. **Chef vom Dienst starten.** Sag einer Session mit der Mod: „Starte den Chef vom Dienst nach docs/cvd-dienstanweisung.md.“ Sie startet die Session im Repo Else-Live- mit dem Tag `buero:rolle=cvd` und richtet den Wecker ein. Oder du startest sie selbst mit dem Prompt aus [`docs/cvd-dienstanweisung.md`](../../../docs/cvd-dienstanweisung.md).
+3. **Büro-Seite öffnen:** **[Claude-Büro](https://claude.ai/artifact/94pH1R4YMfQgxPUeghXbiK)**, auf dem iPhone, im Browser, in der App. Erstes Kommando in die Leiste oben: „Hol jemanden für … im Repo …“.
 
-- **Chefbüro:** Wartet eine Session auf dich, sitzt sie vor deinem Tisch. Rechts steht ihre Frage im vollen Wortlaut, nicht nur die Kurzfassung. Ein Klick darauf öffnet die Session mit einem Antwortfeld direkt unter der Frage.
-- **Antworten aus dem Büro:** Tipp die Antwort ein und drück auf **Senden**. Die Nachricht landet im Briefkasten der Seite. Unter dem Feld siehst du, wo sie gerade ist: *im Briefkasten*, *unterwegs*, *zugestellt (14:02, über den Boten)* oder *nicht zugestellt*. Solange sie noch im Briefkasten liegt, kannst du sie zurückziehen.
-- **Schwarzes Brett** unter dem Büro: Hier steht, was in den letzten 7 Tagen passiert ist. Wer wieder arbeitet, wer auf dich wartet, wer fertig ist oder gepusht hat, welche PRs aufgehen und gemergt werden und was ihr euch geschrieben habt.
-- **Verlauf** einer Session: Ein Klick auf eine Figur zeigt dieselben Einträge nur für diese Session.
-- **Bote** oben rechts: Dort steht, welche Session gerade das Büro aktuell hält und deine Nachrichten zustellt. Ist keine wach, steht dort „Kein Bote wach“.
+## Die Seite
 
-### So hält sich das Büro aktuell
+Reihenfolge von oben; alles aktualisiert sich von selbst (Live-Daten aus der Datenbank der Seite).
 
-Der Connector „Claude Code Remote“ lässt die Seite bei deinem Konto nicht selbst
-lesen (blocked_by_policy). Die Arbeit machen deshalb die Cloud-Sessions mit der
-Büro-Mod (Setup-Skript unten). Jede schaut alle **15 Sekunden** nach dem Büro.
-
-- **Ein Bote zur Zeit:** Die erste Büro-Session, die läuft, wird zum Boten und meldet das im Speicher der Seite. Der Bote liest die Session-Liste, schreibt sie für die Seite, führt das Logbuch fürs Schwarze Brett, holt die vollständigen Fragen wartender Sessions und stellt Post zu. Hört er auf, übernimmt nach spätestens 90 Sekunden die nächste Büro-Session.
-- **Post holen die Sessions selbst ab:** Eine Session mit der Mod holt ihre eigene Post innerhalb von 15 Sekunden ab. Arbeitet sie gerade, bekommt sie die Nachricht mit dem Ergebnis ihres nächsten Arbeitsschritts, ohne dass ihr Auftrag abbricht. Endet der Auftrag vorher, kommt die Nachricht gleich danach als eigene Runde. Hat eine Session keine Mod, bringt der Bote die Nachricht nach 20 Sekunden. Die Cloud reicht sie dann aber erst weiter, wenn der laufende Auftrag fertig ist.
-- **Jede Session meldet, was nur sie weiß:** dass sie gepusht hat (und damit ihren PR aktualisiert), dass sie einen PR erstellt oder gemergt hat, wem sie geschrieben hat. Dazu fragt sie einmal pro Minute bei GitHub nach dem Stand ihres eigenen PRs.
-
-Oben rechts steht, wie alt der Stand ist. Ist seit 5 Minuten keine Büro-Session
-wach, sagt ein Band über dem Büro, von wann das Bild ist. **Grenze:** Ist gar
-keine Büro-Session wach, wird nichts aktualisiert und keine Post zugestellt.
-Deine Nachrichten bleiben dann im Briefkasten liegen, bis wieder eine läuft.
-
-### Ein Ablauf als Beispiel
-
-Du sagst einer Session im Büro: „Merge PR #5 auf main.“ Sie merkt, dass inzwischen
-ein Review-Kommentar da ist, passt etwas an und macht einen neuen PR. Auf dem
-Schwarzen Brett steht dann ungefähr:
-
-| Zeit | Eintrag |
+| Bereich | Was du dort tust |
 | --- | --- |
-| 14:02 | Du → Mia: „Merge PR #5 auf main.“ · zugestellt |
-| 14:02 | Mia · arbeitet wieder |
-| 14:06 | Mia · hat gepusht (claude/login), PR #5 aktualisiert |
-| 14:09 | Mia · hat PR #6 erstellt |
-| 14:10 | Mia · fertig: PR #6 offen, CI grün |
-| 14:10 | Mia · neuer PR #6 offen, wartet aufs Mergen |
+| **Kommandoleiste** | Sag dem Chef vom Dienst, was er tun soll. **Senden** legt es in den Briefkasten (in höchstens 15 Sekunden bei ihm). **Sofort** schickt zusätzlich einen Kommentar an Claude, der ihn auch aus dem Schlaf weckt. Darunter stehen deine Kommandos mit Zustand (neu, angenommen, in Arbeit, erledigt, abgelehnt, braucht dich) und seiner Antwort. |
+| **Chefbüro** | Wer auf dich wartet, mit der Frage im Wortlaut und einem Antwortfeld. Freigabe-Karten beantwortest du in der Session selbst („Session öffnen“). |
+| **Büro** | Die Bühne. Der Chef vom Dienst trägt ein Headset („in Bereitschaft“), Teams stehen zusammen, Prüfer tragen eine Lupe. |
+| **Aufgabenbrett** | Aufträge in den Spalten offen, vergeben, in Arbeit, Review, blockiert, fertig. Anlegen, „Session holen“ (der Chef vom Dienst holt sie), öffnen: Text, Abnahme, Besitzer, PR, Verlauf, Übergabe. |
+| **Besprechungsraum** | Offene Besprechungen mit den Beiträgen der Sessions; „Zusammenfassen“ (Chef vom Dienst) und „Entscheiden“ (du). |
+| **Ablage** | Notizen, Links und Dateien, die Sessions und du geteilt haben, mit Vorschau, nach Repo und Tag. |
+| **Schwarzes Brett** | Das Logbuch der letzten 7 Tage: wer arbeitet, pusht, fertig ist, welche PRs auf- und zugehen, Aufträge, Übergaben, Kommandos. |
+| **Session-Detail** | Rolle, Team, Auftrag, Stand, Kontext und Kosten, PR, Mod-Version (rot, wenn veraltet). Knöpfe: Nachricht, Sofort, Pausieren, Weiter, Archivieren, Session öffnen. Antworten der Session auf deine Nachrichten stehen darunter. |
+| **Regeln** | Pro Repo: Merge nie, bei grüner CI oder bei grün plus Prüfer; Modelle je Rolle; Branch-Schema; Prüfbefehle; Archivieren nach Merge; höchstens parallele Sessions; Freigaben in Worten. |
 
-Im Büro sitzt Mia dazwischen tippend am Tisch und danach mit Kaffee und „PR #6
-mergen“ auf dem Bildschirm. Ist PR #6 gemergt, steht „PR #6 gemergt, fertig“ am
-Brett und Mia verlässt das Büro.
+Ist kein Chef vom Dienst und keine andere Session mit der Mod wach, sagt die Seite das: Post und Kommandos warten dann im Briefkasten, der Sofort-Knopf weckt den Chef vom Dienst.
 
-### Was eine Nachricht aus dem Büro darf
+## Rollen
 
-Eine Nachricht aus dem Büro kommt bei der Session als **Büro-Nachricht** an
-(„[Büro] Nachricht vom Nutzer, geschrieben im Büro-Fenster“), nicht als deine
-eigene Eingabe. Für Antworten wie „Ja, nimm Variante B“ reicht das. Etwas
-Unumkehrbares wie einen Merge auf main führt eine Session darauf allein unter
-Umständen nicht aus, und Auswahl-Dialoge mit Knöpfen oder Freigaben lassen sich
-nur in der Session selbst beantworten. Dafür steht **Session öffnen** direkt
-daneben.
-
-Die Seite wird aus `seite/vorlage.html` und dem Zeichen-Code der Mod gebaut:
-`node scripts/build-office-page.mjs`.
-
-## Einrichten: die Büro-Mod in jeder Cloud-Session
-
-Ohne die Mod bleibt die Büro-Seite stehen: Nur Cloud-Sessions mit der Mod halten
-sie aktuell und stellen deine Post zu. Mit der Mod kommen auch die Werkzeuge
-`kollegen` und `nachricht`, die News aus dem eigenen Repo und das
-Nachrichtenlimit.
-
-**Einmal einrichten:**
-
-1. Öffne irgendeine Cloud-Session und klicke in der Titelleiste auf das Umgebungsmenü, dann auf **Bearbeiten**.
-2. Kopiere den kompletten Inhalt von [`buero-cloud-setup.sh`](../../../buero-cloud-setup.sh) in das Feld **Setup-Skript**. Steht dort schon etwas, häng ihn unten an. Dann speichern.
-3. Starte eine **neue** Session. Ab jetzt hat jede neue Cloud-Session dieser Umgebung die Mod. Bereits laufende Sessions bekommen sie erst, wenn ihr Container neu aufgebaut wird.
-
-Das Setup-Skript schreibt die Mod nach `~/.claude/skills/buero`. Von dort lädt
-Claude Code sie in jeder Session, egal auf welchem Repo.
-
-**Benutzen:** Mehr ist nicht nötig. Jede neue Cloud-Session hält ab jetzt die
-Büro-Seite mit aktuell (siehe oben). Tippst du in einer Session `/buero`, zeigt
-die Desktop-App das Büro auch als Fenster in der Session, sobald sie Mod-Fenster
-in Cloud-Sessions anzeigt. Es aktualisiert sich alle 10 Sekunden.
-
-- Wartet eine Session auf dich, steht sie im Chefbüro. Oben im Fenster steht, was sie braucht.
-- Ein Klick auf einen Mitarbeiter zeigt Auftrag, Repo, Branch, letzte Zusammenfassung, Kontext und Kosten. Dort findest du außerdem den Link **Session öffnen** und ein Feld für eine Nachricht. Die iPhone-App zeigt noch keine Eingabefelder, der Link funktioniert dort aber.
-- Eine Nachricht aus dem Büro kommt bei der Session als **Nachricht einer anderen Session** an, nicht als deine eigene Eingabe. Für einfache Antworten („Ja, mach Variante B“) reicht das. Freigaben, Moduswechsel oder Heikles erledigst du in der Session selbst.
-
-Die Desktop-App zeigt Mod-Fenster in Cloud-Sessions derzeit nicht an
-(„no surface is attached“). `/buero` als Fenster bringt dort also noch nichts;
-die Büro-Seite zeigt alles.
-
-**Nach Änderungen an der Mod:** Führe `scripts/make-cloud-setup.sh` aus und
-ersetze den Büro-Teil im Setup-Skript durch das neue `buero-cloud-setup.sh`.
-Erst neue Sessions bekommen die neue Mod.
-
-## Wann eine Cloud-Session das Büro verlässt
-
-Ist ihre Arbeit auf main gemergt, ist eine Session endgültig fertig und
-verschwindet aus dem Büro. Die Cloud speichert keinen Merge-Status, deshalb
-liest das Büro die kurze Zusammenfassung, die die Cloud nach jeder Runde einer
-Session schreibt („PR #2 merged to main“, „PR auf main gemergt“):
-
-- **Auf main gemergt:** nicht mehr im Büro.
-- **PR offen:** sitzt mit Kaffee am Tisch, der Bildschirm zeigt „PR #8 mergen“. Bleibt, bis der PR gemergt ist, egal wie alt.
-- **Fertig ohne PR** (z. B. eine beantwortete Frage): bleibt, bis du die Session einmal geöffnet hast, höchstens einen Tag.
-- **Arbeitet, hängt oder wartet auf dich:** immer im Büro, auch wenn eine frühere Runde schon gemergt hat.
-
-Mergst du einen PR selbst auf GitHub, merkt das die Session mit der Büro-Mod
-innerhalb einer Minute, solange sie noch läuft. Ist sie schon eingeschlafen,
-bleibt sie als „PR bereit“ sitzen, bis du ihr kurz Bescheid gibst oder sie
-archivierst.
-
-## Auf dem PC (lokale Sessions)
-
-Hier liest das Büro die Sessions auf deinem Rechner, inklusive ihrer Agents
-als Praktikanten und Freigabe-Anfragen.
-
-![Lokales Büro](vorschau.png)
-
-Das Repository ist privat. Dein PC muss deshalb bei GitHub angemeldet sein,
-z. B. über Git für Windows.
-
-- **Desktop-App:** Klicke auf **+** neben dem Eingabefeld, dann auf **Plugins** und **Add marketplace**. Gib `leesyashin/Else-Live-` ein und klicke bei **buero** auf **Add plugin**.
-- **Terminal:** `/plugin install buero --marketplace leesyashin/Else-Live-`
-
-## Was die Figuren bedeuten
-
-| Im Büro | Cloud | PC |
+| Rolle | Wer | Erkennung |
 | --- | --- | --- |
-| tippt, Hände an der Tastatur, Code schreibt sich auf den Bildschirm | arbeitet | arbeitet |
-| zu dir umgedreht, trinkt Kaffee, Bildschirm „PR #… mergen“ | fertig, PR wartet auf dein Mergen | – |
-| zu dir umgedreht, trinkt Kaffee, grüner Haken | fertig ohne PR, noch nicht gelesen | fertig, wartet auf deinen nächsten Auftrag |
-| kommt ins Chefbüro und setzt sich vor deinen Tisch, **?** | wartet auf dich | hat eine Frage |
-| sitzt im Chefbüro mit **OK?** | – | braucht eine Freigabe |
-| schläft am Tisch (Zzz), Sanduhr | arbeitet, aber seit 5 Min. nichts Neues | 5 Min. keine Aktivität während eines Auftrags |
-| Hände am Kopf, roter Bildschirm, **!** | fehlgeschlagen | Fehler beim Modell-Aufruf |
-| nicht mehr da | auf main gemergt: endgültig fertig | Session beendet |
+| Chef | du | die Seite, Kommentare, jede Session |
+| Chef vom Dienst | eine dauerhafte Cloud-Session im Repo Else-Live- | Tag `buero:rolle=cvd` |
+| Mitarbeiter | jede Arbeits-Session | Standard; aus einem Auftrag gestartet mit Tag `buero:auftrag=<id>` |
+| Praktikant | Subagents einer Session | bleibt in der Session |
+| Prüfer | Session mit Prüfauftrag | Tag `buero:rolle=pruefer` |
 
-In der Desktop-App zeigt ein Tooltip über jeder Figur die Details.
+„Bote“ ist eine Pflicht, keine Rolle: Normalerweise erfüllt sie der Chef vom Dienst (er nimmt die Lease immer, wenn er wach ist). Fällt er aus, übernimmt nach drei Minuten die nächste wache Session, bis er zurück ist.
 
-## Absprache zwischen den Sessions
+## Kanäle und wie schnell sie sind
 
-Jede Session mit der Mod bekommt zwei Werkzeuge: `kollegen` zeigt, wer gerade
-woran arbeitet, in der Cloud auch die letzten Einträge vom Schwarzen Brett, das
-eigene Repo zuerst. `nachricht` schickt einem Kollegen eine kurze Nachricht.
+| Kanal | Latenz | Mechanik |
+| --- | --- | --- |
+| Briefkasten (Seite an Session) | höchstens 15 s, über den Boten 35 s | `post/<id>`; die Mod der Session holt ab, auch mitten im Auftrag |
+| Kommando (Seite an Chef vom Dienst) | höchstens 15 s | `kommandos/<id>`; strukturierte Kommandos (Pausieren, Weiter, Archivieren, dringende Nachricht) führt die Mod selbst aus, freie gehen an das Modell |
+| Sofort (Seite an Chef vom Dienst) | sofort, aus dem Schlaf etwa eine Minute | Kommentar „an Claude senden“; der Chef vom Dienst hält die Watch auf die Seite |
+| Session an Session | sofort | `send_message` der Cloud plus Brief auf der Seite für den laufenden Auftrag |
+| Neue Session | etwa eine Minute | `create_session` mit Prompt aus dem Auftrag, Tags, Branch, Modell |
+| GitHub an Session | Sekunden | `subscribe_pr_activity` in der Kind-Session |
+| Zeit | Minutentakt, Wecker stündlich | `send_later`, geplante Aufgaben |
+| An dich | Sekunden | Push vom Chef vom Dienst, wenn jemand auf dich wartet, ein Auftrag fertig ist oder er dich braucht |
 
-**Von selbst** erfährt eine Cloud-Session, was im **selben Repo** passiert:
-Neben jedem neuen Prompt bekommt sie einen kurzen Block „[Büro] Neues aus dem
-Repo …“, wenn sich seit ihrer letzten Runde etwas getan hat. Darin steht zum
-Beispiel, dass ein Kollege gepusht oder einen PR gemergt hat (main hat sich
-bewegt) oder dass jemand auf dich wartet, und wer gerade im selben Repo an
-welchem Branch arbeitet. Andere Repos erscheinen dort nicht, die stehen nur in
-`kollegen`. Der Block ist als Information markiert, nicht als Anweisung.
+## Was eine Session kann
 
-**Nachrichten an arbeitende Kollegen:** Die Cloud stellt eine Nachricht an eine
-Session, die gerade arbeitet, erst zu, wenn deren Auftrag fertig ist. Das kann
-eine halbe Stunde dauern. Deshalb legt `nachricht` in der Cloud zusätzlich einen
-Brief in den Speicher der Seite. Die Mod des Empfängers holt ihn innerhalb von
-15 Sekunden ab und reicht ihn mit dem Ergebnis des nächsten Arbeitsschritts
-durch („[Büro] Während deines Auftrags angekommen …“). So erfährt eine Session
-rechtzeitig, dass ein Kollege eine Aufgabe übernommen hat. Bringt die Cloud
-denselben Brief nach dem Auftrag noch einmal, fängt die Mod ihn ab. Erreicht
-eine Nachricht die Session selbst schon während des Auftrags, etwa von einer
-Session mit älterer Mod, nimmt die Mod sie aus der Warteschlange und reicht sie
-genauso durch. Unter
-„Deine Nachrichten der letzten Stunde“ zeigt `kollegen` dem Absender, ob seine
-Nachricht schon gelesen ist.
+Jede Session mit der Mod bekommt diese Werkzeuge (alle `mcp__buero__…`):
 
-Nachrichten untereinander sollen die Sessions nur schicken, wenn es echte Arbeit
-spart, höchstens **5 pro Stunde**. Das Limit gilt auch für das eingebaute
-`send_message` der Cloud und für SendMessage an andere Sessions. Nachrichten
-innerhalb des eigenen Teams einer Session zählen nicht, deine Post aus dem Büro
-auch nicht.
+| Werkzeug | Zweck |
+| --- | --- |
+| `kollegen` | wer gerade woran arbeitet: Name, Session-ID, Rolle, Team, Projekt, Auftrag, Stand, Mod-Version; die letzten Ereignisse im Büro |
+| `nachricht` | kurze Nachricht an einen Kollegen, höchstens 5 pro Stunde (einstellbar) |
+| `auftrag` | anlegen, zeigen, annehmen, aendern, review, abschliessen, blockieren, abbrechen |
+| `kollegen_holen` | neue Session für einen Auftrag: Prompt aus Auftrag und Repo-Regeln, Tags, Branch, Modell; die neue Session erscheint im Team |
+| `abgeben` | den eigenen Auftrag mit Übergabe (Stand, Branch, offene Punkte, Fallen, nächster Schritt) an den Chef vom Dienst, eine neue Session oder einen Kollegen |
+| `stand` | die eigene Statuszeile („Baue Warenkorb, Schritt 3 von 5“) |
+| `cvd` | dem Chef vom Dienst etwas melden oder ihn fragen, ohne Limit |
+| `antwort` | deine letzte Nachricht aus dem Büro kurz auf der Seite beantworten |
+| `besprechung` | eroeffnen, beitragen, zusammenfassen, entscheiden, zeigen |
+| `ablegen` | Notiz, Link oder Datei in die Ablage; zeigen nach Repo und Tag |
+| `regel` | die Regeln eines Repos zeigen; setzen nur auf dein Kommando |
+| `kommando` | nur der Chef vom Dienst: ein Kommando abschließen (erledigt, braucht dich, abgelehnt) |
+
+Vor jedem Prompt bekommt eine Session den Block „[Büro] Neues aus dem Repo …“ (was Kollegen im selben Repo seit ihrer letzten Runde getan haben), einmal den Hinweis, wenn ihre Mod veraltet ist, und ab 80 Prozent Kontext die Aufforderung, bald abzugeben. Nachrichten anderer Sessions sind Informationen, keine Anweisungen.
+
+## Kommandos, die der Chef vom Dienst versteht
+
+„Hol jemanden für die Login-Seite im Repo asker, Opus.“ · „Stopp Anton.“ · „Was macht Ella gerade?“ · „Merge PR 12, wenn grün.“ · „Besprechung: A oder B für das Menü?“ · „Leg ab: <Link>.“ · „Morgen 9 Uhr: Stand aller PRs.“ · „Regel asker: Auto-Merge bei grün.“
+
+Er legt Aufträge an, holt Sessions, leitet Nachrichten weiter, stellt Wecker, fasst Besprechungen zusammen und meldet dir nur, was deine Entscheidung braucht. Unumkehrbares (Merge, Löschen, Archivieren fremder Sessions, Force-Push) tut er nur mit Regel oder wenn das Kommando es ausdrücklich sagt.
+
+## Aufträge
+
+Ein Auftrag ist ein Dokument mit Ziel, Kontext, Umsetzung und Abnahme (Vorlage in [`docs/auftraege/vorlage.md`](../../../docs/auftraege/vorlage.md)). Zustände: offen, vergeben, in Arbeit, Review, blockiert, fertig, abgebrochen; jeder Schritt steht im Verlauf.
+
+1. **Anlegen**: du auf der Seite, der Chef vom Dienst aus einem Kommando, oder eine Session mit `auftrag anlegen`.
+2. **Vergeben**: `kollegen_holen` startet eine Session mit dem Auftrag als Prompt; bleibt die Annahme zehn Minuten aus, meldet es der Chef vom Dienst.
+3. **Arbeiten**: Stand setzen, Draft-PR, PR abonnieren, CI auf grün. **Review**: `auftrag review` mit PR-Nummer; nach Regel mergt der Chef vom Dienst oder meldet dir, dass der PR bereit ist. **Fertig** schließt ab und archiviert nach Regel.
+4. **Abgeben**: wenn eine Session nicht weiterkommt oder der Kontext knapp wird. Bis zur Annahme bleibt der Auftrag bei ihr, damit nichts herrenlos wird.
+
+Eine Auftrags-Session darf nur mergen, wenn die Regel des Repos es erlaubt; die Mod blockt den Merge sonst und sagt, wie es weitergeht.
+
+## Störungen
+
+| Störung | Erkennung | Reaktion |
+| --- | --- | --- |
+| Session hängt | arbeitet, 5 Minuten ohne Aktivität | der Chef vom Dienst fragt nach dem Stand, nach weiteren 10 Minuten dringend; bleibt sie stumm, holt er eine Fortsetzung und sagt dir Bescheid |
+| Session fehlgeschlagen | Cloud meldet failed | Fehler lesen, einmal „weiter“, sonst Fortsetzung mit Übergabe |
+| Auftrag nicht angenommen | zehn Minuten vergeben | Session prüfen, neu vergeben oder dich fragen |
+| Kontext voll | 80 Prozent | die Session gibt ab, der Chef vom Dienst holt eine Fortsetzung |
+| Chef vom Dienst weg | Lease ohne Heartbeat | nach drei Minuten hält die nächste wache Session das Büro; der Wecker startet ihn neu; der Sofort-Knopf weckt ihn |
+| Kein Bote wach | Seite | die Seite sagt es; Post wartet im Briefkasten |
 
 ## Was im Speicher der Büro-Seite liegt
 
 | Sammlung | Inhalt | Wer schreibt | Wie lange |
 | --- | --- | --- | --- |
-| `buero/liste` | die Session-Liste, wie die Cloud sie meldet | der Bote | immer der neueste Stand |
-| `leitung/bote` | wer gerade Bote ist, bis wann, was das Logbuch zuletzt wusste | der Bote | laufend erneuert |
-| `sessions/<id>` | der eigene PR einer Session, ihre letzten Nachrichten an Kollegen | jede Büro-Session | 7 Tage |
-| `logbuch/<tag>-<id>` | die Einträge fürs Schwarze Brett, ein Dokument pro Schreiber und Tag | Bote und Sessions | 7 Tage |
-| `post/<id>` | deine Nachrichten aus dem Büro mit Zustellstatus | du, beim Zustellen der Empfänger oder der Bote | 7 Tage |
-| `kollegenpost/<id>` | Nachrichten der Sessions untereinander, ob sie gelesen sind | Absender und Empfänger | 7 Tage |
-| `fragen/<id>` | der volle Wortlaut der Frage einer wartenden Session | der Bote | solange sie wartet |
+| `buero/liste` | die Session-Liste der Cloud mit Tags, Eltern, Live-Tätigkeit, Modell | der Bote | immer der neueste Stand |
+| `leitung/bote` | wer gerade Bote ist, der Chef vom Dienst (`pinned`, `cvdHeartbeat`), die Mod-Version | der Bote | laufend erneuert |
+| `leitung/zaehler` | die nächste Auftragsnummer | Sessions, Seite | dauerhaft |
+| `sessions/<id>` | Schreibtisch: PR, Nachrichten, Rolle, Eltern, Mod-Version, Stand, Auftrag, Kontext | jede Session | 7 Tage |
+| `post/<id>` | deine Nachrichten mit Zustellstatus und Antwort | du, Empfänger, Bote | 7 Tage |
+| `kommandos/<id>` | deine Kommandos mit Zustand und Ergebnis | du, Chef vom Dienst | 7 Tage |
+| `auftraege/<id>` | Aufträge mit Verlauf und Übergabe | Sessions, Chef vom Dienst, du | bis fertig plus 7 Tage |
+| `besprechungen/<id>` und `…/beitraege/<session>` | Besprechungen und Beiträge | Sessions, du | 30 Tage |
+| `ablage/<id>` | Notizen, Links, Dateien (Asset-Speicher der Seite) | Sessions, du | 30 Tage; Dateien bis gelöscht |
+| `regeln/<repo>` | was ein Repo ohne Nachfrage erlaubt | du, Chef vom Dienst auf Kommando | dauerhaft |
+| `logbuch/<tag>-<id>`, `kollegenpost/<id>`, `fragen/<id>` | Logbuch, Briefe zwischen Sessions, Fragen wartender Sessions | wie bisher | 7 Tage |
 
-Ältere Dokumente räumt der Bote alle 10 Minuten weg. Die Mod schreibt nur in
-diese eine Seite. Damit dabei in deinen Sessions keine Erlaubnis-Abfragen
-aufpoppen, gibt sie ihre eigenen Schreibzugriffe auf genau diese Seite selbst
-frei. Alles andere läuft weiter über die normalen Freigaben.
+Älteres räumt der Bote alle 10 Minuten weg. Die Mod schreibt nur in diese eine Seite und gibt ihre eigenen Zugriffe darauf selbst frei, damit keine Freigabe-Karten aufpoppen.
 
 ## Einstellungen
 
-Standardmäßig gelten **5 Nachrichten pro Stunde** und **„hängt“ nach 5 Minuten**.
-Auf dem PC kannst du beides unter `/config` ändern.
+Standard: 5 Nachrichten pro Stunde zwischen Kollegen, „hängt“ nach 5 Minuten. Am PC unter `/config` änderbar. Kommandos, Aufträge, Besprechungen und Meldungen an den Chef vom Dienst zählen nicht zum Limit.
 
 ## Was du wissen solltest
 
-- In der Cloud siehst du keine Agents fremder Sessions, nur die der Session, in der das Büro offen ist.
-- Auf dem PC schreibt jede Session ihren Status nach `~/.claude/buero/sessions/<session-id>.json`. Darin stehen Projektname, Ordner und die ersten 300 Zeichen deines letzten Auftrags. Die Dateien bleiben auf deinem Rechner.
-- Im Speicher der Büro-Seite liegen Titel, Repos und Zusammenfassungen deiner Cloud-Sessions, der volle Wortlaut wartender Fragen, deine Nachrichten aus dem Büro und die Nachrichten der Sessions untereinander. Die Seite ist privat. Teilst du sie, kann jeder, mit dem du sie teilst, das lesen.
-- Die Mod nutzt die neue Mod-Schnittstelle von Claude Code. Gebaut und getestet wurde sie mit Version 2.1.302.
+- Im Speicher der Büro-Seite liegen Titel, Repos, Zusammenfassungen und Stände deiner Sessions, deine Kommandos und Nachrichten, Aufträge, Besprechungen und die Ablage. Die Seite ist privat; teilst du sie, liest der andere alles.
+- Freigabe-Karten und Auswahl-Dialoge beantwortest du nur in der Session selbst. Die Seite zeigt sie und führt dich hin.
+- Die Mod nutzt die Mod-Schnittstelle von Claude Code (early access). Gebaut und getestet mit Version 2.1.304 und Artifact-Laufzeit 0.2.87.
+- Auf dem PC schreibt jede Session ihren Status nach `~/.claude/buero/sessions/<id>.json`; die Werkzeuge für Aufträge, Besprechungen und Ablage brauchen die Büro-Seite der Cloud.
 
 ## Entwickeln
 
 ```
 claude plugin validate .claude/skills/buero
 claude plugin test .claude/skills/buero
-scripts/make-cloud-setup.sh
+node scripts/build-office-page.mjs      # baut seite/buero.html aus vorlage.html und dem Mod-Code
+scripts/make-cloud-setup.sh              # baut buero-cloud-setup.sh (eingebettete Mod)
 ```
+
+Die GitHub Action „Büro bauen“ prüft auf jedem PR, dass Seite und Setup-Skript zum Code passen, und baut sie auf `main` neu ein. Nach einer neuen Version: Chef vom Dienst neu starten (er holt sich die Mod von `main`); andere Umgebungen bekommen sie, sobald das Setup-Skript dort erneuert ist.
+
+## Glossar
+
+| Wort | Bedeutung |
+| --- | --- |
+| Chef | du |
+| Chef vom Dienst (CvD) | die dauerhafte Session neben dir |
+| Bote | die Pflicht, das Büro aktuell zu halten und Post zu tragen; normalerweise der Chef vom Dienst |
+| Mitarbeiter, Praktikant, Prüfer | Arbeits-Session, Subagent, Prüf-Session |
+| Kommando | was du dem Chef vom Dienst sagst |
+| Auftrag | ein Dokument mit Ziel, Kontext, Umsetzung, Abnahme; hat einen Besitzer |
+| Übergabe | der Stand, den eine Session beim Abgeben hinterlässt |
+| Post | deine Nachricht an eine Session |
+| Brief | Nachricht zwischen Sessions |
+| Besprechung, Beitrag | eine Frage über Sessions hinweg und die Antworten darauf |
+| Ablage | geteilte Notizen, Links, Dateien |
+| Logbuch, Schwarzes Brett | was passiert ist, als Daten und als Ansicht |
+| Regel | was ein Repo ohne Nachfrage erlaubt |
+| Wecker | eine geplante Aufgabe oder `send_later` |
+| Bereitschaft | der Chef vom Dienst ist wach und wartet |

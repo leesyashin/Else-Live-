@@ -1,0 +1,47 @@
+name: Büro bauen
+
+# Baut die Büro-Seite und das Setup-Skript aus dem Code der Mod. Auf einem
+# Pull Request müssen beide schon zum Code passen; auf main werden sie neu
+# gebaut und eingecheckt, damit jede neue Session die aktuelle Version bekommt.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  bauen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'push' && 'main' || github.head_ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: TypeScript
+        run: npm install -g typescript@6.0.2
+      - name: Seite bauen
+        run: node scripts/build-office-page.mjs
+      - name: Setup-Skript bauen
+        run: scripts/make-cloud-setup.sh
+      - name: Gleichstand prüfen
+        if: github.event_name == 'pull_request'
+        run: |
+          if ! git diff --quiet -- .claude/skills/buero/seite/buero.html buero-cloud-setup.sh; then
+            echo "::error::Seite oder Setup-Skript sind nicht neu gebaut. Lokal: node scripts/build-office-page.mjs && scripts/make-cloud-setup.sh, dann committen."
+            git --no-pager diff --stat -- .claude/skills/buero/seite/buero.html buero-cloud-setup.sh
+            exit 1
+          fi
+      - name: Neu gebaute Dateien einchecken
+        if: github.event_name == 'push'
+        run: |
+          if ! git diff --quiet -- .claude/skills/buero/seite/buero.html buero-cloud-setup.sh; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .claude/skills/buero/seite/buero.html buero-cloud-setup.sh
+            git commit -m "Büro: Seite und Setup-Skript neu gebaut"
+            git push
+          fi

@@ -162,6 +162,9 @@ let ownPrAt = 0
 /** This session's role in the office, from its cloud tags; read once the cloud answers. */
 let rolle: Rolle | undefined
 let isRoleKnown = false
+let roleAt = 0
+/** The role is read again this often: a tag set later (the Chef vom Dienst setting its own) is seen within this. */
+const ROLE_EVERY_MS = 2 * 60_000
 let elternId: string | undefined
 let auftragTag: string | undefined
 /** The version of this mod, from its manifest. */
@@ -383,9 +386,9 @@ async function readRole($: $): Promise<void> {
   if (own === undefined) {
     return
   }
-  rolle = rolleOf(own.tags)
-  elternId = elternOf(own)
-  auftragTag = tagValue(own.tags, 'auftrag')
+  rolle = rolleOf(own.tags) ?? rolle
+  elternId = elternOf(own) ?? elternId
+  auftragTag = tagValue(own.tags, 'auftrag') ?? auftragTag
   isRoleKnown = true
   change({ rolle, eltern: elternId, auftrag: auftragTag, modVersion: modVersion === '' ? undefined : modVersion })
 }
@@ -917,7 +920,8 @@ async function tick($: $): Promise<void> {
   try {
     const now = await $.clock.now()
     lastNow = now
-    if (!isRoleKnown) {
+    if (!isRoleKnown || (rolle === undefined && now - roleAt > ROLE_EVERY_MS)) {
+      roleAt = now
       await safe($, 'rolle', () => readRole($))
     }
     await safe($, 'bote', () => lead($, now))
