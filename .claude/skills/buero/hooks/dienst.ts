@@ -39,7 +39,7 @@ import {
   neueBesprechung,
 } from './besprechung'
 import { CLOUD_SERVER, parseSession, sameSession } from './cloud'
-import { OFFICE_URL, dbCreate, dbGet, dbQuery, dbWrite, settle, textOf, unsaved } from './db'
+import { OFFICE_URL, dbCreate, dbGet, dbQuery, dbWrite, textOf, unsaved } from './db'
 import { clip, colleagueMessage, isActive, moodOf, resolveRecipient } from './model'
 import { letterId, tailOf } from './post'
 
@@ -580,9 +580,13 @@ export async function antwortTool($: $, ctx: DienstCtx, e: unknown): Promise<Too
       return { deny: 'Es gibt keine Nachricht des Nutzers aus dem Büro-Fenster, auf die du antworten könntest.' }
     }
     const now = await $.clock.now()
-    const isDone = await settle($, 'post', post, { reply: clip(text, 1000), repliedAt: now })
+    const doc = await dbGet($, 'post', post)
+    if (doc === undefined) {
+      return { deny: 'Die Nachricht ist auf der Seite nicht mehr da.' }
+    }
+    const outcome = await dbWrite($, 'update', 'post', post, { reply: clip(text, 1000), repliedAt: now }, doc.version)
 
-    return isDone ? { result: 'Antwort steht auf der Büro-Seite unter seiner Nachricht.' } : { deny: 'Die Nachricht ist auf der Seite nicht mehr da.' }
+    return outcome.isDone ? { result: 'Antwort steht auf der Büro-Seite unter seiner Nachricht.' } : { deny: `Nicht gespeichert: ${outcome.reason}` }
   }
 }
 

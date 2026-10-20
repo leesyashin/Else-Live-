@@ -1,10 +1,11 @@
 #!/bin/bash
 # Writes buero-cloud-setup.sh: a setup script for a Claude Code cloud
 # environment that installs the Büro mod into ~/.claude/skills/buero, where
-# every cloud session loads it. The script first tries to fetch the newest mod
-# from main on GitHub (the cloud's proxy allows that only in sessions whose
-# own repository is Else-Live-, the Chef vom Dienst among them) and falls back
-# to the copy embedded here as a compressed archive, so the script stays small
+# every cloud session loads it. The cloud runs the script once, when it builds
+# the environment's image after the script changed, and clones that image for
+# later sessions; there it has no GitHub access, so the copy embedded here as a
+# compressed archive is what gets installed (the fetch from main stays in as an
+# attempt, should the cloud ever allow it). The archive keeps the script small
 # enough to paste. Run it again after changing the mod.
 set -euo pipefail
 
@@ -34,10 +35,11 @@ files=(
 # In die Cloud-Umgebung als Setup-Skript einfügen: Umgebungsmenü in der
 # Titelleiste einer Session > Bearbeiten > Setup-Skript. Die Mod landet in
 # ~/.claude/skills/buero und lädt in jeder neuen Cloud-Session dieser Umgebung.
-# Zuerst holt das Skript die neueste Mod von main auf GitHub; das gelingt nur in
-# Sessions, deren eigenes Repo Else-Live- ist (etwa beim Chef vom Dienst), weil
-# die Cloud pro Session nur das eigene Repo freigibt. Sonst installiert es die
-# hier eingebettete Kopie.
+# Die Cloud führt das Skript einmal aus, wenn sie nach einer Änderung ihr Abbild
+# baut, und startet spätere Sessions aus diesem Abbild. Dabei gibt es keinen
+# GitHub-Zugang: Der Versuch, die neueste Mod von main zu holen, bleibt drin,
+# installiert wird aber die hier eingebettete Kopie. Neue Version = Skript neu
+# einfügen.
 # Erzeugt von scripts/make-cloud-setup.sh, nicht von Hand ändern.
 
 install_buero_from_github() {

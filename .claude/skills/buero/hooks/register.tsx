@@ -1290,9 +1290,14 @@ export const register: Register = (on, options) => {
 
   // A permission card for the person: the verdict asks, and it stays open.
   on('tool.check', async ($, e, next) => {
-    // the mod's own rounds write only into its office page; no card for those
+    // the mod's own rounds write only into its office page; no card for those.
+    // Core still sees the call first: the tool's own check notes a pinned write
+    // under its tool_use_id, and without that note the cloud refuses the write
+    // later ("no approval record in this session"), as it did inside the tools.
     const url = typeof e.input === 'object' && e.input !== null ? (e.input as { url?: unknown }).url : undefined
     if (next.origin.plugin === 'buero' && (String(e.tool) === 'ArtifactData' || String(e.tool) === 'ArtifactComments') && url === OFFICE_URL) {
+      await next(e).catch(() => undefined)
+
       return { decision: 'allow' as const, reason: 'Die Büro-Mod pflegt ihre eigene Büro-Seite.' }
     }
     if (next.origin.plugin === 'buero' && String(e.tool) === 'PushNotification') {
