@@ -12,7 +12,7 @@ Jede Claude-Code-Session ist ein Mitarbeiter an einem Schreibtisch. Wer auf dich
 
 ## Die Seite
 
-Die Seite hat eine Navigation (am Rand, auf dem Handy als Leiste unten) mit den Bereichen Büro, Aufträge, Schwarzes Brett, Besprechungen, Ablage, Regeln und Mitarbeiter; ein Bereich zur Zeit, die Zähler in der Navigation sagen, wo etwas wartet. Alles aktualisiert sich von selbst (Live-Daten aus der Datenbank der Seite). Farben sind die iOS-Systemfarben: Blau für alles, was du anfassen oder beantworten sollst, Grün arbeitet, Türkis fertig, Rot hängt.
+Die Seite hat eine Navigation (am Rand, auf dem Handy als Leiste unten) mit den Bereichen Büro, Aufträge, Schwarzes Brett, Besprechungen, Ablage, Regeln und Mitarbeiter; ein Bereich zur Zeit, die Zähler in der Navigation sagen, wo etwas wartet. Alles aktualisiert sich von selbst (Live-Daten aus der Datenbank der Seite). Farben sind die iOS-Systemfarben, immer hell: Grau für alles, was du anfassen oder beantworten sollst, Grün arbeitet, Türkis fertig, Rot hängt.
 
 | Bereich | Was du dort tust |
 | --- | --- |
@@ -25,7 +25,7 @@ Die Seite hat eine Navigation (am Rand, auf dem Handy als Leiste unten) mit den 
 | **Ablage** | Notizen, Links und Dateien, die Sessions und du geteilt haben, mit Vorschau, nach Repo und Tag. |
 | **Schwarzes Brett** | Das Logbuch der letzten 7 Tage: wer arbeitet, pusht, fertig ist, welche PRs auf- und zugehen, Aufträge, Übergaben, Kommandos. |
 | **Session-Detail** | Rolle, Team, Auftrag, Stand, Kontext und Kosten, PR, Mod-Version (rot, wenn veraltet). Knöpfe: Nachricht, Sofort, Pausieren, Weiter, Archivieren, Session öffnen. Antworten der Session auf deine Nachrichten stehen darunter. |
-| **Regeln** | Pro Repo: Merge nie, bei grüner CI oder bei grün plus Prüfer; Modelle je Rolle; Branch-Schema; Prüfbefehle; Archivieren nach Merge; höchstens parallele Sessions; Freigaben in Worten. |
+| **Regeln** | Pro Repo, das Repo aus der Auswahl deiner Sessions und Aufträge (oder neu eingetragen), Modelle und Session-Zahl ebenfalls zur Auswahl: Merge nie, bei grüner CI oder bei grün plus Prüfer; Modelle je Rolle; Branch-Schema; Prüfbefehle; Archivieren nach Merge; höchstens parallele Sessions; Freigaben in Worten. |
 
 Ist kein Chef vom Dienst und keine andere Session mit der Mod wach, sagt die Seite das: Post und Kommandos warten dann im Briefkasten, der Sofort-Knopf weckt den Chef vom Dienst.
 
