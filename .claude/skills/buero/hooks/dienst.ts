@@ -109,6 +109,8 @@ const WAECHTER_EVERY_MS = 5 * 60_000
 const PUSH_EVERY_MS = 2 * 60_000
 const DAY_MS = 24 * 60 * 60_000
 const KOMMANDOS_PER_TICK = 5
+/** A command taken but neither closed nor worked on for this long is handed to the model again, once. */
+const STALE_KOMMANDO_MS = 15 * 60_000
 
 const openKommandos = new Map<string, number>()
 const alerted = new Map<string, number>()
@@ -1111,6 +1113,23 @@ async function readKommandos($: $, ctx: DienstCtx, now: number): Promise<void> {
   const docs = (await dbQuery($, 'kommandos', { where: [['state', '==', 'neu']], limit: 20 }))
     .sort((a, b) => Number(a.data.createdAt) - Number(b.data.createdAt))
     .slice(0, KOMMANDOS_PER_TICK)
+  // a command taken earlier that never reached a turn (a container restart, a dropped prompt) goes to the model once more
+  const stale = (await dbQuery($, 'kommandos', { where: [['state', '==', 'angenommen']], limit: 20 })).filter(doc => {
+    const at = Number(doc.data.updatedAt ?? doc.data.createdAt)
+
+    return Number.isFinite(at) && now - at > STALE_KOMMANDO_MS && !openKommandos.has(doc.id) && alertOnce(`stale:${doc.id}`, now)
+  })
+  for (const doc of stale) {
+    const kommando = kommandoOf(doc.data)
+    if (kommando === undefined) {
+      continue
+    }
+    const bumped = await dbWrite($, 'update', 'kommandos', doc.id, { updatedAt: now, by: ctx.cloudSelf() }, doc.version)
+    if (bumped.isDone) {
+      openKommandos.set(doc.id, now)
+      await handToModel($, ctx, kommandoPrompt(doc.id, kommando))
+    }
+  }
   for (const doc of docs) {
     const kommando = kommandoOf(doc.data)
     if (kommando === undefined) {
