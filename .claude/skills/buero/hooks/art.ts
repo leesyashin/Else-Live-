@@ -623,7 +623,7 @@ function bookshelf(): string {
   )
 }
 
-function bossOffice(ctx: Ctx, office: OfficeView, visitors: readonly WorkerView[], arriving: ReadonlySet<string>): string {
+function bossOffice(ctx: Ctx, office: OfficeView, visitors: readonly WorkerView[], arriving: ReadonlySet<string>, cvd?: WorkerView): string {
   const minutes = office.clockMinutes
   const hourAngle = ((minutes / 60) % 12) * 30
   const minuteAngle = (minutes % 60) * 6
@@ -691,6 +691,7 @@ function bossOffice(ctx: Ctx, office: OfficeView, visitors: readonly WorkerView[
     rect(296, TOP_H - 4, 34, 4, '#bfe3f2') + rect(384, TOP_H - 4, WIDTH - 384, 4, '#bfe3f2') + rect(296, TOP_H - 4, WIDTH - 296, 1, '#e8f6fc', ' opacity="0.7"') +
     rect(326, TOP_H - 12, 4, 12, '#8aa4b3') + rect(384, TOP_H - 12, 4, 12, '#8aa4b3')
 
+  out += cvdDesk(ctx, cvd)
   for (let slot = 0; slot < MAX_VISITORS; slot += 1) {
     const seat = guestSeat(slot)
     const view = visitors[slot]
@@ -701,6 +702,62 @@ function bossOffice(ctx: Ctx, office: OfficeView, visitors: readonly WorkerView[
   }
 
   return out
+}
+
+/**
+ * The Chef vom Dienst sits in the boss office, at a desk of his own under the
+ * bookshelf, turned to the room with the headset on. Empty when none is awake.
+ */
+function cvdDesk(ctx: Ctx, view: WorkerView | undefined): string {
+  const X = 263
+  const Y = 48
+  const ox = X + 57
+  const front = Y + 46
+  const light = view === undefined ? '#555' : MOOD_COLOR[view.mood]
+  const steam = (x: number, begin: number) =>
+    `<rect x="${x}" y="118" width="2" height="3" fill="#ffffff" opacity="0">` +
+    frames(ctx, 'opacity', [0, 0.8, 0.5, 0], [0, 0.25, 0.6, 0.9], 2.2, begin) +
+    frames(ctx, 'y', [118, 115, 112, 109], [0, 0.25, 0.6, 0.9], 2.2, begin) +
+    '</rect>'
+  const furniture =
+    // a small rug of its own
+    rect(300, 100, 76, 70, '#5a4a3a', ' opacity="0.35"') +
+    rect(304, 104, 68, 62, '#93393a') + rect(306, 106, 64, 58, '#7d2f2f') +
+    rect(308, 108, 60, 1, '#c9a227') + rect(308, 161, 60, 1, '#c9a227') + rect(308, 108, 1, 54, '#c9a227') + rect(367, 108, 1, 54, '#c9a227') +
+    use(ctx, 'chairHigh', X, Y)
+  const person =
+    view === undefined
+      ? ''
+      : seatedFront(ctx, view, paletteOf(view), ox, front, false) +
+        `<path d="M${ox + 9} ${front + 10} a9 9 0 0 1 18 0" fill="none" stroke="#1a1a1a" stroke-width="2"/>` +
+        rect(ox + 7, front + 9, 3, 5, '#1a1a1a') + rect(ox + 26, front + 9, 3, 5, '#1a1a1a') +
+        `<rect x="${ox + 26}" y="${front + 14}" width="2" height="2" fill="${light}">${view.mood === 'bereit' ? frames(ctx, 'opacity', [1, 0.3], [0, 0.5], 1.8) : ''}</rect>`
+  const desk =
+    shadow(338, 160, 34, 4) +
+    rect(306, 130, 64, 14, '#6b3e26') + rect(306, 130, 64, 2, '#875136') + rect(312, 136, 20, 1, '#5e3520') + rect(344, 139, 18, 1, '#5e3520') +
+    rect(306, 144, 64, 2, '#8a5536') + rect(306, 146, 64, 10, '#4e2c1a') + rect(306, 155, 64, 1, '#38200f') +
+    rect(309, 148, 18, 6, '#5a3420') + rect(349, 148, 18, 6, '#5a3420') +
+    rect(329, 147, 18, 8, '#c9a227') + rect(330, 148, 16, 6, '#e0bd45') +
+    text(338, 153, 'CvD', 5.5, '#3a2a00', ' text-anchor="middle" font-weight="bold"') +
+    // laptop, phone with a cord to the headset, mug
+    rect(309, 117, 20, 13, '#c5cad3', ' rx="1"') + rect(310, 118, 18, 1, '#e4e8ee') + rect(327, 118, 1, 12, '#a9afba') + rect(318, 122, 3, 3, '#9aa2ae') +
+    rect(307, 130, 24, 2, '#aab0ba') +
+    rect(352, 123, 11, 7, '#2a2a30') + rect(352, 121, 11, 2, '#3a3a42') + rect(354, 124, 3, 1, light) +
+    rect(343, 122, 6, 7, '#ffffff') + rect(343, 122, 6, 1, '#6b3e1e') + rect(349, 124, 2, 3, '#e6e6e6') + steam(344, 0.3) + steam(347, 1.4)
+  const mark =
+    view !== undefined && (view.mood === 'frage' || view.mood === 'freigabe')
+      ? bubble(ctx, 329, 74, view.mood === 'freigabe' ? 'OK?' : '?', view.mood === 'freigabe' ? '#ffe066' : '#ffb84d', '#222')
+      : ''
+  const tag =
+    view === undefined
+      ? ''
+      : rect(338 - 17, 158, 34, 11, '#1d2333', ' opacity="0.78" rx="2"') +
+        text(338, 166, clip(view.name, 7), 8, '#ffffff', ' text-anchor="middle" font-weight="bold"')
+  if (view === undefined) {
+    return furniture + desk
+  }
+
+  return `<g data-worker="${escapeXml(view.id)}" class="worker">${tooltip(view)}${furniture}${person}${desk}${tag}${mark}</g>`
 }
 
 /** A worker waiting in the boss office, seated on a guest chair; walks in when it just arrived. */
@@ -1243,12 +1300,16 @@ export function drawOffice(
   limit = SOURCE_LIMIT,
 ): string {
   const ctx: Ctx = { isAnimated, need: new Set() }
-  const all = office.workers
+  const cvd = office.workers.find(view => view.rolle === 'cvd')
+  const all = office.workers.filter(view => view !== cvd)
   const atDesks = all.slice(0, MAX_DESKS)
   const visitors = all.filter(view => view.mood === 'frage' || view.mood === 'freigabe')
   const slots = Math.max(COLS, Math.ceil(atDesks.length / COLS) * COLS)
   const height = TOP_H + (slots / COLS) * CELL_H + 6
   const at = new Map<string, Point>([['chef', { x: 470, y: 70 }]])
+  if (cvd !== undefined) {
+    at.set(cvd.id, { x: 338, y: 112 })
+  }
 
   let desks = ''
   for (let i = 0; i < slots; i += 1) {
@@ -1278,7 +1339,7 @@ export function drawOffice(
       : ''
 
   const body =
-    background(ctx, height, office) + bossOffice(ctx, office, visitors, new Set(arriving)) + desks + flights(office, at, ctx) + more
+    background(ctx, height, office) + bossOffice(ctx, office, visitors, new Set(arriving), cvd) + desks + flights(office, at, ctx) + more
   const svg = compact(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${height}" ` +
       `viewBox="0 0 ${WIDTH} ${height}" shape-rendering="crispEdges" ` +

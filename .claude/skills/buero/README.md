@@ -12,13 +12,14 @@ Jede Claude-Code-Session ist ein Mitarbeiter an einem Schreibtisch. Wer auf dich
 
 ## Die Seite
 
-Reihenfolge von oben; alles aktualisiert sich von selbst (Live-Daten aus der Datenbank der Seite).
+Die Seite hat eine Navigation (am Rand, auf dem Handy als Leiste unten) mit den Bereichen Büro, Aufträge, Schwarzes Brett, Besprechungen, Ablage, Regeln und Mitarbeiter; ein Bereich zur Zeit, die Zähler in der Navigation sagen, wo etwas wartet. Alles aktualisiert sich von selbst (Live-Daten aus der Datenbank der Seite). Farben sind die iOS-Systemfarben: Blau für alles, was du anfassen oder beantworten sollst, Grün arbeitet, Türkis fertig, Rot hängt.
 
 | Bereich | Was du dort tust |
 | --- | --- |
+| **Büro** (Startseite) | Kommando, die Zahlen, die Bühne, daneben „Für dich“ und das Session-Detail. |
 | **Kommandoleiste** | Sag dem Chef vom Dienst, was er tun soll. **Senden** legt es in den Briefkasten (in höchstens 15 Sekunden bei ihm). **Sofort** schickt zusätzlich einen Kommentar an Claude, der ihn auch aus dem Schlaf weckt. Darunter stehen deine Kommandos mit Zustand (neu, angenommen, in Arbeit, erledigt, abgelehnt, braucht dich) und seiner Antwort. |
-| **Chefbüro** | Wer auf dich wartet, mit der Frage im Wortlaut und einem Antwortfeld. Freigabe-Karten beantwortest du in der Session selbst („Session öffnen“). |
-| **Büro** | Die Bühne. Der Chef vom Dienst trägt ein Headset („in Bereitschaft“), Teams stehen zusammen, Prüfer tragen eine Lupe. |
+| **Für dich** | Wer auf dich wartet, mit der Frage im Wortlaut und einem Antwortfeld. Freigabe-Karten beantwortest du in der Session selbst („Session öffnen“). |
+| **Bühne** | Das Pixel-Büro. Der Chef vom Dienst sitzt mit Headset an seinem eigenen Schreibtisch im Chefbüro („in Bereitschaft“), Teams stehen zusammen, Prüfer tragen eine Lupe. Klick auf eine Figur öffnet ihr Detail. |
 | **Aufgabenbrett** | Aufträge in den Spalten offen, vergeben, in Arbeit, Review, blockiert, fertig. Anlegen, „Session holen“ (der Chef vom Dienst holt sie), öffnen: Text, Abnahme, Besitzer, PR, Verlauf, Übergabe. |
 | **Besprechungsraum** | Offene Besprechungen mit den Beiträgen der Sessions; „Zusammenfassen“ (Chef vom Dienst) und „Entscheiden“ (du). |
 | **Ablage** | Notizen, Links und Dateien, die Sessions und du geteilt haben, mit Vorschau, nach Repo und Tag. |
