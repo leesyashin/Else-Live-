@@ -6,6 +6,18 @@ Stand 20.10.2026. Grundlage: Büro-Mod 0.3.0 auf `main`, Claude Code 2.1.304 in 
 
 **Wie du ihn liest.** Kapitel 1 sagt, was da ist und was hakt (geprüft am Code und am Live-Zustand). Kapitel 2 ist das Zielbild: Rollen, Kanäle, Orte, Werkzeuge, Seite. Kapitel 3 sind die Architektur-Entscheidungen, Kapitel 4 die Protokolle, Kapitel 5 der Phasenplan mit abnehmbaren Aufträgen. Kapitel 6 sind die Entscheidungen, die nur du treffen kannst, Kapitel 7 Risiken, Kapitel 8 der Start. Die Anhänge enthalten die Dienstanweisung für den Chef vom Dienst, die Auftragsvorlage und die Prompt-Vorlage für Kind-Sessions.
 
+## Stand der Umsetzung (20.10.2026)
+
+Umgesetzt und auf `main` gemergt, Mod 0.4.0:
+
+- **Teil A (PR #7), Phase 1.1 bis 1.5 und 2.1:** Rollen, Teams, Live-Tätigkeit, Lease mit Vorrang, Bereitschaft, Mod-Version mit „veraltet“, `.catch` auf allen Gating-Hooks, Datenmodell und reine Module für Aufträge, Kommandos, Besprechungen, Ablage und Regeln.
+- **Teil B (PR #8), Phase 2.2 bis 2.5, 3.1 und 3.3 bis 3.5, 4.1 und 4.2, 5.1 bis 5.3:** die Werkzeuge `auftrag`, `kollegen_holen`, `abgeben`, `stand`, `cvd`, `antwort`, `kommando`, `besprechung`, `ablegen`, `regel`; der Rundgang des Chefs vom Dienst (Kommandos, Störungen, Watch, Bereitschaft, Push); Merge-Sperre nach Regeln; Kontext-Warnung.
+- **Teil C, Phase 2.6, 3.1 und 3.2 (Seite), 3.4, 3.5, 4.1 bis 4.3 (Seite), 5.1 (Formular), 5.4, 6.2:** die Seite mit Kommandoleiste, Sofort-Knopf, Aufgabenbrett, Besprechungsraum, Ablage, Regeln, Kosten.
+- **Teil D, Phase 1.6, 6.1, 6.3, 0.3, 0.4:** Setup-Skript mit GitHub-zuerst und eingebetteter Kopie, GitHub Action „Büro bauen“, README mit Glossar, Dienstanweisung (`docs/cvd-dienstanweisung.md`), Auftragsvorlage (`docs/auftraege/`), Regeln in Worten (`docs/regeln.md`).
+- **Phase 0 (Betrieb):** Setup-Skript einmal im Browser erneuern (du), dann Chef vom Dienst starten, Wecker binden, Lina ablösen (Chef vom Dienst oder eine Session).
+
+Was offen bleibt und warum, steht in [`docs/auftraege/offen.md`](auftraege/offen.md). Eine Grenze hat sich beim Bauen gezeigt: Die Cloud gibt jeder Session nur ihr eigenes Repo frei. Darum holt sich nur der Chef vom Dienst (Repo Else-Live-) die Mod beim Start von GitHub; alle anderen Sessions bekommen sie aus der Kopie im Setup-Skript der Umgebung, die du nach einer neuen Version einmal erneuerst (Entscheidung E1 erledigt sich damit: weder Token noch öffentliches Repo helfen).
+
 ## 0. Kurzfassung
 
 - **Eine Seite, eine Sprache, ein Zustand.** Die Büro-Seite bleibt die Zentrale. Alles, was im System passiert, hat dort einen Ort und einen Zustand: Kommandos, Aufträge, Post, Briefe, Besprechungen, Ablage, Logbuch.
