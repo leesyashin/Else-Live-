@@ -179,3 +179,58 @@ test('a merge from an order session follows the repository rule', async (engine,
   expect(await mergeVerdict($, { ...ctx, auftragTag: () => undefined }, { owner: 'leesyashin', repo: 'asker' }, START)).toBeUndefined()
   expect(await mergeVerdict($, { ...ctx, rolle: () => 'cvd' }, { owner: 'leesyashin', repo: 'asker' }, START)).toBeUndefined()
 })
+
+test('the round reports stuck and failed colleagues, unaccepted and reviewable orders, and keeps the readiness', async ($, on) => {
+  const files = new Map<string, string>()
+  const clock = mockWorld(on, files, 'cse_01CVD')
+  const db = mockStore(on)
+  const cvd = session('session_01CVD', { tags: ['buero:rolle=cvd'] })
+  const stuck = session('session_01STUCK', { title: 'Warenkorb', updated_at: '2026-10-20T11:40:00Z', tags: ['buero:auftrag=a2'] })
+  const failed = session('session_01FAIL', { title: 'Kasse', status_bucket: 'SESSION_STATUS_BUCKET_FAILED' })
+  const waiting = session('session_01ASK', { title: 'Login', status_bucket: 'SESSION_STATUS_BUCKET_BLOCKED', post_turn_summary: { needs_action: 'Welche Farbe?' } })
+  const prompts: string[] = []
+  const pushed: string[] = []
+  let sleeps = 0
+  on('mcp.call', ($, e) => (e.tool === 'list_sessions' ? listOf([cvd, stuck, failed, waiting]) : e.tool === 'get_session' ? said(JSON.stringify({ ccr: cvd })) : said('ok')))
+  on('prompt.submit', ($, e) => {
+    prompts.push(e.text)
+
+    return { text: e.text }
+  })
+  on('tool.call', { tool: 'ArtifactComments' }, () => ({ result: 'ok' }))
+  on('tool.call', { tool: 'PushNotification' }, ($, e) => {
+    pushed.push(String((e as unknown as { message: string }).message))
+
+    return { result: 'sent' }
+  })
+  on('process.run', () => {
+    sleeps += 1
+
+    return { value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  db.put('auftraege/a1', { id: 'a1', nr: 1, titel: 'Login-Seite', text: 'x', repo: 'leesyashin/asker', state: 'vergeben', owner: 'session_01GONE', createdBy: 'chef', createdAt: START - 30 * 60_000, updatedAt: START - 12 * 60_000, abnahme: ['ok'], prio: 'normal', verlauf: [] })
+  db.put('auftraege/a3', { id: 'a3', nr: 3, titel: 'Menü', text: 'x', repo: 'leesyashin/asker', state: 'review', owner: 'session_01STUCK', pr: 'PR #9', createdBy: 'chef', createdAt: START - 30 * 60_000, updatedAt: START - 60_000, abnahme: ['ok'], prio: 'normal', verlauf: [] })
+  db.put('regeln/leesyashin_asker', { autoMerge: 'gruen' })
+  // a command taken a while ago that never reached a turn
+  db.put('kommandos/k-old', { text: 'Was macht Ella?', createdAt: START - 40 * 60_000, updatedAt: START - 20 * 60_000, state: 'angenommen', von: 'chef' })
+
+  await $.session.start(START_EVENT)
+  await clock.advance(5000)
+  const round = prompts.find(text => text.startsWith('[Büro] Störungen und Meldungen vom Rundgang')) ?? ''
+  expect(round).toContain('session_01STUCK')
+  expect(round).toContain('hängt')
+  expect(round).toContain('session_01FAIL')
+  expect(round).toContain('fehlgeschlagen')
+  expect(round).toContain('Auftrag a1 (Login-Seite) ist seit')
+  expect(round).toContain('Auftrag a3 (Menü) ist bereit zum Review: PR #9')
+  expect(round).toContain('bei grüner CI mergen')
+  expect(pushed.some(text => text.includes('wartet auf dich') && text.includes('Welche Farbe?'))).toBe(true)
+  expect(prompts.some(text => text.includes('[Büro] Kommando k-old vom Chef'))).toBe(true)
+  // without the background pause the model is told to start it again
+  expect(sleeps).toBe(1)
+  expect(prompts.some(text => text.includes('Wachhalter läuft nicht'))).toBe(true)
+  // the same disturbance is not reported again within half an hour
+  const before = prompts.length
+  await clock.advance(5 * 60_000)
+  expect(prompts.slice(before).some(text => text.includes('session_01STUCK'))).toBe(false)
+})
