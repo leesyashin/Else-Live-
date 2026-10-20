@@ -24,7 +24,7 @@ import {
   tagValue,
   trimSession,
 } from './cloud'
-import { kommandoIn } from './auftraege'
+import { cvdPrompt, kommandoIn } from './auftraege'
 import { besprechungOf } from './besprechung'
 import type { Owned } from './db'
 import { OFFICE_URL, byCreated, dbGet, dbQuery, dbWrite, keep, owned, settle, textOf, unsaved } from './db'
@@ -181,6 +181,11 @@ let roleAt = 0
 const ROLE_EVERY_MS = 2 * 60_000
 let elternId: string | undefined
 let auftragTag: string | undefined
+/** The Chef vom Dienst this session replaces, from its tag; cleared once archived. */
+let vorgaengerId: string | undefined
+/** This Chef vom Dienst started its successor: it keeps the office no longer. */
+let isRetiring = false
+let isVorgaengerDone = false
 /** The version of this mod, from its manifest. */
 let modVersion = ''
 /** The newest mod version the office has seen: the messenger's, or this one's. */
@@ -403,6 +408,7 @@ async function readRole($: $): Promise<void> {
   rolle = rolleOf(own.tags) ?? rolle
   elternId = elternOf(own) ?? elternId
   auftragTag = tagValue(own.tags, 'auftrag') ?? auftragTag
+  vorgaengerId = isVorgaengerDone ? undefined : (tagValue(own.tags, 'vorgaenger') ?? vorgaengerId)
   isRoleKnown = true
   change({ rolle, eltern: elternId, auftrag: auftragTag, modVersion: modVersion === '' ? undefined : modVersion })
 }
@@ -962,7 +968,16 @@ async function lead($: $, now: number): Promise<void> {
   const lease = leaseOf(found?.data)
   noteLatest(lease?.modVersion)
   leasePinned = lease?.pinned
-  const isCvd = rolle === 'cvd'
+  const isCvd = rolle === 'cvd' && !isRetiring
+  if (isRetiring) {
+    // a retiring Chef vom Dienst lets its lease run out at once, so the successor takes the office without waiting
+    if (lease?.holder === cloudSelf && lease.until > now) {
+      await dbWrite($, 'set', 'leitung', 'bote', { holder: cloudSelf, until: now - 1, seen: lease.seen, ...(modVersion === '' ? {} : { modVersion }) }, found?.version)
+    }
+    isLeader = false
+
+    return
+  }
   if (!mayLead(lease, cloudSelf, now, isCvd)) {
     isLeader = false
 
@@ -1044,8 +1059,9 @@ async function newsContext($: $): Promise<string | undefined> {
     isVeraltetTold = true
   }
   const kontext = self?.kontext
+  // the Chef vom Dienst is replaced by the mod itself; nobody asks him to hand over
   const full =
-    !isKontextTold && kontext !== undefined && kontext >= 80
+    !isKontextTold && rolle !== 'cvd' && kontext !== undefined && kontext >= 80
       ? `[Büro] Dein Kontext ist zu ${kontext} % voll. Bring deinen Stand in Ordnung und gib bald ab: mcp__buero__abgeben mit Stand, Branch, offenen Punkten und nächstem Schritt, damit eine neue Session weitermachen kann.`
       : undefined
   if (full !== undefined) {
@@ -1112,6 +1128,16 @@ const ctx: DienstCtx = {
   isBusy: () => self?.status === 'arbeitet',
   stuckMs: () => stuckMs,
   lastPost: () => lastPostId,
+  vorgaenger: () => vorgaengerId,
+  clearVorgaenger: () => {
+    vorgaengerId = undefined
+    isVorgaengerDone = true
+  },
+  isRetiring: () => isRetiring,
+  retire: () => {
+    isRetiring = true
+    isLeader = false
+  },
 }
 
 /** Takes this session's desk: a new record, or the one a reload left behind. */
@@ -1643,7 +1669,7 @@ export const register: Register = (on, options) => {
     }
 
     return {
-      sections: [...composed.sections, { id: 'buero:team', text: teamPrompt(perHour, where(), cloudSelf !== '', rolle), scope: 'session' as const }],
+      sections: [...composed.sections, { id: 'buero:team', text: teamPrompt(perHour, where(), cloudSelf !== '', rolle, rolle === 'cvd' ? cvdPrompt() : undefined), scope: 'session' as const }],
     }
   })
 

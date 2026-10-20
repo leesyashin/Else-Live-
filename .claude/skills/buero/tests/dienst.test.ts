@@ -185,13 +185,14 @@ test('the round reports stuck and failed colleagues, unaccepted and reviewable o
   const files = new Map<string, string>()
   const clock = mockWorld(on, files, 'cse_01CVD')
   const db = mockStore(on)
-  const cvd = session('session_01CVD', { tags: ['buero:rolle=cvd'] })
+  const cvd = session('session_01CVD', { tags: ['buero:rolle=cvd', 'buero:vorgaenger=session_01OLD'] })
   const stuck = session('session_01STUCK', { title: 'Warenkorb', updated_at: '2026-10-20T11:40:00Z', tags: ['buero:auftrag=a2'] })
   const failed = session('session_01FAIL', { title: 'Kasse', status_bucket: 'SESSION_STATUS_BUCKET_FAILED' })
   const waiting = session('session_01ASK', { title: 'Login', status_bucket: 'SESSION_STATUS_BUCKET_BLOCKED', post_turn_summary: { needs_action: 'Welche Farbe?' } })
   const prompts: string[] = []
   const pushed: string[] = []
   const sent: string[] = []
+  const cloud: string[] = []
   let sleeps = 0
   on('mcp.call', ($, e) => {
     if (e.tool === 'list_sessions') {
@@ -202,6 +203,19 @@ test('the round reports stuck and failed colleagues, unaccepted and reviewable o
     }
     if (e.tool === 'send_message') {
       sent.push(`${String(e.args.session_id)}: ${String(e.args.message)}`)
+    }
+    if (['list_triggers', 'delete_trigger', 'create_trigger', 'archive_session', 'create_session'].includes(e.tool)) {
+      cloud.push(`${e.tool} ${JSON.stringify(e.args)}`)
+    }
+    if (e.tool === 'list_triggers') {
+      // the predecessor's wake-up task is still bound to it
+      return said(JSON.stringify({ triggers: [{ id: 'trig_old', name: 'Chef vom Dienst wach halten', persistent_session_id: 'session_01OLD', enabled: true }] }))
+    }
+    if (e.tool === 'create_trigger') {
+      return said(JSON.stringify({ trigger: { id: 'trig_new' } }))
+    }
+    if (e.tool === 'create_session') {
+      return said(JSON.stringify({ id: 'session_01NEXT', title: String(e.args.title) }))
     }
     if (e.tool === 'pull_request_read') {
       // PR #9 has conflicts with main, PR #10 is green and clean
@@ -248,12 +262,17 @@ test('the round reports stuck and failed colleagues, unaccepted and reviewable o
   expect(round).toContain('fehlgeschlagen')
   expect(round).toContain('Auftrag a1 (Login-Seite) ist seit')
   expect(round).toContain('Auftrag a3 (Menü) ist bereit zum Review: PR #9')
-  expect(round).toContain('bei grüner CI mergen')
+  expect(round).toContain('bei grün und konfliktfrei sofort mergen')
+  expect(round).toContain('Die PR-Wache meldet dir')
   // the pull request watch: the owner of a conflicting PR hears it at once, a green and clean one is reported as mergeable
   expect(round).toContain('PR #9 (Auftrag a3, leesyashin/asker) hat Konflikte mit main')
   expect(sent.some(text => text.startsWith('session_01STUCK: ') && text.includes('PR #9') && text.includes('Konflikte mit main') && text.includes('aktion=review id=a3 pr=9'))).toBe(true)
   expect(round).toContain('PR #10 (Auftrag a4, leesyashin/asker) ist grün und konfliktfrei. Er ist noch ein Draft')
-  expect(round).toContain('jetzt mergen (merge_pull_request')
+  expect(round).toContain('sofort mergen (merge_pull_request')
+  // a successor's first duties: bind the wake-up task to itself and archive the predecessor
+  expect(cloud.filter(one => one.startsWith('delete_trigger'))).toEqual(['delete_trigger {"trigger_id":"trig_old"}'])
+  expect(cloud.some(one => one.startsWith('create_trigger') && one.includes('"persistent_session_id":"session_01CVD"') && one.includes('Chef vom Dienst wach halten'))).toBe(true)
+  expect(cloud.filter(one => one.startsWith('archive_session'))).toEqual(['archive_session {"session_id":"session_01OLD"}'])
   expect(pushed.some(text => text.includes('wartet auf dich') && text.includes('Welche Farbe?'))).toBe(true)
   expect(prompts.some(text => text.includes('[Büro] Kommando k-old vom Chef'))).toBe(true)
   // without the background pause the model is told to start it again
@@ -271,6 +290,20 @@ test('the round reports stuck and failed colleagues, unaccepted and reviewable o
   }
   const direct = await $.tool.call({ tool: 'mcp__claude-code-remote__send_message', session_id: 'session_01STUCK', message: 'Merge main, bitte.', priority: 'now' } as never)
   expect(JSON.stringify(direct)).not.toContain('Büro-Limit')
+  // on command the Chef vom Dienst starts his successor with the mod's prompt, then keeps the office no longer
+  const handed = JSON.stringify(await $.tool.call({ tool: 'mcp__buero__kollegen_holen', auftrag: 'cvd' } as never))
+  expect(handed).toContain('Neuer Chef vom Dienst gestartet: session_01NEXT')
+  const made = cloud.find(one => one.startsWith('create_session')) ?? ''
+  expect(made).toContain('"buero:rolle=cvd"')
+  expect(made).toContain('"buero:vorgaenger=session_01CVD"')
+  expect(made).toContain('Du bist der Chef vom Dienst')
+  expect(made).toContain('ABLÖSUNG: Du löst Session session_01CVD ab')
+  const rounds = prompts.length
+  await clock.advance(6 * 60_000)
+  expect(prompts.slice(rounds).filter(text => text.startsWith('[Büro] Störungen'))).toEqual([])
+  const lease = db.get('leitung/bote') ?? {}
+  expect(Number(lease.until)).toBeLessThan(clock.now())
+  expect(lease.pinned).toBeUndefined()
 })
 
 test('a write to the page reaches core: the model is asked, the mod is allowed only after that look', async ($, on) => {

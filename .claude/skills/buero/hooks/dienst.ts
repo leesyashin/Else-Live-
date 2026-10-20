@@ -8,12 +8,17 @@ import type { EngineInterface } from 'claude-code'
 
 import type { Auftrag, AuftragState, Beitrag, EventKind, Kommando, KommandoState, Letter, Regeln, Rolle, SessionRecord } from '../types'
 import {
+  ABLOESE_PROZENT,
   AUFTRAG_LABEL,
+  CVD_REPO,
+  CVD_TITEL,
+  CVD_WECKER,
   OFFENE_ZUSTAENDE,
   auftraegeText,
   auftragOf,
   auftragText,
   branchFor,
+  cvdPrompt,
   kindPrompt,
   kommandoOf,
   kommandoPrompt,
@@ -72,6 +77,12 @@ export type DienstCtx = {
   stuckMs: () => number
   /** The id of the last post from the person this session received. */
   lastPost: () => string | undefined
+  /** The Chef vom Dienst this session replaces (`session_…`), from its tag; cleared once archived. */
+  vorgaenger: () => string | undefined
+  clearVorgaenger: () => void
+  /** A Chef vom Dienst that started its successor: it keeps the office no longer. */
+  isRetiring: () => boolean
+  retire: () => void
 }
 
 /** What a tool answers. */
@@ -122,6 +133,7 @@ let stoerungAt = 0
 let waechterAt = 0
 let pushAt = 0
 let isWatched = false
+let isWeckerBound = false
 const regelnCache = new Map<string, { at: number; regeln: Regeln }>()
 /** Per order: when its pull request was last looked at. */
 const prWatched = new Map<string, number>()
@@ -162,7 +174,7 @@ export const DIENST_TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        auftrag: { type: 'string', description: 'Die Auftrags-ID (a12).' },
+        auftrag: { type: 'string', description: 'Die Auftrags-ID (a12), oder „cvd“ für einen neuen Chef vom Dienst, der den bisherigen ablöst.' },
         model: { type: 'string', description: 'Modell-ID; ohne Angabe nach den Regeln des Repos.' },
         hinweis: { type: 'string', description: 'Ein Satz an die neue Session, zusätzlich zum Auftrag.' },
       },
@@ -502,6 +514,108 @@ async function holen(
   }
 }
 
+/**
+ * Starts a new Chef vom Dienst that replaces the current one: the prompt
+ * from the mod, the role tag and the predecessor's id as tags, the model from
+ * the rules. A Chef vom Dienst that starts its own successor retires: it
+ * keeps the office no longer, and the successor archives it.
+ */
+export async function abloesen($: $, ctx: DienstCtx, grund: string, model?: string): Promise<{ result: string } | { deny: string }> {
+  const now = await $.clock.now()
+  const records = ctx.records()
+  const current = cvdOf(records, ctx, now) ?? (ctx.rolle() === 'cvd' ? records.find(one => sameSession(one.id, ctx.cloudSelf())) : undefined)
+  const vorgaenger = ctx.rolle() === 'cvd' ? ctx.idOfSelf() : current?.id
+  const repo = (ctx.rolle() === 'cvd' ? ctx.repo() : undefined) ?? CVD_REPO
+  const regeln = await loadRegeln($, repo, now)
+  const chosen = model ?? regeln.modelle.cvd
+  const answer = await $.mcp.call(CLOUD_SERVER, 'create_session', {
+    title: CVD_TITEL,
+    prompt: cvdPrompt({ vorgaenger, grund }),
+    tags: ['buero:rolle=cvd', ...(vorgaenger === undefined ? [] : [`buero:vorgaenger=${vorgaenger}`])],
+    ...(chosen === undefined ? {} : { model: chosen }),
+    source_url: `https://github.com/${repo}`,
+  })
+  const text = await unsaved($, textOf(answer))
+  if (answer.isError) {
+    return { deny: `Der neue Chef vom Dienst ließ sich nicht starten: ${clip(text, 200)}` }
+  }
+  const started = parseSession(text)?.id ?? /session_[A-Za-z0-9]+/.exec(text)?.[0]
+  if (started === undefined) {
+    return { deny: `Die Cloud hat keine Session-ID geantwortet: ${clip(text, 200)}` }
+  }
+  if (ctx.rolle() === 'cvd') {
+    ctx.retire()
+  }
+  ctx.note('stoerung', `Ablösung: neuer Chef vom Dienst ${started} gestartet (${grund})`)
+  await push($, `abloesung:${started}`, `Neuer Chef vom Dienst gestartet (${grund}); der alte wird archiviert, sobald der neue das Büro hält.`, now)
+
+  return {
+    result:
+      `Neuer Chef vom Dienst gestartet: ${started} (${grund}), Modell ${chosen ?? 'Standard'}. https://claude.ai/code/${started}\n` +
+      (vorgaenger === undefined ? '' : `Er archiviert ${vorgaenger}, sobald er das Büro hält, und bindet den Wecker „${CVD_WECKER}“ an sich.`) +
+      (ctx.rolle() === 'cvd' ? ' Du hältst das Büro ab jetzt nicht mehr: beende, was in Arbeit ist, und nimm nichts Neues an.' : ''),
+  }
+}
+
+/** A successor's first duty: archive the predecessor once this session keeps the office. */
+async function archiveVorgaenger($: $, ctx: DienstCtx): Promise<void> {
+  const old = ctx.vorgaenger()
+  if (old === undefined) {
+    return
+  }
+  const answer = await $.mcp.call(CLOUD_SERVER, 'archive_session', { session_id: old })
+  const text = await unsaved($, textOf(answer))
+  if (answer.isError && !/archived|not found|ARCHIVED/i.test(text)) {
+    $.ui.log(`buero: vorgänger archivieren: ${clip(text, 200)}`, { to: 'debug' })
+
+    return
+  }
+  ctx.clearVorgaenger()
+  ctx.note('archiviert', `hat den Vorgänger ${old} archiviert`)
+}
+
+/**
+ * The wake-up task of the Chef vom Dienst is bound to this session: one
+ * named task that fires into it every three hours; copies bound to other
+ * sessions (a predecessor) go.
+ */
+async function bindWecker($: $, ctx: DienstCtx): Promise<void> {
+  const me = ctx.idOfSelf()
+  const listed = await $.mcp.call(CLOUD_SERVER, 'list_triggers', { limit: 100 })
+  const text = await unsaved($, textOf(listed))
+  if (listed.isError) {
+    throw new Error(clip(text, 200))
+  }
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  const value = start >= 0 && end > start ? (JSON.parse(text.slice(start, end + 1)) as { triggers?: unknown; data?: unknown }) : {}
+  const list = (Array.isArray(value.triggers) ? value.triggers : Array.isArray(value.data) ? value.data : []) as { id?: unknown; name?: unknown; persistent_session_id?: unknown; enabled?: unknown }[]
+  let isBound = false
+  for (const one of list) {
+    if (one.name !== CVD_WECKER || typeof one.id !== 'string') {
+      continue
+    }
+    if (typeof one.persistent_session_id === 'string' && sameSession(one.persistent_session_id, me)) {
+      isBound = isBound || one.enabled !== false
+      continue
+    }
+    await $.mcp.call(CLOUD_SERVER, 'delete_trigger', { trigger_id: one.id })
+  }
+  if (!isBound) {
+    const made = await $.mcp.call(CLOUD_SERVER, 'create_trigger', {
+      name: CVD_WECKER,
+      cron_expression: '0 */3 * * *',
+      persistent_session_id: me,
+      initiation: 'own_followup',
+      prompt: 'Bereitschafts-Check: Prüfe, ob der Wachhalter (sleep 7100) läuft, sonst starte ihn neu. Prüfe mit mcp__buero__kollegen, ob du Bote bist. Antworte mit einer Zeile.',
+    })
+    if (made.isError) {
+      throw new Error(clip(await unsaved($, textOf(made)), 200))
+    }
+    ctx.note('stoerung', `Wecker „${CVD_WECKER}“ an diese Session gebunden`)
+  }
+}
+
 /** Who a meeting's participants are: ids, names, `alle`, `repo:<name>`. */
 function participantsOf(records: readonly SessionRecord[], wanted: readonly string[], ctx: DienstCtx, now: number): string[] {
   const active = records.filter(one => isActive(one, now) && !sameSession(one.id, ctx.cloudSelf()))
@@ -704,6 +818,9 @@ export async function holenTool($: $, ctx: DienstCtx, e: unknown): Promise<ToolA
     const id = str(input, 'auftrag')
     if (id === undefined) {
       return { deny: 'Welcher Auftrag? Erst anlegen (mcp__buero__auftrag aktion=anlegen), dann holen.' }
+    }
+    if (id.toLowerCase() === 'cvd') {
+      return abloesen($, ctx, str(input, 'hinweis') ?? 'auf Kommando', str(input, 'model'))
     }
     const loaded = await loadAuftrag($, id)
     if (loaded === undefined) {
@@ -1186,6 +1303,15 @@ function alertOnce(key: string, now: number): boolean {
   return true
 }
 
+/** What a repository's rule means for a reviewable pull request, in one clause. */
+function mergeRuleText(regeln: Regeln): string {
+  return regeln.autoMerge === 'nie'
+    ? 'nicht automatisch mergen; melde dem Chef, dass der PR bereit ist'
+    : regeln.autoMerge === 'gruen'
+      ? 'bei grün und konfliktfrei sofort mergen (merge_pull_request, merge_method merge), dann mcp__buero__auftrag aktion=abschliessen'
+      : 'Prüfer holen; bei grün und gutem Befund mergen, dann aktion=abschliessen'
+}
+
 /** Stuck or failed sessions, orders not accepted, orders ready for review: the Chef vom Dienst hears of each once. */
 async function stoerungen($: $, ctx: DienstCtx, now: number): Promise<void> {
   const records = ctx.records()
@@ -1217,7 +1343,7 @@ async function stoerungen($: $, ctx: DienstCtx, now: number): Promise<void> {
       const regeln = await loadRegeln($, auftrag.repo, now)
       lines.push(
         auftrag.state === 'review'
-          ? `Auftrag ${auftrag.id} (${auftrag.titel}) ist bereit zum Review${auftrag.pr === undefined ? '' : `: ${auftrag.pr}`} in ${auftrag.repo}. Regel: ${regeln.autoMerge === 'nie' ? 'nicht automatisch mergen, dem Chef melden' : regeln.autoMerge === 'gruen' ? 'bei grüner CI mergen (pull_request_read get_check_runs, dann merge_pull_request), danach aktion=abschliessen' : 'Prüfer holen, bei grüner CI und gutem Befund mergen'}.`
+          ? `Auftrag ${auftrag.id} (${auftrag.titel}) ist bereit zum Review${auftrag.pr === undefined ? '' : `: ${auftrag.pr}`} in ${auftrag.repo}. Regel: ${mergeRuleText(regeln)}.${auftrag.pr === undefined ? ' Ohne PR-Nummer wacht die PR-Wache nicht: frag den Besitzer nach dem PR.' : ' Die PR-Wache meldet dir, sobald der PR grün und konfliktfrei ist, und schreibt dem Besitzer bei Konflikt oder roter CI.'}`
           : `Auftrag ${auftrag.id} (${auftrag.titel}) ist blockiert: ${auftrag.grund ?? ''}. Entscheide oder frag den Chef (mcp__buero__kommando aktion=braucht_dich, wenn ein Kommando offen ist, sonst eine kurze Meldung).`,
       )
       if (auftrag.state === 'review') {
@@ -1300,9 +1426,7 @@ async function watchPullRequests($: $, ctx: DienstCtx, open: readonly Auftrag[],
     if (isMergeable && auftrag.state === 'review' && alertOnce(`mergebar:${auftrag.id}:${head}`, now)) {
       const regeln = await loadRegeln($, auftrag.repo, now)
       const draft = state?.isDraft === true ? ' Er ist noch ein Draft: vorher update_pull_request draft=false.' : ''
-      lines.push(
-        `${pr} (Auftrag ${auftrag.id}, ${auftrag.repo}) ist grün und konfliktfrei.${draft} Regel: ${regeln.autoMerge === 'nie' ? 'nicht automatisch mergen, dem Chef melden, dass der PR bereit ist' : regeln.autoMerge === 'gruen' ? 'jetzt mergen (merge_pull_request, merge_method merge), dann mcp__buero__auftrag aktion=abschliessen' : 'Prüfer holen, bei gutem Befund mergen'}.`,
-      )
+      lines.push(`${pr} (Auftrag ${auftrag.id}, ${auftrag.repo}) ist grün und konfliktfrei.${draft} Regel: ${mergeRuleText(regeln)}.`)
     }
     if (state?.mergeableState === 'blocked' && ci?.state === 'gruen' && alertOnce(`blockiert:${auftrag.id}:${head}`, now)) {
       lines.push(`${pr} (Auftrag ${auftrag.id}) ist grün, aber GitHub blockt den Merge (Branch-Schutz: Review oder Pflicht-Check fehlt). Prüf die Reviews (pull_request_read get_reviews) oder melde es dem Chef.`)
@@ -1333,8 +1457,30 @@ async function waechter($: $, ctx: DienstCtx): Promise<void> {
 
 /** The Chef vom Dienst's round, called from the session's tick. */
 export async function dienstTick($: $, ctx: DienstCtx, now: number): Promise<void> {
-  if (ctx.rolle() !== 'cvd') {
+  if (ctx.rolle() !== 'cvd' || ctx.isRetiring()) {
     return
+  }
+  if (!isWeckerBound) {
+    isWeckerBound = true
+    try {
+      await bindWecker($, ctx)
+    } catch (error) {
+      isWeckerBound = false
+      $.ui.log(`buero: wecker: ${String(error)}`, { to: 'debug' })
+    }
+  }
+  if (ctx.vorgaenger() !== undefined) {
+    await archiveVorgaenger($, ctx)
+  }
+  const kontext = ctx.self()?.kontext
+  if (kontext !== undefined && kontext >= ABLOESE_PROZENT && !ctx.isBusy() && openKommandos.size === 0 && alertOnce('abloesung', now)) {
+    const made = await abloesen($, ctx, `Kontext ${kontext} % voll`)
+    if ('result' in made) {
+      await handToModel($, ctx, `[Büro] Ablösung: ${made.result}`)
+
+      return
+    }
+    $.ui.log(`buero: ablösung: ${made.deny}`, { to: 'debug' })
   }
   if (!isWatched) {
     isWatched = true

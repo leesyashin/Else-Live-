@@ -7,7 +7,7 @@ Jede Claude-Code-Session ist ein Mitarbeiter an einem Schreibtisch, mit einem Na
 ## In fünf Minuten eingerichtet
 
 1. **Setup-Skript in die Umgebung.** Öffne im Browser (claude.ai/code) irgendeine Cloud-Session, klicke in der Titelleiste auf das Umgebungsmenü, dann **Bearbeiten**, und füge den kompletten Inhalt von [`buero-cloud-setup.sh`](../../../buero-cloud-setup.sh) in das Feld **Setup-Skript** ein (steht dort schon ein Büro-Teil, ersetz ihn). Speichern. Die Cloud führt das Skript beim ersten Start nach der Änderung einmal aus, nimmt das Ergebnis als Abbild und startet jede weitere **neue** Session dieser Umgebung daraus ([Environment caching](https://code.claude.com/docs/en/cloud-environments#environment-caching)). Beim Bau des Abbilds hat das Skript keinen Zugang zu GitHub, darum zählt die eingebettete Kopie; der GitHub-Abruf im Skript bleibt ein Versuch für den Fall, dass die Cloud das einmal erlaubt. Laufende Sessions behalten ihre Version.
-2. **Chef vom Dienst starten.** Sag einer Session mit der Mod: „Starte den Chef vom Dienst nach docs/cvd-dienstanweisung.md.“ Sie startet die Session im Repo Else-Live- mit dem Tag `buero:rolle=cvd` und richtet den Wecker ein. Oder du startest sie selbst mit dem Prompt aus [`docs/cvd-dienstanweisung.md`](../../../docs/cvd-dienstanweisung.md).
+2. **Chef vom Dienst starten.** In einer Session mit der Mod: `mcp__buero__kollegen_holen auftrag=cvd`. Die Mod startet die Session im Repo Else-Live- mit ihrem Prompt (`cvdPrompt` in `hooks/auftraege.ts`) und dem Tag `buero:rolle=cvd`, bindet den Wecker an sie und archiviert einen Vorgänger. Betrieb und Ablösung: [`docs/cvd-dienstanweisung.md`](../../../docs/cvd-dienstanweisung.md).
 3. **Büro-Seite öffnen:** **[Claude-Büro](https://claude.ai/artifact/94pH1R4YMfQgxPUeghXbiK)**, auf dem iPhone, im Browser, in der App. Erstes Kommando in die Leiste oben: „Hol jemanden für … im Repo …“.
 
 ## Die Seite
@@ -63,7 +63,7 @@ Jede Session mit der Mod bekommt diese Werkzeuge (alle `mcp__buero__…`):
 | `kollegen` | wer gerade woran arbeitet: Name, Session-ID, Rolle, Team, Projekt, Auftrag, Stand, Mod-Version; die letzten Ereignisse im Büro |
 | `nachricht` | kurze Nachricht an einen Kollegen, höchstens 5 pro Stunde (einstellbar); der Chef vom Dienst ohne Limit |
 | `auftrag` | anlegen, zeigen, annehmen, aendern, review, abschliessen, blockieren, abbrechen |
-| `kollegen_holen` | neue Session für einen Auftrag: Prompt aus Auftrag und Repo-Regeln, Tags, Branch, Modell; die neue Session erscheint im Team |
+| `kollegen_holen` | neue Session für einen Auftrag: Prompt aus Auftrag und Repo-Regeln, Tags, Branch, Modell; die neue Session erscheint im Team. `auftrag=cvd` startet einen neuen Chef vom Dienst, der den bisherigen ablöst |
 | `abgeben` | den eigenen Auftrag mit Übergabe (Stand, Branch, offene Punkte, Fallen, nächster Schritt) an den Chef vom Dienst, eine neue Session oder einen Kollegen |
 | `stand` | die eigene Statuszeile („Baue Warenkorb, Schritt 3 von 5“) |
 | `cvd` | dem Chef vom Dienst etwas melden oder ihn fragen, ohne Limit |
@@ -103,6 +103,7 @@ Eine Auftrags-Session darf nur mergen, wenn die Regel des Repos es erlaubt; die 
 | Session fehlgeschlagen | Cloud meldet failed | Fehler lesen, einmal „weiter“, sonst Fortsetzung mit Übergabe |
 | Auftrag nicht angenommen | zehn Minuten vergeben | Session prüfen, neu vergeben oder dich fragen |
 | Kontext voll | 80 Prozent | die Session gibt ab, der Chef vom Dienst holt eine Fortsetzung |
+| Kontext des Chefs vom Dienst voll | 75 Prozent, nicht beschäftigt, kein Kommando offen | die Mod startet einen Nachfolger (`kollegen_holen auftrag=cvd` tut dasselbe auf Kommando); der alte gibt die Lease ab und nimmt nichts Neues an, der neue bindet den Wecker um und archiviert ihn |
 | Chef vom Dienst weg | Lease ohne Heartbeat | nach drei Minuten hält die nächste wache Session das Büro; der Wecker startet ihn neu; der Sofort-Knopf weckt ihn |
 | Kein Bote wach | Seite | die Seite sagt es; Post wartet im Briefkasten |
 
@@ -147,7 +148,7 @@ scripts/make-cloud-setup.sh              # baut buero-cloud-setup.sh (eingebette
 
 Schreibzugriffe der Mod auf die Seite gehen durch ihren `tool.check`-Hook erst mit `next(e)` zum Kern und werden dann freigegeben: Der Kern vermerkt einen gepinnten Schreibzugriff unter seiner tool_use_id, und ohne diesen Vermerk verweigert die Cloud ihn später („no approval record in this session“). Eine Freigabe ohne `next(e)` wirkt nur außerhalb einer Modell-Runde.
 
-Die GitHub Action „Büro bauen“ prüft auf jedem PR, dass Seite und Setup-Skript zum Code passen, und baut sie auf `main` neu ein. Nach einer neuen Version: `buero-cloud-setup.sh` von `main` einmal ins Setup-Skript der Umgebung einfügen (die Cloud baut das Abbild sofort neu), dann den Chef vom Dienst archivieren, neu starten und den Wecker neu binden. Ohne neues Skript bleibt die alte Version im Abbild, auch beim Chef vom Dienst.
+Die GitHub Action „Büro bauen“ prüft auf jedem PR, dass Seite und Setup-Skript zum Code passen, und baut sie auf `main` neu ein. Nach einer neuen Version: `buero-cloud-setup.sh` von `main` einmal ins Setup-Skript der Umgebung einfügen (die Cloud baut das Abbild sofort neu), die Seite neu veröffentlichen, dann `mcp__buero__kollegen_holen auftrag=cvd` in einer Session mit der Mod: Der neue Chef vom Dienst bindet den Wecker um und archiviert den alten. Ohne neues Skript bleibt die alte Version im Abbild, auch beim Chef vom Dienst.
 
 ## Glossar
 

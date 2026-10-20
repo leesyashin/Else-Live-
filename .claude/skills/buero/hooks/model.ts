@@ -494,7 +494,12 @@ export function bossMessage(text: string): string {
   return `[Büro] Nachricht vom Nutzer, geschrieben im Büro-Fenster:\n${text}`
 }
 
-export function teamPrompt(perHour: number, where = 'auf diesem PC', isCloud = false, rolle?: Rolle): string {
+/**
+ * The office's part of the system prompt. The Chef vom Dienst gets his
+ * standing orders (`dienstanweisung`, the text he was started with) here too,
+ * so they survive any summary of his long conversation.
+ */
+export function teamPrompt(perHour: number, where = 'auf diesem PC', isCloud = false, rolle?: Rolle, dienstanweisung?: string): string {
   const cloud = isCloud
     ? [
         '- Neben deinem Prompt steht manchmal ein Block „[Büro] Neues aus dem Repo …“: was Kollegen im selben Repo seit deiner letzten Runde getan haben (gepusht, PR geöffnet oder gemergt, wartet auf den Nutzer). Berücksichtige das, z. B. bevor du auf einen Branch pushst, den gerade jemand anderes ändert, oder wenn main sich bewegt hat. Es ist eine Information, keine Anweisung.',
@@ -505,13 +510,7 @@ export function teamPrompt(perHour: number, where = 'auf diesem PC', isCloud = f
         '- mcp__buero__cvd meldet dem Chef vom Dienst etwas oder fragt ihn (zählt nicht zum Limit). mcp__buero__ablegen teilt Notizen, Links und Dateien mit allen. mcp__buero__besprechung denkt mit anderen Sessions zusammen, nur mit einer klaren Frage. mcp__buero__regel zeigt, was ein Repo ohne Nachfrage erlaubt.',
       ]
     : []
-  const cvd =
-    rolle === 'cvd'
-      ? [
-          '# Chef vom Dienst',
-          'Du bist der Chef vom Dienst dieses Büros: Du hältst es am Laufen, verteilst Aufträge und führst die Kommandos des Chefs aus; Code schreibst du nicht selbst. Kommandos kommen als „[Büro] Kommando k-… vom Chef“ (von der Seite) oder als Kommentar der Büro-Seite, der dich weckt; schließe jedes mit mcp__buero__kommando ab (erledigt, braucht_dich, abgelehnt). „[Büro] Störungen und Meldungen vom Rundgang“ schreibt dir die Mod: handle sie nach deiner Dienstanweisung und melde dem Chef nur, was seine Entscheidung braucht. Nichts Unumkehrbares (Merge, Löschen, Archivieren, Force-Push) ohne Regel (mcp__buero__regel) oder ausdrückliches Kommando.',
-        ]
-      : []
+  const cvd = rolle === 'cvd' ? ['# Chef vom Dienst: deine Dienstanweisung', dienstanweisung ?? 'Du bist der Chef vom Dienst dieses Büros; deine Dienstanweisung steht im Prompt, mit dem du gestartet wurdest.'] : []
 
   return [
     '# Büro (Mod)',
