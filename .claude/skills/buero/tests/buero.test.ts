@@ -1,11 +1,13 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { drawOffice } from '../hooks/art'
+import { describeOffice, drawOffice } from '../hooks/art'
 import type { CloudSession } from '../hooks/cloud'
 import {
+  checkRunsIn,
   cloudRecords,
   deliveryOf,
+  mergeStateIn,
   parseSessionList,
   pullRequestIn,
   sameSession,
@@ -30,8 +32,10 @@ import {
 import {
   bossMessage,
   buildOffice,
+  ciLabel,
   colleagueMessage,
   describeTool,
+  isLetter,
   moodLabel,
   moodOf,
   pickName,
@@ -385,6 +389,11 @@ test('in the cloud the office reads the session list and answers through it', as
 
       return { value: { content: [{ type: 'text', text: '[{"number":7,"state":"open","merged":false}]' }], isError: false } }
     }
+    if (e.tool === 'pull_request_read') {
+      askedGithub.push(`${String(e.args.method)} #${String(e.args.pullNumber)}`)
+
+      return { value: { content: [{ type: 'text', text: '{"total_count":2,"check_runs":[{"name":"bauen","status":"completed","conclusion":"success"},{"name":"test","status":"in_progress","conclusion":null}]}' }], isError: false } }
+    }
     sentTo.push(`${String(e.args.session_id)}: ${String(e.args.message)}`)
 
     return { value: { content: [{ type: 'text', text: 'ok' }], isError: false } }
@@ -392,7 +401,7 @@ test('in the cloud the office reads the session list and answers through it', as
 
   await $.session.start(START_EVENT)
   const listed = JSON.stringify(await $.tool.call({ tool: 'mcp__buero__kollegen' }))
-  expect(askedGithub).toEqual(['leesyashin/Else-Live- leesyashin:claude/buero'])
+  expect(askedGithub).toEqual(['leesyashin/Else-Live- leesyashin:claude/buero', 'get_check_runs #7'])
   expect(listed).toContain('in deiner Claude-Code-Cloud')
   expect(listed).toContain('session_01BLOCKED')
   expect(listed).not.toContain('session_01SELF')
@@ -491,6 +500,84 @@ test("what GitHub reports about a session's own PR beats its summary", () => {
   ])
   const records = cloudRecords([silent, merged], START, reports)
   expect(records.map(one => `${one.id} ${one.pr ?? ''}`)).toEqual(['session_01SILENT PR #3'])
+})
+
+test('CI is read from the check runs, shown with the PR, and noted in the logbook when it turns', () => {
+  const runs = (list: string) => checkRunsIn(`{"total_count":2,"check_runs":[${list}]}`, START)
+  const green = runs('{"name":"bauen","status":"completed","conclusion":"success"},{"name":"test","status":"completed","conclusion":"skipped"}')
+  const running = runs('{"name":"bauen","status":"completed","conclusion":"success"},{"name":"test","status":"in_progress","conclusion":null}')
+  const red = runs('{"name":"bauen","status":"completed","conclusion":"failure"},{"name":"test","status":"queued","conclusion":null}')
+  expect(green).toEqual({ state: 'gruen', fertig: 2, gesamt: 2, rot: [], at: START })
+  expect(running?.state).toBe('laeuft')
+  expect(red).toEqual({ state: 'rot', fertig: 1, gesamt: 2, rot: ['bauen'], at: START })
+  expect(checkRunsIn('{"total_count":0,"check_runs":[]}', START)?.state).toBe('keine')
+  expect(checkRunsIn('kein JSON', START)).toBeUndefined()
+  expect(ciLabel(running)).toBe('CI läuft (1/2)')
+  expect(ciLabel(red)).toBe('CI rot: bauen')
+  expect(ciLabel(undefined)).toBeUndefined()
+  expect(moodLabel({ mood: 'fertig', pr: 'PR #8', ci: running })).toBe('PR #8, CI läuft (1/2)')
+  expect(moodLabel({ mood: 'fertig', pr: 'PR #8', ci: red })).toBe('PR #8, CI rot (bauen)')
+  expect(moodLabel({ mood: 'fertig', pr: 'PR #8', ci: green })).toBe('PR #8 grün, bereit zum Mergen')
+  expect(mergeStateIn('{"state":"open","mergeable":false,"mergeable_state":"dirty","draft":true,"head":{"sha":"abc"}}')).toEqual({ state: 'open', mergeable: false, mergeableState: 'dirty', headSha: 'abc', isDraft: true })
+  expect(mergeStateIn('{"state":"closed","merged":true,"merged_at":"2026-10-20T19:00:00Z"}')?.state).toBe('merged')
+
+  // the Chef vom Dienst merges other people's pull requests: none of them is his own
+  const cvd = finished('session_01CVD', 'hat PR #18 gemergt; PR #21 wartet auf grün', { tags: ['buero:rolle=cvd'] })
+  expect(deliveryOf(cvd)).toEqual({ state: 'ohne' })
+  expect(deliveryOf(cvd, { number: 4, state: 'open' })).toEqual({ state: 'pr', pr: 'PR #4' })
+  const open = finished('session_01OPEN', 'Draft-PR #8 erstellt')
+  const reports = new Map([['cse_01OPEN', { number: 8, state: 'open' as const, ci: red }]])
+  const records = cloudRecords([open, cvd], START, reports)
+  expect(records.map(one => `${one.id} ${one.pr ?? ''} ${one.ci?.state ?? ''}`)).toEqual(['session_01OPEN PR #8 rot', 'session_01CVD  '])
+
+  // the stage shows the CI on the monitor, and the drawing stays valid
+  const office = buildOffice(records, START, 5 * MINUTE, undefined, 12 * 60)
+  expect(drawOffice(office)).toContain('CI rot')
+
+  // the logbook notes the turn of the CI once, not every round
+  // a session seen for the first time is only noted; a running CI is nothing yet
+  const first = eventsFrom([open], new Map([['session_01OPEN', { state: 'pr', pr: 'PR #8', ci: running }]]), { x: 'x' }, START)
+  expect(first.events).toEqual([])
+  const second = eventsFrom([open], new Map([['session_01OPEN', { state: 'pr', pr: 'PR #8', ci: green }]]), first.seen, START + MINUTE)
+  expect(second.events.map(one => `${one.kind}: ${one.text}`)).toEqual(['ci: PR #8: CI grün, bereit zum Mergen'])
+  const third = eventsFrom([open], new Map([['session_01OPEN', { state: 'pr', pr: 'PR #8', ci: green }]]), second.seen, START + 2 * MINUTE)
+  expect(third.events).toEqual([])
+  const fourth = eventsFrom([open], new Map([['session_01OPEN', { state: 'pr', pr: 'PR #8', ci: red }]]), third.seen, START + 3 * MINUTE)
+  expect(fourth.events.map(one => one.text)).toEqual(['PR #8: CI rot (bauen)'])
+})
+
+test('colleagues who talk meet in the meeting room; letters fly only to and from the boss and the Chef vom Dienst', () => {
+  const talk = (to: string, text: string, ago: number) => [{ at: START - ago, to, toId: to, text, counts: true }]
+  const records = [
+    record('sess-cvd-0001', 'Luis', { rolle: 'cvd', sent: talk('sess-ben-0002', 'Stand?', 10_000) }),
+    record('sess-ben-0002', 'Ben', { sent: talk('sess-mia-0003', 'Nimmst du den Shop?', 20_000) }),
+    record('sess-mia-0003', 'Mia', { sent: talk('sess-ben-0002', 'Ja.', 5000) }),
+    record('sess-ida-0004', 'Ida', { status: 'frage', question: 'Farbe?' }),
+    record('sess-tom-0005', 'Tom', { sent: talk('sess-cvd-0001', 'PR #3 ist Review', 3000) }),
+  ]
+  const office = buildOffice(records, START, 5 * MINUTE, undefined, 12 * 60)
+  expect(office.besprechung).toEqual({
+    ids: ['sess-ben-0002', 'sess-mia-0003'],
+    gesagt: [
+      { fromId: 'sess-ben-0002', text: 'Nimmst du den Shop?' },
+      { fromId: 'sess-mia-0003', text: 'Ja.' },
+    ],
+  })
+  expect(office.workers.find(one => one.name === 'Ben')?.besprechung).toBe('mit Mia')
+  expect(office.messages.filter(message => isLetter(message, office.workers)).map(message => message.text)).toEqual(['Stand?', 'PR #3 ist Review'])
+  const svg = drawOffice(office)
+  expect(svg).toContain('Besprechungsraum')
+  expect(svg).not.toContain('Küche')
+  expect(svg).toContain('Besprechungsraum · mit Mia')
+  expect(describeOffice(office)).toContain('Im Besprechungsraum: Ben, Mia.')
+
+  // an open meeting seats its participants, with the topic on the whiteboard; whoever waits for the boss stays there
+  const meeting = { thema: 'Menü: A oder B?', teilnehmer: ['sess-ida-0004', 'sess-tom-0005', 'sess-cvd-0001'], bis: START + 10 * MINUTE }
+  const seated = buildOffice(records, START, 5 * MINUTE, undefined, 12 * 60, undefined, [meeting])
+  expect(seated.besprechung?.ids).toEqual(['sess-tom-0005', 'sess-ben-0002', 'sess-mia-0003'])
+  expect(seated.besprechung?.thema).toBe('Menü: A oder B?')
+  expect(drawOffice(seated)).toContain('Menü: A oder B?')
+  expect(buildOffice(records, START + 11 * MINUTE, 5 * MINUTE, undefined, 12 * 60, undefined, [meeting]).besprechung).toBeUndefined()
 })
 
 test('a snapshot keeps what the office draws, and database answers are read right', () => {

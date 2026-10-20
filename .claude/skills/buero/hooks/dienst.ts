@@ -8,15 +8,21 @@ import type { EngineInterface } from 'claude-code'
 
 import type { Auftrag, AuftragState, Beitrag, EventKind, Kommando, KommandoState, Letter, Regeln, Rolle, SessionRecord } from '../types'
 import {
+  ABLOESE_PROZENT,
   AUFTRAG_LABEL,
+  CVD_REPO,
+  CVD_TITEL,
+  CVD_WECKER,
   OFFENE_ZUSTAENDE,
   auftraegeText,
   auftragOf,
   auftragText,
   branchFor,
+  cvdPrompt,
   kindPrompt,
   kommandoOf,
   kommandoPrompt,
+  mergeRuleText,
   naechsteNummer,
   neuerAuftrag,
   nichtAngenommen,
@@ -39,8 +45,9 @@ import {
   neueBesprechung,
 } from './besprechung'
 import { CLOUD_SERVER, parseSession, sameSession } from './cloud'
+import { fetchCi, fetchPr } from './github'
 import { OFFICE_URL, dbCreate, dbGet, dbQuery, dbWrite, textOf, unsaved } from './db'
-import { clip, colleagueMessage, isActive, moodOf, resolveRecipient } from './model'
+import { clip, colleagueMessage, isActive, moodOf, resolveRecipient, withSent } from './model'
 import { letterId, tailOf } from './post'
 
 type $ = EngineInterface
@@ -72,6 +79,14 @@ export type DienstCtx = {
   stuckMs: () => number
   /** The id of the last post from the person this session received. */
   lastPost: () => string | undefined
+  /** The Chef vom Dienst this session replaces (`session_…`), from its tag; cleared once archived. */
+  vorgaenger: () => string | undefined
+  clearVorgaenger: () => void
+  /** A Chef vom Dienst that started its successor: it keeps the office no longer. */
+  isRetiring: () => boolean
+  retire: () => void
+  /** Whether this session holds the office (the messenger's lease) right now. */
+  isLeader: () => boolean
 }
 
 /** What a tool answers. */
@@ -111,6 +126,13 @@ const DAY_MS = 24 * 60 * 60_000
 const KOMMANDOS_PER_TICK = 5
 /** A command taken but neither closed nor worked on for this long is handed to the model again, once. */
 const STALE_KOMMANDO_MS = 15 * 60_000
+/** The pull request of an order under review is looked at this often, and this many per round. */
+const PR_WATCH_MS = 3 * 60_000
+const PR_WATCH_PER_ROUND = 4
+/** A retired Chef vom Dienst whose successor never shows up takes the office back after this long. */
+export const ABLOESE_FRIST_MS = 10 * 60_000
+/** Keys of disturbances already reported, kept this many at most. */
+const ALERTED_MAX = 500
 
 const openKommandos = new Map<string, number>()
 const alerted = new Map<string, number>()
@@ -118,7 +140,10 @@ let stoerungAt = 0
 let waechterAt = 0
 let pushAt = 0
 let isWatched = false
+let isWeckerBound = false
 const regelnCache = new Map<string, { at: number; regeln: Regeln }>()
+/** Per order: when its pull request was last looked at. */
+const prWatched = new Map<string, number>()
 
 const PROPS = {
   id: { type: 'string', description: 'Die ID (Auftrag a12, Besprechung b-…, Eintrag x-…).' },
@@ -156,7 +181,7 @@ export const DIENST_TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        auftrag: { type: 'string', description: 'Die Auftrags-ID (a12).' },
+        auftrag: { type: 'string', description: 'Die Auftrags-ID (a12), oder „cvd“ für einen neuen Chef vom Dienst, der den bisherigen ablöst.' },
         model: { type: 'string', description: 'Modell-ID; ohne Angabe nach den Regeln des Repos.' },
         hinweis: { type: 'string', description: 'Ein Satz an die neue Session, zusätzlich zum Auftrag.' },
       },
@@ -404,6 +429,13 @@ async function sendLetter($: $, ctx: DienstCtx, target: SessionRecord, body: str
   if (refused !== undefined && filed !== undefined) {
     await dbWrite($, 'delete', 'kollegenpost', letter, undefined, filed).catch(() => undefined)
   }
+  if (refused === undefined) {
+    // on the stage and in the receipts like any letter; the office's own letters do not count toward the limit
+    const own = ctx.self()
+    if (own !== undefined) {
+      ctx.change({ sent: withSent(own.sent, { at: now, to: target.id, toId: target.id, text: clip(body, 200), counts: false, ...(filed === undefined ? {} : { letter }) }) })
+    }
+  }
 
   return refused
 }
@@ -454,7 +486,7 @@ async function holen(
   const now = await $.clock.now()
   const regeln = await loadRegeln($, auftrag.repo, now)
   const records = ctx.records()
-  const busy = records.filter(one => one.auftrag !== undefined && one.status === 'arbeitet' && one.project.toLowerCase() === auftrag.repo.split('/').at(-1)?.toLowerCase())
+  const busy = records.filter(one => one.auftrag !== undefined && isActive(one, now) && one.status !== 'fertig' && one.status !== 'fehler' && one.project.toLowerCase() === auftrag.repo.split('/').at(-1)?.toLowerCase())
   if (busy.length >= regeln.maxParallel) {
     return { deny: `Im Repo ${auftrag.repo} arbeiten schon ${busy.length} Auftrags-Sessions; die Regel erlaubt ${regeln.maxParallel}. Warte, oder lass den Chef die Regel ändern.` }
   }
@@ -493,6 +525,109 @@ async function holen(
     result:
       `Session gestartet: ${started} (${title}), Branch ${branch}, Modell ${model ?? 'Standard'}. https://claude.ai/code/${started}\n` +
       `Auftrag ${auftrag.id} ist vergeben; die Session nimmt ihn mit "annehmen" an. Der Chef vom Dienst meldet sich, wenn sie das nicht binnen 10 Minuten tut.`,
+  }
+}
+
+/**
+ * Starts a new Chef vom Dienst that replaces the current one: the prompt
+ * from the mod, the role tag and the predecessor's id as tags, the model from
+ * the rules. A Chef vom Dienst that starts its own successor retires: it
+ * keeps the office no longer, and the successor archives it.
+ */
+export async function abloesen($: $, ctx: DienstCtx, grund: string, model?: string): Promise<{ result: string } | { deny: string }> {
+  const now = await $.clock.now()
+  const records = ctx.records()
+  const current = cvdOf(records, ctx, now) ?? (ctx.rolle() === 'cvd' ? records.find(one => sameSession(one.id, ctx.cloudSelf())) : undefined)
+  const vorgaenger = ctx.rolle() === 'cvd' ? ctx.idOfSelf() : current?.id
+  const repo = (ctx.rolle() === 'cvd' ? ctx.repo() : undefined) ?? CVD_REPO
+  const regeln = await loadRegeln($, repo, now)
+  const chosen = model ?? regeln.modelle.cvd
+  const answer = await $.mcp.call(CLOUD_SERVER, 'create_session', {
+    title: CVD_TITEL,
+    prompt: cvdPrompt({ vorgaenger, grund }),
+    tags: ['buero:rolle=cvd', ...(vorgaenger === undefined ? [] : [`buero:vorgaenger=${vorgaenger}`])],
+    ...(chosen === undefined ? {} : { model: chosen }),
+    source_url: `https://github.com/${repo}`,
+  })
+  const text = await unsaved($, textOf(answer))
+  if (answer.isError) {
+    return { deny: `Der neue Chef vom Dienst ließ sich nicht starten: ${clip(text, 200)}` }
+  }
+  const started = parseSession(text)?.id ?? /session_[A-Za-z0-9]+/.exec(text)?.[0]
+  if (started === undefined) {
+    return { deny: `Die Cloud hat keine Session-ID geantwortet: ${clip(text, 200)}` }
+  }
+  if (ctx.rolle() === 'cvd') {
+    ctx.retire()
+  }
+  ctx.note('stoerung', `Ablösung: neuer Chef vom Dienst ${started} gestartet (${grund})`)
+  await push($, `abloesung:${started}`, `Neuer Chef vom Dienst gestartet (${grund}); der alte wird archiviert, sobald der neue das Büro hält.`, now)
+
+  return {
+    result:
+      `Neuer Chef vom Dienst gestartet: ${started} (${grund}), Modell ${chosen ?? 'Standard'}. https://claude.ai/code/${started}\n` +
+      (vorgaenger === undefined ? '' : `Er archiviert ${vorgaenger}, sobald er das Büro hält, und bindet den Wecker „${CVD_WECKER}“ an sich.`) +
+      (ctx.rolle() === 'cvd' ? ' Du hältst das Büro ab jetzt nicht mehr: beende, was in Arbeit ist, und nimm nichts Neues an.' : ''),
+  }
+}
+
+/** A successor's first duty: archive the predecessor once this session keeps the office. */
+async function archiveVorgaenger($: $, ctx: DienstCtx, now: number): Promise<void> {
+  const old = ctx.vorgaenger()
+  if (old === undefined || !ctx.isLeader() || !alertOnce(`vorgaenger:${old}`, now)) {
+    return
+  }
+  const answer = await $.mcp.call(CLOUD_SERVER, 'archive_session', { session_id: old })
+  const text = await unsaved($, textOf(answer))
+  if (answer.isError && !/archived|not found|ARCHIVED/i.test(text)) {
+    $.ui.log(`buero: vorgänger archivieren: ${clip(text, 200)}`, { to: 'debug' })
+
+    return
+  }
+  alerted.delete(`vorgaenger:${old}`)
+  ctx.clearVorgaenger()
+  ctx.note('archiviert', `hat den Vorgänger ${old} archiviert`)
+}
+
+/**
+ * The wake-up task of the Chef vom Dienst is bound to this session: one
+ * named task that fires into it every three hours; copies bound to other
+ * sessions (a predecessor) go.
+ */
+async function bindWecker($: $, ctx: DienstCtx): Promise<void> {
+  const me = ctx.idOfSelf()
+  const listed = await $.mcp.call(CLOUD_SERVER, 'list_triggers', { limit: 100 })
+  const text = await unsaved($, textOf(listed))
+  if (listed.isError) {
+    throw new Error(clip(text, 200))
+  }
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  const value = start >= 0 && end > start ? (JSON.parse(text.slice(start, end + 1)) as { triggers?: unknown; data?: unknown }) : {}
+  const list = (Array.isArray(value.triggers) ? value.triggers : Array.isArray(value.data) ? value.data : []) as { id?: unknown; name?: unknown; persistent_session_id?: unknown; enabled?: unknown }[]
+  let isBound = false
+  for (const one of list) {
+    if (one.name !== CVD_WECKER || typeof one.id !== 'string') {
+      continue
+    }
+    if (typeof one.persistent_session_id === 'string' && sameSession(one.persistent_session_id, me)) {
+      isBound = isBound || one.enabled !== false
+      continue
+    }
+    await $.mcp.call(CLOUD_SERVER, 'delete_trigger', { trigger_id: one.id })
+  }
+  if (!isBound) {
+    const made = await $.mcp.call(CLOUD_SERVER, 'create_trigger', {
+      name: CVD_WECKER,
+      cron_expression: '0 */3 * * *',
+      persistent_session_id: me,
+      initiation: 'own_followup',
+      prompt: 'Bereitschafts-Check: Prüfe, ob der Wachhalter (sleep 7100) läuft, sonst starte ihn neu. Antworte mit einer Zeile.',
+    })
+    if (made.isError) {
+      throw new Error(clip(await unsaved($, textOf(made)), 200))
+    }
+    ctx.note('stoerung', `Wecker „${CVD_WECKER}“ an diese Session gebunden`)
   }
 }
 
@@ -679,8 +814,8 @@ export async function auftragTool($: $, ctx: DienstCtx, e: unknown): Promise<Too
     ctx.note('auftrag', `Auftrag ${id} ${AUFTRAG_LABEL[updated.state]}${updated.pr === undefined ? '' : ` (${updated.pr})`}`)
     const regeln = await loadRegeln($, updated.repo, now)
     if (step.aktion === 'review' || step.aktion === 'abschliessen' || step.aktion === 'blockieren' || step.aktion === 'abbrechen') {
-      const merge = regeln.autoMerge === 'nie' ? 'Regel: nicht automatisch mergen.' : regeln.autoMerge === 'gruen' ? 'Regel: bei grüner CI mergen.' : 'Regel: bei grüner CI und Prüfer-Befund mergen.'
-      await tellCvd($, ctx, `Auftrag ${id} (${updated.titel}) ist ${AUFTRAG_LABEL[updated.state]}${updated.pr === undefined ? '' : `, ${updated.pr}`}${updated.grund === undefined ? '' : `: ${updated.grund}`}. ${merge}`)
+      const merge = updated.state === 'review' ? ` Regel: ${mergeRuleText(regeln)}.${updated.pr === undefined ? '' : ' Die PR-Wache meldet dir, sobald der PR grün und konfliktfrei ist.'}` : ''
+      await tellCvd($, ctx, `Auftrag ${id} (${updated.titel}) ist ${AUFTRAG_LABEL[updated.state]}${updated.pr === undefined ? '' : `, ${updated.pr}`}${updated.grund === undefined ? '' : `: ${updated.grund}`}.${merge}`)
     }
     const ablage = step.aktion === 'annehmen' ? await ablageHint($, updated.repo, now) : ''
 
@@ -698,6 +833,9 @@ export async function holenTool($: $, ctx: DienstCtx, e: unknown): Promise<ToolA
     const id = str(input, 'auftrag')
     if (id === undefined) {
       return { deny: 'Welcher Auftrag? Erst anlegen (mcp__buero__auftrag aktion=anlegen), dann holen.' }
+    }
+    if (id.toLowerCase() === 'cvd') {
+      return abloesen($, ctx, str(input, 'hinweis') ?? 'auf Kommando', str(input, 'model'))
     }
     const loaded = await loadAuftrag($, id)
     if (loaded === undefined) {
@@ -768,7 +906,7 @@ export async function abgebenTool($: $, ctx: DienstCtx, e: unknown): Promise<Too
     ctx.note('uebergabe', `hat Auftrag ${id} an ${target.name} abgegeben`)
 
     return refused === undefined
-      ? { result: `Auftrag ${id} an ${target.name} abgegeben; bis zur Annahme bleibt er bei dir auf dem Brett.` }
+      ? { result: `Auftrag ${id} an ${target.name} abgegeben: er steht als vergeben bei ${target.name}; nimmt ${target.name} ihn nicht binnen 10 Minuten an, meldet es der Chef vom Dienst.` }
       : { result: `Auftrag ${id} ist ${target.name} zugeordnet, aber die Nachricht kam nicht an (${refused}); der Chef vom Dienst sieht es beim Rundgang.` }
   }
 }
@@ -1056,19 +1194,28 @@ async function answerThread($: $, thread: string, text: string, isResolved: bool
 }
 
 /** A command named in a prompt (a Sofort comment) is taken before the round would hand it over again. */
-export async function claimKommando($: $, ctx: DienstCtx, id: string, now: number): Promise<void> {
+export async function claimKommando($: $, ctx: DienstCtx, id: string, now: number): Promise<KommandoState | undefined> {
   const doc = await dbGet($, 'kommandos', id)
   const kommando = kommandoOf(doc?.data)
-  if (doc === undefined || kommando === undefined || kommando.state !== 'neu') {
-    return
+  if (doc === undefined || kommando === undefined) {
+    return undefined
+  }
+  if (kommando.state !== 'neu') {
+    return kommando.state
   }
   const outcome = await dbWrite($, 'update', 'kommandos', id, { state: 'angenommen', updatedAt: now, by: ctx.cloudSelf() }, doc.version)
   if (outcome.isDone) {
     openKommandos.set(id, now)
   }
+
+  return 'neu'
 }
 
-/** Hands text to the Chef vom Dienst's model: into the running turn, or as a prompt of its own. */
+/**
+ * Hands text to the Chef vom Dienst's model: into the running turn (the next
+ * tool result carries it; what the turn does not read comes as a prompt after
+ * it), or as a prompt of its own.
+ */
 async function handToModel($: $, ctx: DienstCtx, text: string): Promise<void> {
   if (ctx.isBusy()) {
     ctx.arrive(text)
@@ -1114,6 +1261,8 @@ async function runAktion($: $, kommando: Kommando): Promise<{ state: KommandoSta
 
 /** New commands from the page: structured ones the mod carries out, the rest goes to the model. */
 async function readKommandos($: $, ctx: DienstCtx, now: number): Promise<void> {
+  // a command for the model goes to an idle one, and one per round: a turn that ends without reading it would close it with an unrelated answer
+  let isHanded = ctx.isBusy()
   const docs = (await dbQuery($, 'kommandos', { where: [['state', '==', 'neu']], limit: 20 }))
     .sort((a, b) => Number(a.data.createdAt) - Number(b.data.createdAt))
     .slice(0, KOMMANDOS_PER_TICK)
@@ -1125,18 +1274,19 @@ async function readKommandos($: $, ctx: DienstCtx, now: number): Promise<void> {
   })
   for (const doc of stale) {
     const kommando = kommandoOf(doc.data)
-    if (kommando === undefined) {
+    if (kommando === undefined || isHanded) {
       continue
     }
     const bumped = await dbWrite($, 'update', 'kommandos', doc.id, { updatedAt: now, by: ctx.cloudSelf() }, doc.version)
     if (bumped.isDone) {
       openKommandos.set(doc.id, now)
+      isHanded = true
       await handToModel($, ctx, kommandoPrompt(doc.id, kommando))
     }
   }
   for (const doc of docs) {
     const kommando = kommandoOf(doc.data)
-    if (kommando === undefined) {
+    if (kommando === undefined || (kommando.aktion === undefined && isHanded)) {
       continue
     }
     const claimed = await dbWrite($, 'update', 'kommandos', doc.id, { state: kommando.aktion === undefined ? 'angenommen' : 'in_arbeit', updatedAt: now, by: ctx.cloudSelf() }, doc.version)
@@ -1149,6 +1299,7 @@ async function readKommandos($: $, ctx: DienstCtx, now: number): Promise<void> {
       continue
     }
     openKommandos.set(doc.id, now)
+    isHanded = true
     await handToModel($, ctx, kommandoPrompt(doc.id, kommando))
   }
 }
@@ -1176,11 +1327,18 @@ function alertOnce(key: string, now: number): boolean {
     return false
   }
   alerted.set(key, now)
+  if (alerted.size > ALERTED_MAX) {
+    for (const [old, at] of alerted) {
+      if (now - at >= ALERT_AGAIN_MS) {
+        alerted.delete(old)
+      }
+    }
+  }
 
   return true
 }
 
-/** Stuck or failed sessions, orders not accepted, orders ready for review: the Chef vom Dienst hears of each once. */
+/** Stuck or failed sessions, orders not accepted, orders ready for review: the Chef vom Dienst hears of each once per half hour, review and blocked orders once per PR or reason. */
 async function stoerungen($: $, ctx: DienstCtx, now: number): Promise<void> {
   const records = ctx.records()
   const lines: string[] = []
@@ -1207,21 +1365,102 @@ async function stoerungen($: $, ctx: DienstCtx, now: number): Promise<void> {
     }
   }
   for (const auftrag of open.filter(one => one.state === 'review' || one.state === 'blockiert')) {
-    if (alertOnce(`${auftrag.state}:${auftrag.id}:${auftrag.updatedAt}`, now)) {
+    const key = auftrag.state === 'review' ? `review:${auftrag.id}:${auftrag.pr ?? ''}` : `blockiert:${auftrag.id}:${auftrag.grund ?? ''}`
+    if (alertOnce(key, now)) {
       const regeln = await loadRegeln($, auftrag.repo, now)
       lines.push(
         auftrag.state === 'review'
-          ? `Auftrag ${auftrag.id} (${auftrag.titel}) ist bereit zum Review${auftrag.pr === undefined ? '' : `: ${auftrag.pr}`} in ${auftrag.repo}. Regel: ${regeln.autoMerge === 'nie' ? 'nicht automatisch mergen, dem Chef melden' : regeln.autoMerge === 'gruen' ? 'bei grüner CI mergen (pull_request_read get_check_runs, dann merge_pull_request), danach aktion=abschliessen' : 'Prüfer holen, bei grüner CI und gutem Befund mergen'}.`
+          ? `Auftrag ${auftrag.id} (${auftrag.titel}) ist bereit zum Review${auftrag.pr === undefined ? '' : `: ${auftrag.pr}`} in ${auftrag.repo}. Regel: ${mergeRuleText(regeln)}.${auftrag.pr === undefined ? ' Ohne PR-Nummer wacht die PR-Wache nicht: frag den Besitzer nach dem PR.' : ' Die PR-Wache meldet dir, sobald der PR grün und konfliktfrei ist, und schreibt dem Besitzer bei Konflikt oder roter CI.'}`
           : `Auftrag ${auftrag.id} (${auftrag.titel}) ist blockiert: ${auftrag.grund ?? ''}. Entscheide oder frag den Chef (mcp__buero__kommando aktion=braucht_dich, wenn ein Kommando offen ist, sonst eine kurze Meldung).`,
       )
-      if (auftrag.state === 'review') {
+      if (auftrag.state === 'review' && regeln.autoMerge === 'nie') {
         await push($, `review:${auftrag.id}`, `Auftrag ${auftrag.id} bereit: ${auftrag.pr ?? 'PR offen'} (${auftrag.titel})`, now)
       }
     }
   }
+  lines.push(...(await watchPullRequests($, ctx, open, records, now)))
   if (lines.length > 0) {
     await handToModel($, ctx, `[Büro] Störungen und Meldungen vom Rundgang (Information der Büro-Mod):\n${lines.map(line => `- ${line}`).join('\n')}\nHandle, was deine Dienstanweisung vorsieht; melde dem Chef nur, was seine Entscheidung braucht.`)
   }
+}
+
+/**
+ * The pull requests of orders under review, looked at every few minutes: a
+ * conflict or a red CI goes straight to the session that owns the order, so
+ * nobody waits for a word from the Chef vom Dienst; a green, mergeable one
+ * is reported to him, with what the rule says.
+ */
+async function watchPullRequests($: $, ctx: DienstCtx, open: readonly Auftrag[], records: readonly SessionRecord[], now: number): Promise<string[]> {
+  const lines: string[] = []
+  let looked = 0
+  for (const auftrag of open) {
+    const number = Number(/#(\d+)/.exec(auftrag.pr ?? '')?.[1])
+    const [owner, repo] = auftrag.repo.split('/')
+    if (!Number.isFinite(number) || !owner || !repo || auftrag.state !== 'review') {
+      continue
+    }
+    if (now - (prWatched.get(auftrag.id) ?? 0) < PR_WATCH_MS || looked >= PR_WATCH_PER_ROUND) {
+      continue
+    }
+    prWatched.set(auftrag.id, now)
+    looked += 1
+    const state = await fetchPr($, owner, repo, number)
+    if (state === undefined) {
+      continue
+    }
+    if (state.state !== 'open') {
+      if (alertOnce(`zu:${auftrag.id}:${number}`, now)) {
+        lines.push(`${auftrag.pr ?? `PR #${number}`} (Auftrag ${auftrag.id}) ist ${state.state === 'merged' ? 'gemergt' : 'geschlossen'}, der Auftrag steht aber noch auf Review: schließ ihn ab (mcp__buero__auftrag aktion=abschliessen${state.state === 'merged' ? '' : ' oder aktion=abbrechen mit Grund'}).`)
+      }
+      continue
+    }
+    const ci = await fetchCi($, owner, repo, number, now)
+    const head = state?.headSha ?? 'kopf'
+    const pr = auftrag.pr ?? `PR #${number}`
+    const ownerRecord = auftrag.owner === undefined ? undefined : records.find(one => sameSession(one.id, auftrag.owner ?? '') && isActive(one, now))
+    const hasConflict = state?.mergeableState === 'dirty' || state?.mergeable === false
+    const isRed = ci?.state === 'rot'
+    if (hasConflict && alertOnce(`konflikt:${auftrag.id}:${head}`, now)) {
+      const told =
+        ownerRecord === undefined
+          ? undefined
+          : await sendLetter(
+              $,
+              ctx,
+              ownerRecord,
+              `[Büro] Dein ${pr} in ${auftrag.repo} (Auftrag ${auftrag.id}) hat Konflikte mit main und kann so nicht gemergt werden. Hol main in deinen Branch (git fetch origin main && git merge origin/main), löse die Konflikte, prüfe und pushe. Melde dich danach mit mcp__buero__auftrag aktion=review id=${auftrag.id} pr=${number}.`,
+            )
+      lines.push(
+        `${pr} (Auftrag ${auftrag.id}, ${auftrag.repo}) hat Konflikte mit main. ${ownerRecord === undefined ? `Die Besitzer-Session ${auftrag.owner ?? '–'} ist nicht mehr im Büro: hol eine Fortsetzung (mcp__buero__kollegen_holen) oder merge main selbst (update_pull_request_branch).` : told === undefined ? `${ownerRecord.name} (Session-ID ${ownerRecord.id}) hat den Brief: main hineinmergen. Bleibt es dabei, weck sie mit send_message priority now.` : `${ownerRecord.name} war nicht zu erreichen (${told}): weck sie mit send_message priority now.`}`,
+      )
+    }
+    if (isRed && !hasConflict && alertOnce(`rot:${auftrag.id}:${head}`, now)) {
+      const named = (ci?.rot ?? []).slice(0, 3).join(', ')
+      const told =
+        ownerRecord === undefined
+          ? undefined
+          : await sendLetter(
+              $,
+              ctx,
+              ownerRecord,
+              `[Büro] Die CI deines ${pr} in ${auftrag.repo} (Auftrag ${auftrag.id}) ist rot${named === '' ? '' : ` (${named})`}. Lies das Log (get_job_logs oder get_check_run), behebe die Ursache und pushe; dann melde dich mit mcp__buero__auftrag aktion=review id=${auftrag.id} pr=${number}.`,
+            )
+      lines.push(
+        `${pr} (Auftrag ${auftrag.id}, ${auftrag.repo}): CI rot${named === '' ? '' : ` (${named})`}. ${ownerRecord === undefined ? `Die Besitzer-Session ${auftrag.owner ?? '–'} ist nicht mehr im Büro: hol eine Fortsetzung.` : told === undefined ? `${ownerRecord.name} hat den Brief.` : `${ownerRecord.name} war nicht zu erreichen (${told}).`}`,
+      )
+    }
+    const isMergeable = !hasConflict && ci?.state === 'gruen' && (state?.mergeableState === undefined || ['clean', 'unstable', 'has_hooks', 'unknown'].includes(state.mergeableState))
+    if (isMergeable && auftrag.state === 'review' && alertOnce(`mergebar:${auftrag.id}:${head}`, now)) {
+      const regeln = await loadRegeln($, auftrag.repo, now)
+      const draft = state?.isDraft === true ? ' Er ist noch ein Draft: vorher update_pull_request draft=false.' : ''
+      lines.push(`${pr} (Auftrag ${auftrag.id}, ${auftrag.repo}) ist grün und konfliktfrei.${draft} Regel: ${mergeRuleText(regeln)}.`)
+    }
+    if (state?.mergeableState === 'blocked' && ci?.state === 'gruen' && alertOnce(`blockiert:${auftrag.id}:${head}`, now)) {
+      lines.push(`${pr} (Auftrag ${auftrag.id}) ist grün, aber GitHub blockt den Merge (Branch-Schutz: Review oder Pflicht-Check fehlt). Prüf die Reviews (pull_request_read get_reviews) oder melde es dem Chef.`)
+    }
+  }
+
+  return lines
 }
 
 /** The readiness watchdog: without the background pause the session would fall asleep. */
@@ -1245,8 +1484,38 @@ async function waechter($: $, ctx: DienstCtx): Promise<void> {
 
 /** The Chef vom Dienst's round, called from the session's tick. */
 export async function dienstTick($: $, ctx: DienstCtx, now: number): Promise<void> {
-  if (ctx.rolle() !== 'cvd') {
+  if (ctx.rolle() !== 'cvd' || ctx.isRetiring()) {
     return
+  }
+  if (!isWeckerBound) {
+    isWeckerBound = true
+    try {
+      await bindWecker($, ctx)
+    } catch (error) {
+      isWeckerBound = false
+      $.ui.log(`buero: wecker: ${String(error)}`, { to: 'debug' })
+    }
+  }
+  // a successor started elsewhere (kollegen_holen auftrag=cvd in another session) carries this session as its predecessor
+  const successor = ctx.records().find(one => one.rolle === 'cvd' && isActive(one, now) && (one.tags ?? []).some(tag => tag === `buero:vorgaenger=${ctx.idOfSelf()}`))
+  if (successor !== undefined) {
+    ctx.retire()
+    ctx.note('stoerung', `Ablösung: ${successor.name} (${successor.id}) übernimmt, diese Session hält das Büro nicht mehr`)
+
+    return
+  }
+  if (ctx.vorgaenger() !== undefined) {
+    await archiveVorgaenger($, ctx, now)
+  }
+  const kontext = ctx.self()?.kontext
+  if (kontext !== undefined && kontext >= ABLOESE_PROZENT && !ctx.isBusy() && openKommandos.size === 0 && alertOnce('abloesung', now)) {
+    const made = await abloesen($, ctx, `Kontext ${kontext} % voll`)
+    if ('result' in made) {
+      await handToModel($, ctx, `[Büro] Ablösung: ${made.result}`)
+
+      return
+    }
+    $.ui.log(`buero: ablösung: ${made.deny}`, { to: 'debug' })
   }
   if (!isWatched) {
     isWatched = true
@@ -1294,7 +1563,17 @@ export async function pruneDienst($: $, now: number): Promise<void> {
   ]
   for (const [collection, query] of rounds) {
     for (const doc of await dbQuery($, collection, query)) {
+      if (collection === 'besprechungen') {
+        for (const beitrag of await dbQuery($, `besprechungen/${doc.id}/beitraege`, { limit: 100 })) {
+          await dbWrite($, 'delete', `besprechungen/${doc.id}/beitraege`, beitrag.id, undefined, beitrag.version)
+        }
+      }
       await dbWrite($, 'delete', collection, doc.id, undefined, doc.version)
+    }
+  }
+  for (const [id, at] of prWatched) {
+    if (now - at > DAY_MS) {
+      prWatched.delete(id)
     }
   }
 }

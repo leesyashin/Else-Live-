@@ -11,6 +11,22 @@ export type Mood = Status | 'haengt' | 'weg' | 'bereit'
 /** A session's role in the office, from its cloud tags (`buero:rolle=cvd`). */
 export type Rolle = 'cvd' | 'mitarbeiter' | 'pruefer'
 
+/**
+ * What CI says about a pull request's head, its check runs summed up:
+ * `laeuft` while any is queued or running, `gruen` once all passed, `rot`
+ * when one failed, `keine` without any check run.
+ */
+export type CiStand = {
+  state: 'laeuft' | 'gruen' | 'rot' | 'keine'
+  /** Check runs that completed, and all of them. */
+  fertig: number
+  gesamt: number
+  /** The names of the failed runs. */
+  rot: string[]
+  /** When GitHub was asked. */
+  at: number
+}
+
 export type AgentRecord = {
   id: string
   type: string
@@ -67,6 +83,8 @@ export type SessionRecord = {
   usage?: string
   /** A finished cloud session's pull request that still waits for its merge (`PR #12`). */
   pr?: string
+  /** What CI says about that pull request. */
+  ci?: CiStand
   rolle?: Rolle
   /** The session that started this one (`session_…`): its team in the office. */
   eltern?: string
@@ -104,11 +122,14 @@ export type WorkerView = {
   link?: string
   usage?: string
   pr?: string
+  ci?: CiStand
   rolle?: Rolle
   eltern?: string
   modVersion?: string
   /** Runs an older mod than the office knows. */
   isVeraltet: boolean
+  /** Sits in the meeting room: the topic, or with whom. */
+  besprechung?: string
   stand?: string
   auftrag?: string
   kontext?: number
@@ -122,11 +143,28 @@ export type MessageView = {
   text: string
 }
 
+/** Who sits in the meeting room and why: a meeting's topic, or talk between colleagues. */
+export type MeetingView = {
+  /** Worker ids, in seating order. */
+  ids: string[]
+  thema?: string
+  /** What was said there last, newest last. */
+  gesagt: { fromId: string; text: string }[]
+}
+
+/** An open meeting as the office page keeps it: what buildOffice needs to seat its participants. */
+export type OpenMeeting = {
+  thema: string
+  teilnehmer: readonly string[]
+  bis: number
+}
+
 export type OfficeView = {
   workers: WorkerView[]
   messages: MessageView[]
   /** Local time as minutes past midnight, for the wall clock. */
   clockMinutes: number
+  besprechung?: MeetingView
 }
 
 /** What happened in the office: a line of the logbook. */
@@ -137,6 +175,7 @@ export type EventKind =
   | 'fertig'
   | 'fehler'
   | 'pr'
+  | 'ci'
   | 'gemergt'
   | 'archiviert'
   | 'push'

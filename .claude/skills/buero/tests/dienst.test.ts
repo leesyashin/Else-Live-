@@ -14,6 +14,7 @@ test('the Chef vom Dienst carries out commands from the page and hands the rest 
   const other = session('session_01OTHER')
   const calls: string[] = []
   const prompts: string[] = []
+  const contexts: string[] = []
   on('mcp.call', ($, e) => {
     calls.push(`${e.tool} ${JSON.stringify(e.args)}`)
     switch (e.tool) {
@@ -27,6 +28,7 @@ test('the Chef vom Dienst carries out commands from the page and hands the rest 
   })
   on('prompt.submit', ($, e) => {
     prompts.push(e.text)
+    contexts.push((e.context ?? []).join('\n'))
 
     return { text: e.text }
   })
@@ -68,6 +70,18 @@ test('the Chef vom Dienst carries out commands from the page and hands the rest 
   const before = prompts.length
   await clock.advance(15_000)
   expect(prompts.slice(before).some(text => text.includes('k-4'))).toBe(false)
+  // the comment for a command the round already took tells the model so, instead of running it twice
+  await $.prompt.submit({ text: 'Kommentar auf der Büro-Seite, Kommando k-4: Stopp Anton', wait: false, origin: { kind: 'composer' } } as never)
+  expect(contexts.at(-1)).toContain('Kommando k-4 ist schon in Bearbeitung')
+  // a command that arrives while the model works waits for an idle model
+  await $.turn.start({ text: 'arbeite', turnId: 't2' })
+  db.put('kommandos/k-5', { text: 'Was macht Max?', createdAt: START + 4, state: 'neu', von: 'chef' })
+  await clock.advance(15_000)
+  expect(db.get('kommandos/k-5')?.state).toBe('neu')
+  await $.turn.complete({ reason: 'answer', answer: 'fertig', durationMs: 10, isAborted: false, turnId: 't2' })
+  await clock.advance(15_000)
+  expect(db.get('kommandos/k-5')?.state).toBe('angenommen')
+  expect(prompts.some(text => text.includes('[Büro] Kommando k-5 vom Chef'))).toBe(true)
 })
 
 test('orders are created, handed to a new session, taken, handed over and ruled', async ($, on) => {
@@ -131,6 +145,11 @@ test('orders are created, handed to a new session, taken, handed over and ruled'
   const given = await $.tool.call({ tool: 'mcp__buero__abgeben', an: 'cvd', stand: 'Modell fertig', offen: 'Kasse', naechster: 'Kasse bauen' } as never)
   expect(JSON.stringify(given)).toContain('Chef vom Dienst weiß Bescheid')
   expect(db.get('auftraege/a2')?.state).toBe('offen')
+  // a review order whose owner is gone gets a continuation: it is handed to the new session, not left as it was
+  db.put('auftraege/a1', { ...(db.get('auftraege/a1') ?? {}), state: 'review', pr: 'PR #4' })
+  const again = await $.tool.call({ tool: 'mcp__buero__kollegen_holen', auftrag: 'a1' } as never)
+  expect(JSON.stringify(again)).toContain('session_01NEW')
+  expect(db.get('auftraege/a1')?.state).toBe('vergeben')
   expect(db.get('auftraege/a2')?.uebergabe?.stand).toBe('Modell fertig')
   expect(calls.some(one => one.tool === 'send_message' && one.args.session_id === 'session_01CVD' && String(one.args.message).includes('abgegeben'))).toBe(true)
 
@@ -185,20 +204,57 @@ test('the round reports stuck and failed colleagues, unaccepted and reviewable o
   const files = new Map<string, string>()
   const clock = mockWorld(on, files, 'cse_01CVD')
   const db = mockStore(on)
-  const cvd = session('session_01CVD', { tags: ['buero:rolle=cvd'] })
+  const cvd = session('session_01CVD', { tags: ['buero:rolle=cvd', 'buero:vorgaenger=session_01OLD'] })
   const stuck = session('session_01STUCK', { title: 'Warenkorb', updated_at: '2026-10-20T11:40:00Z', tags: ['buero:auftrag=a2'] })
   const failed = session('session_01FAIL', { title: 'Kasse', status_bucket: 'SESSION_STATUS_BUCKET_FAILED' })
   const waiting = session('session_01ASK', { title: 'Login', status_bucket: 'SESSION_STATUS_BUCKET_BLOCKED', post_turn_summary: { needs_action: 'Welche Farbe?' } })
   const prompts: string[] = []
   const pushed: string[] = []
+  const sent: string[] = []
+  const cloud: string[] = []
   let sleeps = 0
-  on('mcp.call', ($, e) => (e.tool === 'list_sessions' ? listOf([cvd, stuck, failed, waiting]) : e.tool === 'get_session' ? said(JSON.stringify({ ccr: cvd })) : said('ok')))
+  on('mcp.call', ($, e) => {
+    if (e.tool === 'list_sessions') {
+      return listOf([cvd, stuck, failed, waiting])
+    }
+    if (e.tool === 'get_session') {
+      return said(JSON.stringify({ ccr: cvd }))
+    }
+    if (e.tool === 'send_message') {
+      sent.push(`${String(e.args.session_id)}: ${String(e.args.message)}`)
+    }
+    if (['list_triggers', 'delete_trigger', 'create_trigger', 'archive_session', 'create_session'].includes(e.tool)) {
+      cloud.push(`${e.tool} ${JSON.stringify(e.args)}`)
+    }
+    if (e.tool === 'list_triggers') {
+      // the predecessor's wake-up task is still bound to it
+      return said(JSON.stringify({ triggers: [{ id: 'trig_old', name: 'Chef vom Dienst wach halten', persistent_session_id: 'session_01OLD', enabled: true }] }))
+    }
+    if (e.tool === 'create_trigger') {
+      return said(JSON.stringify({ trigger: { id: 'trig_new' } }))
+    }
+    if (e.tool === 'create_session') {
+      return said(JSON.stringify({ id: 'session_01NEXT', title: String(e.args.title) }))
+    }
+    if (e.tool === 'pull_request_read') {
+      // PR #9 has conflicts with main, PR #10 is green and clean
+      const isDirty = e.args.pullNumber === 9
+      if (e.args.method === 'get') {
+        return said(JSON.stringify({ number: e.args.pullNumber, state: 'open', mergeable: !isDirty, mergeable_state: isDirty ? 'dirty' : 'clean', draft: !isDirty, head: { sha: `sha${String(e.args.pullNumber)}` } }))
+      }
+
+      return said(JSON.stringify({ total_count: 1, check_runs: [{ name: 'bauen', status: 'completed', conclusion: 'success' }] }))
+    }
+
+    return said('ok')
+  })
   on('prompt.submit', ($, e) => {
     prompts.push(e.text)
 
     return { text: e.text }
   })
   on('tool.call', { tool: 'ArtifactComments' }, () => ({ result: 'ok' }))
+  on('tool.call', { tool: 'mcp__claude-code-remote__send_message' }, () => ({ result: 'ok' }))
   on('tool.call', { tool: 'PushNotification' }, ($, e) => {
     pushed.push(String((e as unknown as { message: string }).message))
 
@@ -211,6 +267,7 @@ test('the round reports stuck and failed colleagues, unaccepted and reviewable o
   })
   db.put('auftraege/a1', { id: 'a1', nr: 1, titel: 'Login-Seite', text: 'x', repo: 'leesyashin/asker', state: 'vergeben', owner: 'session_01GONE', createdBy: 'chef', createdAt: START - 30 * 60_000, updatedAt: START - 12 * 60_000, abnahme: ['ok'], prio: 'normal', verlauf: [] })
   db.put('auftraege/a3', { id: 'a3', nr: 3, titel: 'Menü', text: 'x', repo: 'leesyashin/asker', state: 'review', owner: 'session_01STUCK', pr: 'PR #9', createdBy: 'chef', createdAt: START - 30 * 60_000, updatedAt: START - 60_000, abnahme: ['ok'], prio: 'normal', verlauf: [] })
+  db.put('auftraege/a4', { id: 'a4', nr: 4, titel: 'Suche', text: 'x', repo: 'leesyashin/asker', state: 'review', owner: 'session_01ASK', pr: 'PR #10', createdBy: 'chef', createdAt: START - 30 * 60_000, updatedAt: START - 60_000, abnahme: ['ok'], prio: 'normal', verlauf: [] })
   db.put('regeln/leesyashin_asker', { autoMerge: 'gruen' })
   // a command taken a while ago that never reached a turn
   db.put('kommandos/k-old', { text: 'Was macht Ella?', createdAt: START - 40 * 60_000, updatedAt: START - 20 * 60_000, state: 'angenommen', von: 'chef' })
@@ -224,7 +281,17 @@ test('the round reports stuck and failed colleagues, unaccepted and reviewable o
   expect(round).toContain('fehlgeschlagen')
   expect(round).toContain('Auftrag a1 (Login-Seite) ist seit')
   expect(round).toContain('Auftrag a3 (Menü) ist bereit zum Review: PR #9')
-  expect(round).toContain('bei grüner CI mergen')
+  expect(round).toContain('bei grün und konfliktfrei sofort mergen')
+  expect(round).toContain('Die PR-Wache meldet dir')
+  // the pull request watch: the owner of a conflicting PR hears it at once, a green and clean one is reported as mergeable
+  expect(round).toContain('PR #9 (Auftrag a3, leesyashin/asker) hat Konflikte mit main')
+  expect(sent.some(text => text.startsWith('session_01STUCK: ') && text.includes('PR #9') && text.includes('Konflikte mit main') && text.includes('aktion=review id=a3 pr=9'))).toBe(true)
+  expect(round).toContain('PR #10 (Auftrag a4, leesyashin/asker) ist grün und konfliktfrei. Er ist noch ein Draft')
+  expect(round).toContain('sofort mergen (merge_pull_request')
+  // a successor's first duties: bind the wake-up task to itself and archive the predecessor
+  expect(cloud.filter(one => one.startsWith('delete_trigger'))).toEqual(['delete_trigger {"trigger_id":"trig_old"}'])
+  expect(cloud.some(one => one.startsWith('create_trigger') && one.includes('"persistent_session_id":"session_01CVD"') && one.includes('Chef vom Dienst wach halten'))).toBe(true)
+  expect(cloud.filter(one => one.startsWith('archive_session'))).toEqual(['archive_session {"session_id":"session_01OLD"}'])
   expect(pushed.some(text => text.includes('wartet auf dich') && text.includes('Welche Farbe?'))).toBe(true)
   expect(prompts.some(text => text.includes('[Büro] Kommando k-old vom Chef'))).toBe(true)
   // without the background pause the model is told to start it again
@@ -234,6 +301,28 @@ test('the round reports stuck and failed colleagues, unaccepted and reviewable o
   const before = prompts.length
   await clock.advance(5 * 60_000)
   expect(prompts.slice(before).some(text => text.includes('session_01STUCK'))).toBe(false)
+  // the Chef vom Dienst wakes colleagues for a living: the hourly limit does not hold him
+  for (let i = 0; i < 7; i += 1) {
+    const answer = JSON.stringify(await $.tool.call({ tool: 'mcp__buero__nachricht', an: 'session_01STUCK', text: `Stand? (${i})` } as never))
+    expect(answer).toContain('Gesendet an')
+    expect(answer).not.toContain('Büro-Limit')
+  }
+  const direct = await $.tool.call({ tool: 'mcp__claude-code-remote__send_message', session_id: 'session_01STUCK', message: 'Merge main, bitte.', priority: 'now' } as never)
+  expect(JSON.stringify(direct)).not.toContain('Büro-Limit')
+  // on command the Chef vom Dienst starts his successor with the mod's prompt, then keeps the office no longer
+  const handed = JSON.stringify(await $.tool.call({ tool: 'mcp__buero__kollegen_holen', auftrag: 'cvd' } as never))
+  expect(handed).toContain('Neuer Chef vom Dienst gestartet: session_01NEXT')
+  const made = cloud.find(one => one.startsWith('create_session')) ?? ''
+  expect(made).toContain('"buero:rolle=cvd"')
+  expect(made).toContain('"buero:vorgaenger=session_01CVD"')
+  expect(made).toContain('Du bist der Chef vom Dienst')
+  expect(made).toContain('ABLÖSUNG: Du löst Session session_01CVD ab')
+  const rounds = prompts.length
+  await clock.advance(6 * 60_000)
+  expect(prompts.slice(rounds).filter(text => text.startsWith('[Büro] Störungen'))).toEqual([])
+  const lease = db.get('leitung/bote') ?? {}
+  expect(Number(lease.until)).toBeLessThan(clock.now())
+  expect(lease.pinned).toBeUndefined()
 })
 
 test('a write to the page reaches core: the model is asked, the mod is allowed only after that look', async ($, on) => {

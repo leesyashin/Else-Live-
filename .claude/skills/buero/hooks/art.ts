@@ -3,8 +3,8 @@
 // a soft shadow beneath, so they read like little figurines seen from above.
 // Furniture that repeats is drawn once in <defs> and placed with <use>.
 
-import type { AgentRecord, Mood, OfficeView, WorkerView } from '../types'
-import { MOOD_COLOR, clip, hash, moodLabel } from './model'
+import type { AgentRecord, MeetingView, Mood, OfficeView, WorkerView } from '../types'
+import { MOOD_COLOR, clip, hash, isLetter, moodLabel } from './model'
 
 export const WIDTH = 600
 const WALL_H = 44
@@ -15,6 +15,8 @@ const COLS = 4
 const PX = 2
 const MAX_DESKS = 24
 const MAX_VISITORS = 5
+/** Chairs at the meeting table: three on the far side, three on the near side. */
+const MAX_SEATS = 6
 /** The engine refuses an Svg source past 131072 characters. */
 const SOURCE_LIMIT = 125_000
 /** Where visitors come into the boss office: the gap in its glass wall. */
@@ -476,7 +478,7 @@ function background(ctx: Ctx, height: number, office: OfficeView): string {
     officeWindow(ctx, 72, 'a') +
     officeWindow(ctx, 142, 'b') +
     noticeBoard(office.messages.length) +
-    kitchen(ctx)
+    meetingRoom(ctx, office.besprechung)
   )
 }
 
@@ -519,9 +521,14 @@ function noticeBoard(count: number): string {
   )
 }
 
-function kitchen(ctx: Ctx): string {
+/**
+ * The meeting room, left of the desks: a whiteboard, a long table with six
+ * chairs, the coffee machine in the corner. Colleagues who talk to each
+ * other sit here instead of sending letters across the office.
+ */
+function meetingRoom(ctx: Ctx, meeting: MeetingView | undefined): string {
   const door = (x: number) =>
-    rect(x, 59, 28, 30, '#b5a390') + rect(x, 59, 1, 30, '#c7b7a3') + rect(x + 27, 59, 1, 30, '#9b8a77') + rect(x + 22, 70, 2, 7, '#ece6da')
+    rect(x, 63, 24, 26, '#b5a390') + rect(x, 63, 1, 26, '#c7b7a3') + rect(x + 23, 63, 1, 26, '#9b8a77') + rect(x + 19, 72, 2, 6, '#ece6da')
   const beam = (x: number) => `<path d="M${x + 3} 37 h54 l40 96 h-54 z" fill="url(#bo-beam)"/>`
   const steam = (x: number, y: number, begin: number) =>
     `<rect x="${x}" y="${y}" width="2" height="3" fill="#ffffff" opacity="0">` +
@@ -529,74 +536,120 @@ function kitchen(ctx: Ctx): string {
     frames(ctx, 'y', [y, y - 3, y - 6, y - 9], [0, 0.25, 0.6, 0.9], 2, begin) +
     '</rect>'
   const bubbleUp = (x: number, begin: number) =>
-    `<rect x="${x}" y="32" width="2" height="2" fill="#ffffff" opacity="0.7">` +
-    frames(ctx, 'y', [33, 30, 27, 24, 21], [0, 0.25, 0.5, 0.75, 0.95], 2.4, begin) +
+    `<rect x="${x}" y="66" width="2" height="2" fill="#ffffff" opacity="0.7">` +
+    frames(ctx, 'y', [67, 64, 61, 58, 55], [0, 0.25, 0.5, 0.75, 0.95], 2.4, begin) +
     '</rect>'
+  const thema = meeting?.thema === undefined ? undefined : clip(meeting.thema, 14)
+  // what the whiteboard shows: the topic, or the marks of the last meeting
+  const board =
+    rect(7, 5, 60, 20, '#000', ' opacity="0.1"') +
+    rect(6, 4, 60, 20, '#aab2bb') + rect(8, 6, 56, 16, '#ffffff') + rect(8, 6, 56, 1, '#f1f3f5') +
+    rect(6, 24, 60, 2, '#8d959e') + rect(20, 26, 6, 1, '#d9534f') + rect(28, 26, 6, 1, '#2e86c1') + rect(36, 26, 6, 1, '#27ae60') +
+    (thema === undefined
+      ? rect(12, 9, 18, 1, '#2e86c1') + rect(12, 12, 26, 1, '#2e86c1') + rect(12, 15, 14, 1, '#d9534f') + rect(40, 9, 8, 8, '#27ae60', ' opacity="0.35"') +
+        rect(50, 11, 10, 1, '#d9534f') + rect(50, 14, 8, 1, '#d9534f') + rect(44, 11, 2, 6, '#27ae60')
+      : text(36, 16, thema, 6, '#1f3a5f', ' text-anchor="middle" font-weight="bold"'))
+  const coffee =
+    // sideboard with the coffee machine
+    shadow(34, 96, 32, 3) +
+    rect(4, 60, 60, 32, '#a89683') + door(6) + door(34) + rect(4, 92, 60, 4, '#6e6052') +
+    rect(2, 50, 64, 10, '#d8cfc0') + rect(2, 50, 64, 1, '#ece6db') + rect(2, 58, 64, 2, '#b3a897') +
+    rect(12, 24, 28, 30, '#3a3a42', ' rx="2"') + rect(12, 24, 28, 3, '#55555f', ' rx="1"') + rect(12, 27, 2, 26, '#4b4b55') + rect(37, 27, 3, 26, '#2a2a30') +
+    rect(16, 29, 12, 6, '#16232b') + rect(17, 30, 7, 1, '#7fd1ff') + rect(17, 32, 9, 1, '#7fd1ff', ' opacity="0.6"') +
+    rect(31, 29, 4, 2, '#e53935') + rect(31, 32, 4, 2, '#43a047') +
+    rect(22, 37, 9, 3, '#24242c') + rect(16, 50, 21, 3, '#222228') + rect(18, 51, 17, 1, '#3a3a44') +
+    rect(22, 44, 8, 6, '#ffffff') + rect(29, 45, 2, 3, '#e6e6e6') + rect(22, 44, 8, 1, '#5a3418') + rect(28, 44, 2, 6, '#e3e3e3') +
+    `<rect x="25.5" y="40" width="1" height="4" fill="#6b3e1e" opacity="0.9">${frames(ctx, 'opacity', [0.9, 0, 0.9], [0, 0.5, 0.75], 1.4)}</rect>` +
+    `<rect x="36" y="50" width="1" height="1" fill="#ff5252">${frames(ctx, 'opacity', [1, 0.2], [0, 0.5], 1.8)}</rect>` +
+    steam(23, 40, 0) + steam(27, 40, 1) +
+    rect(46, 42, 8, 7, '#ffffff') + rect(46, 42, 8, 1, '#6b3e1e') + rect(54, 44, 2, 3, '#e6e6e6') + rect(56, 43, 7, 7, '#ffffff') + rect(56, 43, 7, 1, '#2e86c1')
+  const cooler =
+    // water cooler by the notice board
+    shadow(276, 95, 12, 3) +
+    rect(269, 48, 14, 22, '#a8dcff', ' opacity="0.85" rx="2"') + rect(271, 49, 2, 19, '#e8f6ff', ' opacity="0.8"') + rect(272, 46, 8, 3, '#3d8bfd') +
+    bubbleUp(275, 0) + bubbleUp(278, 1.1) +
+    rect(266, 70, 20, 24, '#e8e8e8') + rect(266, 70, 20, 2, '#f7f7f7') + rect(282, 72, 4, 22, '#cfcfcf') +
+    rect(271, 76, 4, 4, '#3d8bfd') + rect(277, 76, 4, 4, '#e53935') + rect(270, 86, 12, 2, '#9a9a9a')
+  const table =
+    // the rug and the long table
+    rect(50, 92, 200, 112, '#7c9a9a') + rect(53, 95, 194, 106, '#8fb0ae') + rect(53, 95, 194, 1, '#a6c4c2') +
+    shadow(149, 154, 90, 6) +
+    rect(66, 108, 166, 30, '#6b3e26') + rect(66, 108, 166, 2, '#875136') + rect(80, 116, 50, 1, '#5e3520') + rect(150, 124, 60, 1, '#5e3520') +
+    rect(66, 138, 166, 2, '#8a5536') + rect(66, 140, 166, 10, '#4e2c1a') + rect(66, 149, 166, 1, '#38200f') +
+    rect(74, 150, 6, 8, '#3a2414') + rect(218, 150, 6, 8, '#3a2414') +
+    // a jug, glasses and a notepad on the table
+    rect(142, 112, 8, 11, '#cfe8ff', ' opacity="0.9" rx="1"') + rect(143, 113, 2, 9, '#ffffff', ' opacity="0.7"') + rect(150, 114, 2, 5, '#9fcfff') +
+    rect(132, 117, 4, 5, '#e6f4ff') + rect(156, 117, 4, 5, '#e6f4ff') +
+    rect(100, 116, 14, 10, '#fffbe6') + rect(102, 119, 9, 1, '#c9c2a8') + rect(102, 122, 7, 1, '#c9c2a8') + rect(176, 118, 10, 7, '#f7c6d9') + rect(178, 121, 6, 1, '#d79db4')
+  const plant =
+    shadow(26, 197, 12, 3) +
+    rect(18, 182, 16, 14, '#b5651d') + rect(17, 181, 18, 3, '#cf7a2e') + rect(30, 184, 4, 12, '#94511a') +
+    rect(14, 160, 8, 6, '#2f7d32') + rect(22, 150, 8, 10, '#43a047') + rect(28, 158, 10, 8, '#2f7d32') + rect(18, 168, 10, 12, '#3e8e41') +
+    rect(26, 164, 8, 16, '#56b35a') + rect(16, 172, 6, 8, '#56b35a') + rect(24, 152, 3, 4, '#7cc97f') + rect(29, 166, 2, 4, '#7cc97f')
 
   return (
-    beam(72) + beam(142) +
-    // wall cabinets
-    rect(4, 4, 56, 22, '#e3d6c0') + rect(6, 6, 25, 18, '#eadfcb') + rect(33, 6, 25, 18, '#eadfcb') +
-    rect(6, 6, 25, 1, '#f5ede0') + rect(33, 6, 25, 1, '#f5ede0') + rect(27, 13, 2, 4, '#8a7a62') + rect(35, 13, 2, 4, '#8a7a62') +
-    rect(4, 26, 56, 2, '#000', ' opacity="0.12"') +
-    // counter with cabinets
-    shadow(66, 96, 68, 4) +
-    rect(4, 56, 124, 36, '#a89683') + door(6) + door(37) + door(68) + door(99) +
-    rect(4, 92, 124, 4, '#6e6052') +
-    rect(2, 46, 128, 10, '#d8cfc0') + rect(2, 46, 128, 1, '#ece6db') + rect(2, 54, 128, 2, '#b3a897') +
-    // coffee machine
-    rect(12, 20, 28, 30, '#3a3a42', ' rx="2"') + rect(12, 20, 28, 3, '#55555f', ' rx="1"') + rect(12, 23, 2, 26, '#4b4b55') + rect(37, 23, 3, 26, '#2a2a30') +
-    rect(16, 25, 12, 6, '#16232b') + rect(17, 26, 7, 1, '#7fd1ff') + rect(17, 28, 9, 1, '#7fd1ff', ' opacity="0.6"') +
-    rect(31, 25, 4, 2, '#e53935') + rect(31, 28, 4, 2, '#43a047') +
-    rect(22, 33, 9, 3, '#24242c') + rect(16, 46, 21, 3, '#222228') + rect(18, 47, 17, 1, '#3a3a44') +
-    rect(22, 40, 8, 6, '#ffffff') + rect(29, 41, 2, 3, '#e6e6e6') + rect(22, 40, 8, 1, '#5a3418') + rect(28, 40, 2, 6, '#e3e3e3') +
-    `<rect x="25.5" y="36" width="1" height="4" fill="#6b3e1e" opacity="0.9">${frames(ctx, 'opacity', [0.9, 0, 0.9], [0, 0.5, 0.75], 1.4)}</rect>` +
-    `<rect x="36" y="46" width="1" height="1" fill="#ff5252">${frames(ctx, 'opacity', [1, 0.2], [0, 0.5], 1.8)}</rect>` +
-    steam(23, 36, 0) + steam(27, 36, 1) +
-    // toaster, fruit bowl and sink
-    rect(46, 37, 17, 10, '#c8ccd2', ' rx="2"') + rect(46, 37, 17, 2, '#e3e6ea') + rect(49, 37, 4, 1, '#3a3a44') + rect(56, 37, 4, 1, '#3a3a44') + rect(60, 41, 2, 3, '#555c66') +
-    rect(66, 42, 20, 5, '#e6e6e6', ' rx="2"') + `<circle cx="71" cy="41" r="3" fill="#f0a030"/><circle cx="77" cy="40" r="3" fill="#7cb342"/><circle cx="82" cy="41.5" r="2.5" fill="#d9534f"/>` +
-    rect(90, 48, 32, 6, '#9aa4ad') + rect(92, 49, 28, 4, '#76828c') + rect(104, 34, 3, 14, '#c3ccd4') + rect(104, 34, 10, 3, '#c3ccd4') + rect(104, 34, 10, 1, '#e8eef2') + rect(112, 37, 2, 2, '#9aa4ad') +
-    // fridge
-    shadow(149, 97, 18, 3) +
-    rect(134, 10, 30, 86, '#e9edf1', ' rx="2"') + rect(160, 11, 4, 84, '#cfd5dc') + rect(135, 11, 2, 84, '#ffffff') +
-    rect(134, 36, 30, 1, '#b4bcc6') + rect(156, 20, 2, 11, '#97a1ab') + rect(156, 42, 2, 18, '#97a1ab') +
-    rect(140, 46, 5, 5, '#d9534f') + rect(146, 62, 6, 4, '#4a7fd6') + rect(141, 70, 8, 10, '#fffbe6') +
-    rect(136, 96, 4, 2, '#555c66') + rect(158, 96, 4, 2, '#555c66') +
-    // water cooler
-    shadow(180, 93, 13, 3) +
-    rect(173, 14, 14, 22, '#a8dcff', ' opacity="0.85" rx="2"') + rect(175, 15, 2, 19, '#e8f6ff', ' opacity="0.8"') + rect(176, 12, 8, 3, '#3d8bfd') +
-    bubbleUp(179, 0) + bubbleUp(182, 1.1) +
-    rect(170, 36, 20, 56, '#e8e8e8') + rect(170, 36, 20, 2, '#f7f7f7') + rect(186, 38, 4, 54, '#cfcfcf') +
-    rect(175, 46, 4, 4, '#3d8bfd') + rect(181, 46, 4, 4, '#e53935') + rect(174, 56, 12, 2, '#9a9a9a') +
-    // bistro table with stools
-    shadow(62, 162, 26, 4) +
-    rect(40, 132, 44, 6, '#7a5232') + rect(40, 132, 44, 2, '#9a6a44') + rect(40, 138, 44, 2, '#5c3c24') +
-    rect(60, 140, 4, 18, '#4a4a52') + rect(60, 140, 1, 18, '#6a6a74') + rect(52, 158, 20, 3, '#3a3a42') +
-    rect(66, 127, 6, 5, '#ffffff') + rect(66, 127, 6, 1, '#6b3e1e') + rect(72, 128, 2, 3, '#e6e6e6') +
-    shadow(29, 166, 9, 2) + rect(22, 146, 14, 4, '#c0392b', ' rx="1"') + rect(22, 146, 14, 1, '#de5546') + rect(28, 150, 2, 14, '#666c74') + rect(24, 160, 10, 1, '#7a8088') +
-    shadow(95, 166, 9, 2) + rect(88, 146, 14, 4, '#c0392b', ' rx="1"') + rect(88, 146, 14, 1, '#de5546') + rect(94, 150, 2, 14, '#666c74') + rect(90, 160, 10, 1, '#7a8088') +
-    // rug, couch, coffee table and a plant
-    rect(150, 196, 144, 28, '#7c9a9a') + rect(153, 199, 138, 22, '#8fb0ae') + rect(153, 199, 138, 1, '#a6c4c2') +
-    shadow(222, 200, 66, 5) +
-    rect(166, 158, 112, 16, '#8e5b3a', ' rx="3"') + rect(166, 158, 112, 2, '#a8714c') +
-    rect(168, 172, 36, 16, '#a86c45') + rect(205, 172, 36, 16, '#a86c45') + rect(242, 172, 36, 16, '#a86c45') +
-    rect(168, 172, 36, 2, '#c2865d') + rect(205, 172, 36, 2, '#c2865d') + rect(242, 172, 36, 2, '#c2865d') +
-    rect(204, 172, 1, 16, '#7f4f31') + rect(241, 172, 1, 16, '#7f4f31') +
-    rect(166, 188, 112, 8, '#7a4a2e') + rect(170, 196, 4, 4, '#3a2414') + rect(270, 196, 4, 4, '#3a2414') +
-    rect(158, 164, 10, 32, '#7f4f31', ' rx="2"') + rect(158, 164, 10, 3, '#9b6440') +
-    rect(276, 164, 10, 32, '#7f4f31', ' rx="2"') + rect(276, 164, 10, 3, '#9b6440') +
-    rect(172, 162, 16, 12, '#f0c75e', ' rx="2"') + rect(172, 162, 16, 2, '#f7dc8f') + rect(184, 164, 4, 10, '#d9ad43') +
-    rect(256, 162, 16, 12, '#5fa8d3', ' rx="2"') + rect(256, 162, 16, 2, '#8cc5e6') + rect(268, 164, 4, 10, '#4a8db6') +
-    shadow(222, 217, 40, 3) +
-    rect(184, 204, 76, 6, '#6d4630') + rect(184, 204, 76, 1, '#8a5a3e') + rect(188, 210, 3, 6, '#4e3222') + rect(253, 210, 3, 6, '#4e3222') +
-    rect(196, 203, 14, 4, '#e0457b') + rect(198, 204, 9, 1, '#f08fb0') + rect(236, 200, 5, 5, '#ffffff') + rect(236, 200, 5, 1, '#6b3e1e') +
-    shadow(138, 197, 12, 3) +
-    rect(130, 182, 16, 14, '#b5651d') + rect(129, 181, 18, 3, '#cf7a2e') + rect(142, 184, 4, 12, '#94511a') +
-    rect(126, 160, 8, 6, '#2f7d32') + rect(134, 150, 8, 10, '#43a047') + rect(140, 158, 10, 8, '#2f7d32') + rect(130, 168, 10, 12, '#3e8e41') +
-    rect(138, 164, 8, 16, '#56b35a') + rect(128, 172, 6, 8, '#56b35a') + rect(136, 152, 3, 4, '#7cc97f') + rect(141, 166, 2, 4, '#7cc97f') +
-    text(10, 220, 'Küche', 10, '#7a6a52', ' font-weight="bold"')
+    beam(72) + beam(142) + board + coffee + cooler + table + plant +
+    text(10, 220, 'Besprechungsraum', 10, '#7a6a52', ' font-weight="bold"')
   )
+}
+
+/** A chair at the meeting table: the far side faces the room, the near side turns its back. */
+function meetingSeat(slot: number): { x: number; y: number; isFar: boolean } {
+  const x = 96 + (slot % 3) * 53
+
+  return slot < 3 ? { x, y: 108, isFar: true } : { x, y: 162, isFar: false }
+}
+
+/**
+ * The colleagues in the meeting room, at the table: the ones who spoke last
+ * with a speech bubble. Also notes where each sits, for letters to them.
+ */
+function meetingPeople(ctx: Ctx, office: OfficeView, at: Map<string, Point>): string {
+  const meeting = office.besprechung
+  if (meeting === undefined) {
+    return ''
+  }
+  const speakers = new Set(meeting.gesagt.slice(-3).map(one => one.fromId))
+  const said = meeting.gesagt.map(one => `${office.workers.find(view => view.id === one.fromId)?.name ?? '?'}: ${one.text}`)
+  const title = [meeting.thema === undefined ? 'Besprechung' : `Besprechung: ${meeting.thema}`, ...said].join('\n')
+  let out = `<g><title>${escapeXml(title)}</title></g>`
+  meeting.ids.slice(0, MAX_SEATS).forEach((id, slot) => {
+    const view = office.workers.find(one => one.id === id)
+    if (view === undefined) {
+      return
+    }
+    const seat = meetingSeat(slot)
+    const palette = paletteOf(view)
+    const ox = seat.x - 18
+    const tip = `<title>${escapeXml(`${view.name} · ${view.project} – im Besprechungsraum${view.besprechung === undefined ? '' : ` (${view.besprechung})`}`)}</title>`
+    const tag = (cx: number, top: number) =>
+      rect(cx - 16, top, 32, 11, '#1d2333', ' opacity="0.78" rx="2"') + text(cx, top + 8, clip(view.name, 7), 8, '#ffffff', ' text-anchor="middle" font-weight="bold"')
+    if (seat.isFar) {
+      const oy = seat.y - 36
+      out +=
+        `<g data-worker="${escapeXml(view.id)}" class="worker">${tip}` +
+        use(ctx, 'chairHigh', ox - 57, oy - 46) + seatedFront(ctx, view, palette, ox, oy, false) +
+        (speakers.has(id) ? bubble(ctx, ox + 26, oy - 16, '…', '#fffdf6', '#222') : '') +
+        tag(seat.x, oy - 2) + '</g>'
+      at.set(id, { x: seat.x, y: oy + 10 })
+    } else {
+      const oy = seat.y - 26
+      out +=
+        `<g data-worker="${escapeXml(view.id)}" class="worker">${tip}` +
+        sprite(BACK_IDLE.slice(9), palette, ox, oy + 18) +
+        `<g>${moves(ctx, ['0 0', '1 0', '0 0', '-1 0', '0 0'], [0, 0.3, 0.45, 0.75, 0.9], 4.2, (hash(view.id) % 7) / 3)}` +
+        sprite(BACK_IDLE.slice(0, 9), palette, ox, oy) + looks(view, palette, ox, oy, 'back') + '</g>' +
+        use(ctx, 'guest', seat.x, seat.y) +
+        (speakers.has(id) ? bubble(ctx, ox + 26, oy - 18, '…', '#fffdf6', '#222') : '') +
+        tag(seat.x, seat.y + 37) + '</g>'
+      at.set(id, { x: seat.x, y: oy + 8 })
+    }
+  })
+  if (meeting.ids.length > MAX_SEATS) {
+    out += text(244, 204, `+${meeting.ids.length - MAX_SEATS}`, 10, '#3a2a14', ' text-anchor="end" font-weight="bold"')
+  }
+
+  return out
 }
 
 function bookshelf(): string {
@@ -1022,13 +1075,38 @@ function screen(ctx: Ctx, x: number, y: number, view: WorkerView | undefined): s
       const check = (cx: number) =>
         `<polyline points="${cx - 9},${sy + 13} ${cx - 3},${sy + 19} ${cx + 9},${sy + 7}" fill="none" stroke="#5cd65c" stroke-width="3"/>`
 
+      const ci = view?.ci?.state
+      if (pr !== undefined && ci === 'rot') {
+        // the CI failed: a red cross and the name of the run
+        return (
+          rect(sx, sy, 52, 26, '#2a0f0f') + rect(sx, sy, 52, 4, '#200b0b') + rect(sx + 2, sy + 1, 2, 2, '#ff5252') +
+          `<path d="M${sx + 6} ${sy + 7} l12 12 M${sx + 18} ${sy + 7} l-12 12" stroke="#ff5252" stroke-width="3" fill="none"/>` +
+          text(sx + 37, sy + 15, pr, pr.length > 5 ? 6.5 : 8, '#ffc9c9', ' text-anchor="middle" font-weight="bold"') +
+          text(sx + 37, sy + 22, 'CI rot', 5.5, '#ff8a80', ' text-anchor="middle"') +
+          glow('#ff3b3b', 0.08)
+        )
+      }
+      if (pr !== undefined && ci === 'laeuft') {
+        // the CI runs: a spinning ring and the count
+        const done = view?.ci?.fertig ?? 0
+        const all = view?.ci?.gesamt ?? 0
+        return (
+          rect(sx, sy, 52, 26, '#10202c') + rect(sx, sy, 52, 4, '#0b161e') + rect(sx + 2, sy + 1, 2, 2, '#ffb300') +
+          `<g>${ctx.isAnimated ? `<animateTransform attributeName="transform" type="rotate" from="0 ${sx + 13} ${sy + 15}" to="360 ${sx + 13} ${sy + 15}" dur="1.6s" ${LOOP}/>` : ''}` +
+          `<circle cx="${sx + 13}" cy="${sy + 15}" r="6" fill="none" stroke="#ffb300" stroke-width="3" stroke-dasharray="22 16"/></g>` +
+          text(sx + 37, sy + 15, pr, pr.length > 5 ? 6.5 : 8, '#ffe8b3', ' text-anchor="middle" font-weight="bold"') +
+          text(sx + 37, sy + 22, `CI ${done}/${all}`, 5.5, '#ffcc66', ' text-anchor="middle"') +
+          glow('#ffb300', 0.07)
+        )
+      }
+
       return (
         rect(sx, sy, 52, 26, '#0f2a1a') + rect(sx, sy, 52, 4, '#0b2014') + rect(sx + 2, sy + 1, 2, 2, '#27c93f') +
         (pr === undefined
           ? check(sx + 26)
           : check(sx + 13) +
             text(sx + 37, sy + 15, pr, pr.length > 5 ? 6.5 : 8, '#c8f7c8', ' text-anchor="middle" font-weight="bold"') +
-            text(sx + 37, sy + 22, 'mergen', 5.5, '#7fd38f', ' text-anchor="middle"')) +
+            text(sx + 37, sy + 22, ci === 'gruen' ? 'grün' : 'mergen', 5.5, '#7fd38f', ' text-anchor="middle"')) +
         glow('#5cd65c', 0.08)
       )
     }
@@ -1232,13 +1310,17 @@ function dots(ctx: Ctx, x: number, y: number): string {
     .join('')
 }
 
-function nameTag(x: number, y: number, view: WorkerView | undefined): string {
+function nameTag(x: number, y: number, view: WorkerView | undefined, isAway = false): string {
   if (view === undefined) {
     return text(x + 75, y + 122, 'frei', 9, '#7a6448', ' text-anchor="middle"')
   }
   const color = MOOD_COLOR[view.mood]
   const name = view.isSelf ? `${view.name} (hier)` : view.name
-  const line = view.mood === 'fertig' && view.pr !== undefined ? `${view.pr} bereit · ${view.project}` : `${view.project} · ${moodLabel(view)}`
+  const line = isAway
+    ? `Besprechungsraum${view.besprechung === undefined ? '' : ` · ${view.besprechung}`}`
+    : view.mood === 'fertig' && view.pr !== undefined
+      ? `${view.pr}${view.ci?.state === 'laeuft' ? ` CI ${view.ci.fertig}/${view.ci.gesamt}` : view.ci?.state === 'rot' ? ' CI rot' : view.ci?.state === 'gruen' ? ' grün' : ' bereit'} · ${view.project}`
+      : `${view.project} · ${moodLabel(view)}`
 
   return (
     `<g${view.mood === 'weg' ? ' opacity="0.55"' : ''}>` +
@@ -1249,7 +1331,16 @@ function nameTag(x: number, y: number, view: WorkerView | undefined): string {
     rect(x + 24, y + 115, 2, 1, '#ffffff', ' opacity="0.6"') +
     text(x + 34, y + 120, clip(name, 15), 10, '#222', ' font-weight="bold"') +
     text(x + 26, y + 130, clip(line, 26), 7, '#555') +
+    (view.rolle === 'pruefer' ? lens(x + 126, y + 116) : '') +
     '</g>'
+  )
+}
+
+/** The magnifying glass a Prüfer carries on the name tag. */
+function lens(cx: number, cy: number): string {
+  return (
+    `<circle cx="${cx}" cy="${cy}" r="4" fill="#dff1ff" stroke="#2a2230" stroke-width="1.5"/>` +
+    `<line x1="${cx + 3}" y1="${cy + 3}" x2="${cx + 7}" y2="${cy + 7}" stroke="#2a2230" stroke-width="2"/>`
   )
 }
 
@@ -1261,6 +1352,7 @@ function tooltip(view: WorkerView): string {
     view.activity === '' ? '' : `Gerade: ${view.activity}`,
     view.question === undefined ? '' : `Frage: ${clip(view.question, 100)}`,
     view.agents.length === 0 ? '' : `Agents: ${view.agents.length}`,
+    view.besprechung === undefined ? '' : `Im Besprechungsraum: ${view.besprechung}`,
   ]
 
   return `<title>${escapeXml(lines.filter(line => line !== '').join('\n'))}</title>`
@@ -1269,6 +1361,10 @@ function tooltip(view: WorkerView): string {
 function flights(office: OfficeView, at: ReadonlyMap<string, Point>, ctx: Ctx): string {
   let out = ''
   for (const message of office.messages) {
+    // colleagues who talk to each other sit in the meeting room: no letter flies
+    if (!isLetter(message, office.workers)) {
+      continue
+    }
     const from = at.get(message.fromId)
     const to = message.toId === undefined ? undefined : at.get(message.toId)
     if (from === undefined || to === undefined || from === to) {
@@ -1310,14 +1406,16 @@ export function drawOffice(
   if (cvd !== undefined) {
     at.set(cvd.id, { x: 338, y: 112 })
   }
+  const inMeeting = new Set((office.besprechung?.ids ?? []).slice(0, MAX_SEATS))
 
   let desks = ''
   for (let i = 0; i < slots; i += 1) {
     const origin = deskOrigin(i)
     const view = atDesks[i] as WorkerView | undefined
+    const isAway = view !== undefined && inMeeting.has(view.id)
     desks += view === undefined ? '' : `<g data-worker="${escapeXml(view.id)}" class="worker">${tooltip(view)}`
-    desks += desk(ctx, origin.x, origin.y, view, hash(view?.id ?? `desk${i}`))
-    if (view !== undefined) {
+    desks += desk(ctx, origin.x, origin.y, isAway ? undefined : view, hash(view?.id ?? `desk${i}`))
+    if (view !== undefined && !isAway) {
       desks += worker(ctx, origin.x, origin.y, view) + interns(ctx, origin.x, origin.y, view)
       if (view.hasMail) {
         desks += bounce(ctx, envelope(origin.x + 28, origin.y + 38), 0.8)
@@ -1326,9 +1424,10 @@ export function drawOffice(
     } else {
       desks += use(ctx, 'chair', origin.x, origin.y)
     }
-    desks += nameTag(origin.x, origin.y, view)
+    desks += nameTag(origin.x, origin.y, view, isAway)
     desks += view === undefined ? '' : '</g>'
   }
+  desks += meetingPeople(ctx, office, at)
   visitors.slice(0, MAX_VISITORS).forEach((view, slot) => {
     const seat = guestSeat(slot)
     at.set(view.id, { x: seat.x, y: seat.y - 10 })
@@ -1405,6 +1504,11 @@ export function describeOffice(office: OfficeView): string {
     return 'Das Büro ist leer.'
   }
   const parts = office.workers.map(view => `${view.name} (${view.project}) ${moodLabel(view)}`)
+  const meeting = office.besprechung
+  const room =
+    meeting === undefined
+      ? ''
+      : ` Im Besprechungsraum${meeting.thema === undefined ? '' : ` (${meeting.thema})`}: ${meeting.ids.map(id => office.workers.find(view => view.id === id)?.name ?? id).join(', ')}.`
 
-  return `Büro mit ${office.workers.length} Mitarbeitern: ${parts.join('; ')}.`
+  return `Büro mit ${office.workers.length} Mitarbeitern: ${parts.join('; ')}.${room}`
 }

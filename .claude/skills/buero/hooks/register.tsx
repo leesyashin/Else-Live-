@@ -1,11 +1,14 @@
-// The office mod. Every session writes what it is doing to a small file of its
-// own under `<config dir>/buero/sessions/`; a session that opens the pane
-// (`/buero`) reads all of them and draws the office.
+// The office mod. On a PC every session writes what it is doing to a small
+// file of its own under `<config dir>/buero/sessions/`, and a session that
+// opens the pane (`/buero`) reads all of them and draws the office. In the
+// cloud the sessions meet on the office page instead: one of them, the
+// messenger, keeps its database (the session list, the logbook, the mail),
+// every one keeps its own desk there, and dienst.ts adds the Chef vom Dienst.
 
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { EventKind, Letter, OfficeEvent, OfficeView, Post, Rolle, SessionRecord, Stand, Status, WorkerView } from '../types'
+import type { CiStand, EventKind, Letter, OfficeEvent, OfficeView, OpenMeeting, Post, Rolle, SessionRecord, Stand, Status, WorkerView } from '../types'
 import { describeOffice, drawOffice } from './art'
 import type { CloudSession, DeskInfo, OwnPr } from './cloud'
 import {
@@ -23,11 +26,14 @@ import {
   tagValue,
   trimSession,
 } from './cloud'
-import { kommandoIn } from './auftraege'
+import { cvdPrompt, kommandoIn } from './auftraege'
+import { besprechungOf } from './besprechung'
 import type { Owned } from './db'
 import { OFFICE_URL, byCreated, dbGet, dbQuery, dbWrite, keep, owned, settle, textOf, unsaved } from './db'
+import { fetchCi, fetchPr } from './github'
 import type { DienstCtx } from './dienst'
 import {
+  ABLOESE_FRIST_MS,
   DIENST_TOOLS,
   abgebenTool,
   ablegenTool,
@@ -47,6 +53,7 @@ import {
 } from './dienst'
 import type { Doc } from './post'
 import {
+  CVD_GRACE_MS,
   LEASE_MS,
   RENEW_MS,
   arrivedText,
@@ -126,6 +133,14 @@ const LETTERS = 'kollegenpost'
 /** GitHub is asked about this session's own pull request at most this often. */
 const PR_EVERY_MS = 60_000
 const GITHUB_SERVER = 'github'
+/** A session writes its desk at least this often while awake; an older desk belongs to a sleeping session, whose pull request the messenger looks after. */
+const DESK_BEAT_MS = 60_000
+const DESK_FRESH_MS = 90_000
+/** The messenger refreshes a sleeping session's CI state this often, and for this many per round. */
+const CI_STALE_MS = 2 * 60_000
+const CI_PER_TICK = 3
+/** Open meetings are read this often, to seat their participants in the meeting room. */
+const MEETINGS_EVERY_MS = 60_000
 /** An ask that is still open after this long is a permission card for the person. */
 const ASK_SETTLE_MS = 1500
 const LIVE_AGENT = new Set(['pending', 'running', 'waiting', 'idle'])
@@ -159,6 +174,11 @@ let cloudError: string | undefined
 /** This session's own pull request, as GitHub last reported it. */
 let ownPr: OwnPr | undefined
 let ownPrAt = 0
+/** What the messenger fetched about sleeping sessions' pull requests, by writer (`cse_…`): their state, and CI. */
+const refreshedCi = new Map<string, { number: number; state: OwnPr['state']; ci?: CiStand; at: number }>()
+/** Open meetings of the office page, for the meeting room. */
+let openMeetings: OpenMeeting[] = []
+let meetingsAt = 0
 /** This session's role in the office, from its cloud tags; read once the cloud answers. */
 let rolle: Rolle | undefined
 let isRoleKnown = false
@@ -167,6 +187,12 @@ let roleAt = 0
 const ROLE_EVERY_MS = 2 * 60_000
 let elternId: string | undefined
 let auftragTag: string | undefined
+/** The Chef vom Dienst this session replaces, from its tag; cleared once archived. */
+let vorgaengerId: string | undefined
+/** This Chef vom Dienst started its successor: it keeps the office no longer. */
+let isRetiring = false
+let retiredAt = 0
+let isVorgaengerDone = false
 /** The version of this mod, from its manifest. */
 let modVersion = ''
 /** The newest mod version the office has seen: the messenger's, or this one's. */
@@ -389,6 +415,7 @@ async function readRole($: $): Promise<void> {
   rolle = rolleOf(own.tags) ?? rolle
   elternId = elternOf(own) ?? elternId
   auftragTag = tagValue(own.tags, 'auftrag') ?? auftragTag
+  vorgaengerId = isVorgaengerDone ? undefined : (tagValue(own.tags, 'vorgaenger') ?? vorgaengerId)
   isRoleKnown = true
   change({ rolle, eltern: elternId, auftrag: auftragTag, modVersion: modVersion === '' ? undefined : modVersion })
 }
@@ -434,11 +461,89 @@ async function checkOwnPr($: $, sessions: readonly CloudSession[], now: number):
       fields: ['number', 'state', 'merged', 'merged_at', 'html_url'],
     })
     if (!answer.isError) {
-      ownPr = pullRequestIn(textOf(answer)) ?? ownPr
+      const found = pullRequestIn(textOf(answer))
+      ownPr = found === undefined ? ownPr : { ...found, ...(found.number === ownPr?.number && found.ci === undefined ? { ci: ownPr?.ci } : {}) }
+    }
+    if (ownPr?.state === 'open') {
+      const ci = await fetchCi($, place.owner, place.repo, ownPr.number, now)
+      ownPr = { ...ownPr, ...(ci === undefined ? {} : { ci }) }
     }
   } catch (error) {
     $.ui.log(`buero: list_pull_requests: ${String(error)}`, { to: 'debug' })
   }
+}
+
+/**
+ * The messenger's look at sleeping sessions' pull requests: a desk older
+ * than a minute and a half is no longer refreshed by its own session, so the
+ * messenger asks GitHub about its CI, a few per round.
+ */
+async function refreshCi($: $, sessions: readonly CloudSession[], desks: readonly Doc[], now: number): Promise<void> {
+  let asked = 0
+  const seen = new Set<string>()
+  for (const desk of desks) {
+    const writer = desk.data.writer
+    const pr = desk.data.pr as OwnPr | undefined
+    const writtenAt = Number(desk.data.writtenAt)
+    if (typeof writer !== 'string' || typeof pr?.number !== 'number' || pr.state !== 'open' || sameSession(writer, cloudSelf)) {
+      continue
+    }
+    seen.add(writer)
+    const known = refreshedCi.get(writer)
+    if (known !== undefined && known.number === pr.number && known.state !== 'open') {
+      continue
+    }
+    const freshest = Math.max(pr.ci?.at ?? 0, known?.number === pr.number ? known.at : 0, Number.isFinite(writtenAt) ? writtenAt : 0)
+    if (now - freshest < Math.max(DESK_FRESH_MS, CI_STALE_MS) || asked >= CI_PER_TICK) {
+      continue
+    }
+    const place = branchOf(sessions.find(session => sameSession(session.id ?? '', writer)))
+    if (place === undefined) {
+      continue
+    }
+    asked += 1
+    const state = await fetchPr($, place.owner, place.repo, pr.number)
+    if (state === undefined) {
+      continue
+    }
+    const ci = state.state === 'open' ? await fetchCi($, place.owner, place.repo, pr.number, now) : undefined
+    refreshedCi.set(writer, { number: pr.number, state: state.state, ...(ci === undefined ? {} : { ci }), at: now })
+  }
+  for (const writer of [...refreshedCi.keys()]) {
+    if (!seen.has(writer)) {
+      refreshedCi.delete(writer)
+    }
+  }
+}
+
+/** A session's pull request as the office knows it best: the desk's report, with what the messenger found out since. */
+function withFreshCi(writer: string, pr: OwnPr): OwnPr {
+  const known = refreshedCi.get(writer)
+  if (known === undefined || known.number !== pr.number) {
+    return pr
+  }
+  if (known.state !== 'open') {
+    return { ...pr, state: known.state }
+  }
+  if (known.ci === undefined || (pr.ci !== undefined && pr.ci.at >= known.ci.at)) {
+    return pr
+  }
+
+  return { ...pr, ci: known.ci }
+}
+
+/** The open meetings of the office page, read once a minute. */
+async function readMeetings($: $, now: number): Promise<void> {
+  if (now - meetingsAt < MEETINGS_EVERY_MS) {
+    return
+  }
+  meetingsAt = now
+  const docs = await dbQuery($, 'besprechungen', { where: [['state', '==', 'offen']], limit: 20 })
+  openMeetings = docs.flatMap(doc => {
+    const b = besprechungOf(doc.data)
+
+    return b === undefined || b.bis <= now ? [] : [{ thema: b.thema, teilnehmer: b.teilnehmer, bis: b.bis }]
+  })
 }
 
 /** Everyone in the office: the cloud's sessions, or the files of this PC. */
@@ -565,7 +670,8 @@ async function writeDesk($: $, now: number): Promise<void> {
     ...(auftragTag === undefined ? {} : { auftrag: auftragTag }),
     ...(self.kontext === undefined ? {} : { kontext: self.kontext }),
   }
-  await keep($, deskDoc, { ...data, writtenAt: now }, JSON.stringify(data))
+  const signature = JSON.stringify({ ...data, pr: data.pr === undefined ? undefined : { ...data.pr, ci: data.pr.ci === undefined ? undefined : { ...data.pr.ci, at: 0 } }, beat: Math.floor(now / DESK_BEAT_MS) })
+  await keep($, deskDoc, { ...data, writtenAt: now }, signature)
 }
 
 /**
@@ -826,19 +932,14 @@ async function runOffice($: $, now: number, seen: Readonly<Record<string, string
   }
   listDoc ??= owned('buero', 'liste')
   const trimmed = sessions.map(trimSession)
-  await keep(
-    $,
-    listDoc,
-    { writtenAt: now, writer: cloudSelf, sessions: trimmed, ...(modVersion === '' ? {} : { modVersion }) },
-    JSON.stringify(trimmed),
-  )
   const desks = await dbQuery($, 'sessions', { limit: 200 })
+  await safe($, 'ci', () => refreshCi($, sessions, desks, now))
   const reports = new Map<string, OwnPr>()
   const infos = new Map<string, DeskInfo>()
   for (const desk of desks) {
     const pr = desk.data.pr as OwnPr | undefined
     if (typeof desk.data.writer === 'string' && typeof pr?.number === 'number') {
-      reports.set(desk.data.writer, pr)
+      reports.set(desk.data.writer, withFreshCi(desk.data.writer, pr))
     }
     if (typeof desk.data.writer === 'string') {
       infos.set(desk.data.writer, deskInfoOf(desk.data))
@@ -848,6 +949,14 @@ async function runOffice($: $, now: number, seen: Readonly<Record<string, string
   if (ownPr !== undefined) {
     reports.set(cloudSelf, ownPr)
   }
+  // the page draws from the list: with the CI states the messenger fetched for sleeping sessions
+  const prs = Object.fromEntries([...refreshedCi].map(([writer, known]) => [writer, { number: known.number, state: known.state, ...(known.ci === undefined ? {} : { ci: known.ci }) }]))
+  await keep(
+    $,
+    listDoc,
+    { writtenAt: now, writer: cloudSelf, sessions: trimmed, prs, ...(modVersion === '' ? {} : { modVersion }) },
+    JSON.stringify([trimmed, [...refreshedCi].map(([writer, known]) => `${writer}:${known.number}:${known.state}:${known.ci?.state ?? ''}:${known.ci?.fertig ?? ''}`)]),
+  )
   const deliveries = new Map(sessions.map(session => [session.id ?? '', deliveryOf(session, reportFor(reports, session.id ?? ''))]))
   const told = eventsFrom(sessions, deliveries, seen, now)
   addEvents(told.events)
@@ -871,7 +980,22 @@ async function lead($: $, now: number): Promise<void> {
   const lease = leaseOf(found?.data)
   noteLatest(lease?.modVersion)
   leasePinned = lease?.pinned
-  const isCvd = rolle === 'cvd'
+  const isCvd = rolle === 'cvd' && !isRetiring
+  if (isRetiring) {
+    // a retiring Chef vom Dienst lets its lease run out at once, so the successor takes the office without waiting
+    if (lease?.holder === cloudSelf && lease.until > now) {
+      await dbWrite($, 'set', 'leitung', 'bote', { holder: cloudSelf, until: now - 1, seen: lease.seen, ...(modVersion === '' ? {} : { modVersion }) }, found?.version)
+    }
+    isLeader = false
+    const successorIsAround = lease?.pinned !== undefined && lease.pinned !== cloudSelf && lease.cvdHeartbeat !== undefined && now - lease.cvdHeartbeat <= CVD_GRACE_MS
+    if (!successorIsAround && now - retiredAt > ABLOESE_FRIST_MS) {
+      // the successor never came: this session keeps the office after all
+      isRetiring = false
+      noteAt('stoerung', 'Ablösung: der Nachfolger ist nicht erschienen, diese Session hält das Büro weiter', now)
+    }
+
+    return
+  }
   if (!mayLead(lease, cloudSelf, now, isCvd)) {
     isLeader = false
 
@@ -933,6 +1057,7 @@ async function tick($: $): Promise<void> {
     await safe($, 'schreibtisch', () => writeDesk($, now))
     await safe($, 'logbuch', () => flushLogs($, now))
     await safe($, 'neuigkeiten', () => readNews($, now))
+    await safe($, 'besprechungen', () => readMeetings($, now))
   } finally {
     isTicking = false
   }
@@ -952,8 +1077,9 @@ async function newsContext($: $): Promise<string | undefined> {
     isVeraltetTold = true
   }
   const kontext = self?.kontext
+  // the Chef vom Dienst is replaced by the mod itself; nobody asks him to hand over
   const full =
-    !isKontextTold && kontext !== undefined && kontext >= 80
+    !isKontextTold && rolle !== 'cvd' && kontext !== undefined && kontext >= 80
       ? `[Büro] Dein Kontext ist zu ${kontext} % voll. Bring deinen Stand in Ordnung und gib bald ab: mcp__buero__abgeben mit Stand, Branch, offenen Punkten und nächstem Schritt, damit eine neue Session weitermachen kann.`
       : undefined
   if (full !== undefined) {
@@ -1015,11 +1141,23 @@ const ctx: DienstCtx = {
   },
   note: (kind, text) => noteAt(kind, text, lastNow || Date.now()),
   arrive: text => {
-    arrived.push({ text })
+    arrived.push({ text, isHeld: true })
   },
   isBusy: () => self?.status === 'arbeitet',
   stuckMs: () => stuckMs,
   lastPost: () => lastPostId,
+  vorgaenger: () => vorgaengerId,
+  clearVorgaenger: () => {
+    vorgaengerId = undefined
+    isVorgaengerDone = true
+  },
+  isRetiring: () => isRetiring,
+  retire: () => {
+    isRetiring = true
+    isLeader = false
+    retiredAt = lastNow || Date.now()
+  },
+  isLeader: () => isLeader,
 }
 
 /** Takes this session's desk: a new record, or the one a reload left behind. */
@@ -1081,7 +1219,7 @@ async function refresh($: $): Promise<void> {
     const now = await $.clock.now()
     const records = await officeRecords($, now)
     const clock = new Date(now)
-    const view = buildOffice(records, now, stuckMs, selfIdIn(records), clock.getHours() * 60 + clock.getMinutes(), latestVersion || undefined)
+    const view = buildOffice(records, now, stuckMs, selfIdIn(records), clock.getHours() * 60 + clock.getMinutes(), latestVersion || undefined, openMeetings)
     const signature = JSON.stringify(view)
     if (signature === lastSignature) {
       return
@@ -1145,7 +1283,7 @@ export const register: Register = (on, options) => {
       })
       await $.tool.register({
         name: 'nachricht',
-        description: `Schickt einem Büro-Kollegen (einer anderen Claude-Code-Session) eine kurze Nachricht. Höchstens ${perHour} pro Stunde; nur wenn es echte Arbeit spart. Den Chef vom Dienst erreichst du mit mcp__buero__cvd ohne Limit.`,
+        description: `Schickt einem Büro-Kollegen (einer anderen Claude-Code-Session) eine kurze Nachricht. Höchstens ${perHour} pro Stunde (der Chef vom Dienst ohne Limit); nur wenn es echte Arbeit spart. Den Chef vom Dienst erreichst du mit mcp__buero__cvd ohne Limit.`,
         inputSchema: {
           type: 'object',
           properties: {
@@ -1203,7 +1341,12 @@ export const register: Register = (on, options) => {
       }
       const named = rolle === 'cvd' ? kommandoIn(e.text) : undefined
       if (named !== undefined) {
-        await claimKommando($, ctx, named, await $.clock.now())
+        const state = await claimKommando($, ctx, named, await $.clock.now())
+        if (state !== undefined && state !== 'neu') {
+          // the round took it from the mailbox before the comment arrived: once is enough
+          const note = `[Büro] Kommando ${named} ist schon ${state === 'erledigt' || state === 'abgelehnt' || state === 'braucht_dich' ? 'abgeschlossen' : 'in Bearbeitung'} (aus dem Briefkasten): führe es nicht noch einmal aus; antworte kurz, was dazu schon geschah.`
+          context = context === undefined ? note : `${context}\n${note}`
+        }
       }
     })
 
@@ -1373,7 +1516,7 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => next(e))
 
   // The model's own SendMessage to another session on this PC counts toward
-  // the hourly limit; messages within the session's own team do not.
+  // the hourly limit; the Chef vom Dienst has none.
   on('session.send', async ($, e, next) => {
     if (self === undefined || e.origin.kind === 'plugin') {
       return next(e)
@@ -1385,7 +1528,7 @@ export const register: Register = (on, options) => {
       return next(e)
     }
     const budget = sendBudget(self.sent, now, perHour)
-    if (!budget.isAllowed) {
+    if (!budget.isAllowed && rolle !== 'cvd') {
       return { isDelivered: false, reason: limitText(perHour, budget.waitMinutes) }
     }
     const sent = await next(e)
@@ -1401,12 +1544,13 @@ export const register: Register = (on, options) => {
 
   // The cloud's own send_message counts toward the same hourly limit.
   on('tool.call', { tool: 'mcp__claude-code-remote__send_message' }, async ($, e, next) => {
-    if (self === undefined) {
+    if (self === undefined || next.origin.plugin === 'buero') {
       return next(e)
     }
     const now = await $.clock.now()
+    // the Chef vom Dienst wakes colleagues for a living: no limit for him
     const budget = sendBudget(self.sent, now, perHour)
-    if (!budget.isAllowed) {
+    if (!budget.isAllowed && rolle !== 'cvd') {
       return { deny: limitText(perHour, budget.waitMinutes) }
     }
     const ran = await next(e)
@@ -1502,7 +1646,7 @@ export const register: Register = (on, options) => {
       return { deny: `${target.name} ist gerade nicht erreichbar.` }
     }
     const budget = sendBudget(sender.sent, now, perHour)
-    if (!budget.isAllowed) {
+    if (!budget.isAllowed && rolle !== 'cvd') {
       return { deny: limitText(perHour, budget.waitMinutes) }
     }
     const asSeen = records.find(record => record.id === me) ?? sender
@@ -1540,7 +1684,7 @@ export const register: Register = (on, options) => {
         ? ` ${target.name} arbeitet gerade, und die Cloud stellt Nachrichten erst nach dem laufenden Auftrag zu. Läuft bei ${target.name} die Büro-Mod, reicht sie die Nachricht schon beim nächsten Arbeitsschritt durch. Ob sie gelesen ist, zeigt mcp__buero__kollegen.`
         : ''
 
-    return { result: `Gesendet an ${target.name}.${busy} Noch ${budget.left - 1} Nachrichten in dieser Stunde.` }
+    return { result: `Gesendet an ${target.name}.${busy}${rolle === 'cvd' ? '' : ` Noch ${budget.isAllowed ? budget.left - 1 : 0} Nachrichten in dieser Stunde.`}` }
   }).catch(() => ({ deny: 'Büro: die Nachricht konnte nicht gesendet werden (Fehler in der Mod).' }))
 
   on('prompt.compose', async ($, e, next) => {
@@ -1550,7 +1694,7 @@ export const register: Register = (on, options) => {
     }
 
     return {
-      sections: [...composed.sections, { id: 'buero:team', text: teamPrompt(perHour, where(), cloudSelf !== '', rolle), scope: 'session' as const }],
+      sections: [...composed.sections, { id: 'buero:team', text: teamPrompt(perHour, where(), cloudSelf !== '', rolle, rolle === 'cvd' ? cvdPrompt({ ohneEinrichtung: true }) : undefined), scope: 'session' as const }],
     }
   })
 
