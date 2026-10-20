@@ -6,7 +6,7 @@ Jede Claude-Code-Session ist ein Mitarbeiter an einem Schreibtisch. Wer auf dich
 
 ## In fünf Minuten eingerichtet
 
-1. **Setup-Skript in die Umgebung.** Öffne im Browser (claude.ai/code) irgendeine Cloud-Session, klicke in der Titelleiste auf das Umgebungsmenü, dann **Bearbeiten**, und füge den kompletten Inhalt von [`buero-cloud-setup.sh`](../../../buero-cloud-setup.sh) in das Feld **Setup-Skript** ein (steht dort schon ein Büro-Teil, ersetz ihn). Speichern. Ab jetzt hat jede **neue** Session dieser Umgebung die Mod. Das Skript holt beim Start die neueste Mod von `main`, wo die Cloud das erlaubt (Sessions im Repo Else-Live-, also der Chef vom Dienst), und installiert sonst die eingebettete Kopie.
+1. **Setup-Skript in die Umgebung.** Öffne im Browser (claude.ai/code) irgendeine Cloud-Session, klicke in der Titelleiste auf das Umgebungsmenü, dann **Bearbeiten**, und füge den kompletten Inhalt von [`buero-cloud-setup.sh`](../../../buero-cloud-setup.sh) in das Feld **Setup-Skript** ein (steht dort schon ein Büro-Teil, ersetz ihn). Speichern. Die Cloud führt das Skript beim ersten Start nach der Änderung einmal aus, nimmt das Ergebnis als Abbild und startet jede weitere **neue** Session dieser Umgebung daraus ([Environment caching](https://code.claude.com/docs/en/cloud-environments#environment-caching)). Beim Bau des Abbilds hat das Skript keinen Zugang zu GitHub, darum zählt die eingebettete Kopie; der GitHub-Abruf im Skript bleibt ein Versuch für den Fall, dass die Cloud das einmal erlaubt. Laufende Sessions behalten ihre Version.
 2. **Chef vom Dienst starten.** Sag einer Session mit der Mod: „Starte den Chef vom Dienst nach docs/cvd-dienstanweisung.md.“ Sie startet die Session im Repo Else-Live- mit dem Tag `buero:rolle=cvd` und richtet den Wecker ein. Oder du startest sie selbst mit dem Prompt aus [`docs/cvd-dienstanweisung.md`](../../../docs/cvd-dienstanweisung.md).
 3. **Büro-Seite öffnen:** **[Claude-Büro](https://claude.ai/artifact/94pH1R4YMfQgxPUeghXbiK)**, auf dem iPhone, im Browser, in der App. Erstes Kommando in die Leiste oben: „Hol jemanden für … im Repo …“.
 
@@ -140,7 +140,9 @@ node scripts/build-office-page.mjs      # baut seite/buero.html aus vorlage.html
 scripts/make-cloud-setup.sh              # baut buero-cloud-setup.sh (eingebettete Mod)
 ```
 
-Die GitHub Action „Büro bauen“ prüft auf jedem PR, dass Seite und Setup-Skript zum Code passen, und baut sie auf `main` neu ein. Nach einer neuen Version: Chef vom Dienst neu starten (er holt sich die Mod von `main`); andere Umgebungen bekommen sie, sobald das Setup-Skript dort erneuert ist.
+Schreibzugriffe der Mod auf die Seite gehen durch ihren `tool.check`-Hook erst mit `next(e)` zum Kern und werden dann freigegeben: Der Kern vermerkt einen gepinnten Schreibzugriff unter seiner tool_use_id, und ohne diesen Vermerk verweigert die Cloud ihn später („no approval record in this session“). Eine Freigabe ohne `next(e)` wirkt nur außerhalb einer Modell-Runde.
+
+Die GitHub Action „Büro bauen“ prüft auf jedem PR, dass Seite und Setup-Skript zum Code passen, und baut sie auf `main` neu ein. Nach einer neuen Version: `buero-cloud-setup.sh` von `main` einmal ins Setup-Skript der Umgebung einfügen (die Cloud baut das Abbild sofort neu), dann den Chef vom Dienst archivieren, neu starten und den Wecker neu binden. Ohne neues Skript bleibt die alte Version im Abbild, auch beim Chef vom Dienst.
 
 ## Glossar
 

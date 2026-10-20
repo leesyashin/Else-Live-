@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import type { EngineInterface } from 'claude-code'
 
+import { OFFICE_URL } from '../hooks/db'
 import { mergeVerdict } from '../hooks/dienst'
 import type { DienstCtx } from '../hooks/dienst'
 import { START, START_EVENT, listOf, mockStore, mockWorld, said, session } from './welt'
@@ -233,4 +234,40 @@ test('the round reports stuck and failed colleagues, unaccepted and reviewable o
   const before = prompts.length
   await clock.advance(5 * 60_000)
   expect(prompts.slice(before).some(text => text.includes('session_01STUCK'))).toBe(false)
+})
+
+test('a write to the page reaches core: the model is asked, the mod is allowed only after that look', async ($, on) => {
+  const files = new Map<string, string>()
+  const clock = mockWorld(on, files, 'cse_01CVD')
+  const db = mockStore(on)
+  const cvd = session('session_01CVD', { tags: ['buero:rolle=cvd'] })
+  const judged: string[] = []
+  on('mcp.call', ($, e) => (e.tool === 'list_sessions' ? listOf([cvd]) : e.tool === 'get_session' ? said(JSON.stringify({ ccr: cvd })) : said('ok')))
+  on('prompt.submit', ($, e) => ({ text: e.text }))
+  on('tool.call', { tool: 'ArtifactComments' }, () => ({ result: 'ok' }))
+  on('tool.call', { tool: 'PushNotification' }, () => ({ result: 'not sent' }))
+  on('process.run', () => ({ value: { exitCode: 0, stdout: '4711\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  // core beneath the mod: the tool's own check notes a pinned write here, and
+  // the cloud refuses the write later when that note is missing
+  on('tool.check', ($, e, next) => {
+    judged.push(`${e.tool}:${String((e.input as { action?: unknown })?.action)}:${next.origin.plugin}`)
+
+    return { decision: 'ask' as const }
+  })
+  db.put('kommandos/k-1', { text: 'Was macht Ella?', createdAt: START, state: 'neu', von: 'chef' })
+
+  await $.session.start(START_EVENT)
+  await clock.advance(5000)
+  expect(db.get('kommandos/k-1')?.state).toBe('angenommen')
+  const closed = await $.tool.call({ tool: 'mcp__buero__kommando', aktion: 'erledigt', id: 'k-1', ergebnis: 'Ella baut die Karte.' } as never)
+  expect(JSON.stringify(closed)).toContain('erledigt')
+  expect(db.get('kommandos/k-1')?.state).toBe('erledigt')
+  // the test kit runs no check on a call and asks as the engine, so only this half
+  // is checked here: a write the mod did not raise reaches core and keeps its ask.
+  // That the mod's own writes get core's look before the allow was seen live in
+  // the cloud (the Chef vom Dienst's kommando and antwort tools, 20.10.2026).
+  const before = judged.length
+  const verdict = await $.tool.check({ tool: 'ArtifactData', input: { url: OFFICE_URL, action: 'update', collection: 'kommandos', doc_id: 'k-1', if_version: 2 } })
+  expect(judged.slice(before)).toEqual(['ArtifactData:update:engine'])
+  expect(verdict.decision).toBe('ask')
 })
