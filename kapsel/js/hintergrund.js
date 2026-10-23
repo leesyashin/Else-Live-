@@ -3,7 +3,9 @@
 //   Umgebung spiegelt. Arbeitet Claude, wellt sie sich stärker.
 // - lava: eine Lava-Lampe, weiche Blasen, die verschmelzen und sich trennen,
 //   in der Farbe des Gesamtstatus.
-// Beide folgen der Neigung des iPhones, sind auf 60 fps begrenzt und rechnen
+// - ascii: ein fließendes Feld aus Terminal-Zeichen, die hellsten in der
+//   Statusfarbe.
+// Alle folgen der Neigung des iPhones, sind auf 60 fps begrenzt und rechnen
 // auf dem Mac in voller Retina-Auflösung, die bei Bedarf sinkt.
 
 const VERTEX = `
@@ -20,16 +22,8 @@ uniform float uWelle;
 uniform vec2 uNeigung;
 uniform vec3 uTon;
 uniform float uDunkel;
+uniform float uZelle;
 float rauschen(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-`;
-
-const METALL = KOPF + `
-// Flüssiges Metall wie ein Produkt-Shot: eine Kamera schaut schräg auf eine
-// Quecksilber-Fläche in einem Fotostudio. Gespiegelt werden Softboxen,
-// schmale Lichtstreifen und schwarze Abschatter; gerechnet wird in HDR mit
-// Filmkurve, dazu Fresnel, Kontaktschatten in Mulden, ein Hauch chromatischer
-// Aberration, Vignette und Korn.
-
 vec2 zufall2(vec2 p) {
   p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
   return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);
@@ -42,6 +36,14 @@ float gradRauschen(vec2 p) {
   return mix(mix(dot(zufall2(i), f), dot(zufall2(i + vec2(1.0, 0.0)), f - vec2(1.0, 0.0)), u.x),
              mix(dot(zufall2(i + vec2(0.0, 1.0)), f - vec2(0.0, 1.0)), dot(zufall2(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0)), u.x), u.y);
 }
+`;
+
+const METALL = KOPF + `
+// Flüssiges Metall wie ein Produkt-Shot: eine Kamera schaut schräg auf eine
+// Quecksilber-Fläche in einem Fotostudio. Gespiegelt werden Softboxen,
+// schmale Lichtstreifen und schwarze Abschatter; gerechnet wird in HDR mit
+// Filmkurve, dazu Fresnel, Kontaktschatten in Mulden, ein Hauch chromatischer
+// Aberration, Vignette und Korn.
 
 // Große, langsame Wogen; feine Details nur schwach, damit es flüssig bleibt.
 float hoehe(vec2 p, float t) {
@@ -183,7 +185,72 @@ void main() {
 }
 `;
 
-export const STILE = { metall: METALL, lava: LAVA };
+const ASCII = KOPF + `
+// Ein fließendes Feld, gezeichnet als Terminal-Zeichen. Jede Zelle fragt das
+// Feld einmal in ihrer Mitte ab und wählt nach Helligkeit ein Zeichen aus
+// " .:*o&8@#" (5x5-Bitmuster, als Zahl kodiert). Die hellsten Zeichen tragen
+// die Statusfarbe; eine Abtastzeile läuft langsam nach unten.
+
+float zeichen(float n, vec2 p) {
+  p = floor(p * vec2(4.0, -4.0) + 2.5);
+  if (clamp(p.x, 0.0, 4.0) == p.x && clamp(p.y, 0.0, 4.0) == p.y) {
+    if (int(mod(n / exp2(p.x + 5.0 * p.y), 2.0)) == 1) return 1.0;
+  }
+  return 0.0;
+}
+
+float feld(vec2 p, float t) {
+  vec2 w = vec2(gradRauschen(p * 0.8 + vec2(0.0, t * 0.2)), gradRauschen(p * 0.8 + vec2(4.1, -t * 0.17)));
+  vec2 q = p + 1.4 * w;
+  float v = 0.42 + 0.6 * gradRauschen(q * 1.1 + t * 0.08);
+  v += (0.15 + 0.2 * uWelle) * gradRauschen(q * 2.6 - t * (0.15 + 0.35 * uWelle));
+  float d = length(p);
+  v += 0.3 * uPuls * sin(d * 9.0 - t * 6.0) * exp(-d * 1.2);
+  return v;
+}
+
+void main() {
+  vec2 zelle = floor(gl_FragCoord.xy / uZelle);
+  vec2 mitte = (zelle + 0.5) * uZelle;
+  vec2 uv = (mitte - 0.5 * uRes) / uRes.y;
+  float t = uPhase;
+  // Feld als Höhe lesen und beleuchten, damit es plastisch wirkt.
+  vec2 fp = uv * 2.6 + uNeigung * 0.25;
+  float v = feld(fp, t);
+  float e = 0.04;
+  vec3 normale = normalize(vec3(v - feld(fp + vec2(e, 0.0), t), v - feld(fp + vec2(0.0, e), t), e * 0.6));
+  vec3 licht = normalize(vec3(-0.5 + uNeigung.x * 0.4, 0.6 - uNeigung.y * 0.3, 0.6));
+  float diffus = max(dot(normale, licht), 0.0);
+  float glanz = pow(max(dot(reflect(-licht, normale), vec3(0.0, 0.0, 1.0)), 0.0), 12.0);
+  float g = smoothstep(0.15, 0.85, v) * 0.45 + diffus * 0.55 + glanz * 0.35;
+  // Abtastzeile wie auf einem alten Terminal.
+  float zeile = fract(-uv.y * 0.35 - t * 0.12);
+  g += 0.35 * smoothstep(0.96, 1.0, zeile);
+  g = clamp(g, 0.0, 1.0);
+
+  float n = 0.0;
+  if (g > 0.18) n = 4096.0;      // .
+  if (g > 0.3) n = 65600.0;      // :
+  if (g > 0.42) n = 332772.0;    // *
+  if (g > 0.52) n = 15255086.0;  // o
+  if (g > 0.62) n = 23385164.0;  // &
+  if (g > 0.72) n = 15252014.0;  // 8
+  if (g > 0.82) n = 13199452.0;  // @
+  if (g > 0.9) n = 11512810.0;   // #
+
+  vec2 lokal = (gl_FragCoord.xy - zelle * uZelle) / uZelle;
+  float an = zeichen(n, lokal * 2.0 - 1.0);
+
+  vec3 grund = mix(vec3(1.0), vec3(0.0), uDunkel);
+  vec3 tinte = mix(vec3(0.42), vec3(0.62), uDunkel);
+  tinte = mix(tinte, uTon, smoothstep(0.7, 0.9, g) * 0.9);
+  float deckung = mix(0.55, 0.8, uDunkel) * (0.45 + 0.55 * g);
+  vec3 farbe = mix(grund, tinte, an * deckung);
+  gl_FragColor = vec4(farbe, 1.0);
+}
+`;
+
+export const STILE = { metall: METALL, lava: LAVA, ascii: ASCII };
 
 // Ton (RGB), Tempo, Welle und Puls je Gesamtstatus.
 const STIMMUNG = {
@@ -193,7 +260,7 @@ const STIMMUNG = {
   ruhig: { ton: [0.55, 0.45, 0.95], tempo: 0.25, welle: 0, puls: 0 },
 };
 
-const UNIFORMS = ['uRes', 'uPhase', 'uPuls', 'uWelle', 'uNeigung', 'uTon', 'uDunkel'];
+const UNIFORMS = ['uRes', 'uPhase', 'uPuls', 'uWelle', 'uNeigung', 'uTon', 'uDunkel', 'uZelle'];
 
 export class Hintergrund {
   constructor(canvas) {
@@ -368,6 +435,8 @@ export class Hintergrund {
     gl.uniform2f(u.uNeigung, this.neigung[0], this.neigung[1]);
     gl.uniform3f(u.uTon, this.ton[0], this.ton[1], this.ton[2]);
     gl.uniform1f(u.uDunkel, this.dunkel.matches ? 1 : 0);
+    // ASCII-Zellen etwa 13 CSS-Pixel groß, egal wie fein gerechnet wird.
+    gl.uniform1f(u.uZelle, Math.max(5, Math.round(13 * this.skala)));
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 }
