@@ -195,6 +195,7 @@ const ASCII = KOPF + `
 
 uniform vec3 uZeiger;  // x, y in Canvas-Pixeln, Stärke 0 … 1
 uniform vec2 uForm;    // welche Form (0, 1, 2), Stärke 0 … 1
+uniform vec3 uFormOrt; // Mitte der freien Fläche (uv), deren Seitenverhältnis
 uniform float uZeit;   // Sekunden, unabhängig vom Status-Tempo
 
 float zeichen(float n, vec2 p) {
@@ -287,8 +288,8 @@ void main() {
 
   // Form: passt hochkant aufs iPhone und füllt am Mac gut zwei Drittel der Höhe.
   if (uForm.y > 0.001) {
-    float k = 0.72 * min(1.0, uRes.x / uRes.y * 1.3);
-    vec2 sp = uv / k;
+    float k = 0.72 * min(1.0, uFormOrt.z * 1.3);
+    vec2 sp = (uv - uFormOrt.xy) / k;
     float d = uForm.x < 0.5 ? hanfblatt(sp) : uForm.x < 1.5 ? pimmel(sp) : joint(sp);
     float innen = smoothstep(0.006, -0.006, d);
     float kante = smoothstep(0.02, 0.0, abs(d));
@@ -341,7 +342,12 @@ const STIMMUNG = {
   ruhig: { ton: [0.55, 0.45, 0.95], tempo: 0.25, welle: 0, puls: 0 },
 };
 
-const UNIFORMS = ['uRes', 'uPhase', 'uPuls', 'uWelle', 'uNeigung', 'uTon', 'uDunkel', 'uZelle', 'uZeiger', 'uForm', 'uZeit'];
+const UNIFORMS = ['uRes', 'uPhase', 'uPuls', 'uWelle', 'uNeigung', 'uTon', 'uDunkel', 'uZelle', 'uZeiger', 'uForm', 'uZeit', 'uFormOrt'];
+
+// Ab dieser Breite steht die App als Spalte links (siehe app.css, --spalte);
+// die Formen erscheinen dann in der freien Fläche rechts daneben.
+const BREIT_AB = 900;
+const SPALTE_RECHTS = 32 + 460 + 24;
 
 export class Hintergrund {
   constructor(canvas) {
@@ -553,6 +559,9 @@ export class Hintergrund {
     gl.uniform3f(u.uZeiger, this.zeiger[0] * this.skala, (innerHeight - this.zeiger[1]) * this.skala, this.zeigerStaerke);
     gl.uniform2f(u.uForm, Math.max(this.formIndex, 0), this.formStaerke());
     gl.uniform1f(u.uZeit, this.zeit);
+    const frei = innerWidth >= BREIT_AB ? SPALTE_RECHTS : 0;
+    const mitteX = (frei + innerWidth) / 2;
+    gl.uniform3f(u.uFormOrt, (mitteX - innerWidth / 2) / innerHeight, 0, (innerWidth - frei) / innerHeight);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 }
