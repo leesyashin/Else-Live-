@@ -4,7 +4,7 @@
 // - lava: eine Lava-Lampe, weiche Blasen, die verschmelzen und sich trennen,
 //   in der Farbe des Gesamtstatus.
 // Beide folgen der Neigung des iPhones, sind auf 60 fps begrenzt und rechnen
-// in reduzierter Auflösung, die bei Bedarf weiter sinkt.
+// auf dem Mac in voller Retina-Auflösung, die bei Bedarf sinkt.
 
 const VERTEX = `
 attribute vec2 p;
@@ -24,42 +24,122 @@ float rauschen(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758
 `;
 
 const METALL = KOPF + `
+// Flüssiges Metall wie ein Produkt-Shot: eine Kamera schaut schräg auf eine
+// Quecksilber-Fläche in einem Fotostudio. Gespiegelt werden Softboxen,
+// schmale Lichtstreifen und schwarze Abschatter; gerechnet wird in HDR mit
+// Filmkurve, dazu Fresnel, Kontaktschatten in Mulden, ein Hauch chromatischer
+// Aberration, Vignette und Korn.
+
+vec2 zufall2(vec2 p) {
+  p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+  return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);
+}
+
+float gradRauschen(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+  return mix(mix(dot(zufall2(i), f), dot(zufall2(i + vec2(1.0, 0.0)), f - vec2(1.0, 0.0)), u.x),
+             mix(dot(zufall2(i + vec2(0.0, 1.0)), f - vec2(0.0, 1.0)), dot(zufall2(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0)), u.x), u.y);
+}
+
+// Große, langsame Wogen; feine Details nur schwach, damit es flüssig bleibt.
 float hoehe(vec2 p, float t) {
-  vec2 q = p;
-  q += 0.38 * vec2(sin(p.y * 1.6 + t * 0.8), cos(p.x * 1.3 - t * 0.6));
-  q += (0.12 + 0.16 * uWelle) * vec2(sin(q.y * 3.1 - t * 1.2), cos(q.x * 2.7 + t * 1.0));
-  float h = sin(q.x * 2.1 + t * 0.45) * cos(q.y * 1.7 - t * 0.35);
-  h += (0.3 + 0.3 * uWelle) * sin((q.x + q.y) * 3.2 + t * 0.9);
-  h += 0.15 * uPuls * sin(length(p) * 9.0 - t * 4.0);
+  vec2 w = vec2(gradRauschen(p * 0.45 + vec2(0.0, t * 0.11)), gradRauschen(p * 0.45 + vec2(5.2, -t * 0.09)));
+  vec2 q = p + 1.6 * w;
+  float h = 0.62 * gradRauschen(q * 0.7 + t * 0.05);
+  h += 0.24 * gradRauschen(q * 1.45 - t * 0.08);
+  h += (0.07 + 0.08 * uWelle) * gradRauschen(q * 3.1 + t * (0.15 + 0.3 * uWelle));
+  h += 0.025 * uWelle * gradRauschen(q * 6.3 - t * 0.6);
+  float d = length(p - vec2(0.0, 2.2));
+  h += 0.05 * uPuls * sin(d * 7.0 - t * 5.0) * exp(-d * 0.35);
   return h;
 }
 
+float kasten(vec2 a, vec2 mitte, vec2 groesse, float weich) {
+  vec2 d = abs(a - mitte) - groesse;
+  return 1.0 - smoothstep(-weich, weich, max(d.x, d.y));
+}
+
+// HDR-Studio in Kugelkoordinaten (Azimut, Elevation).
+vec3 studio(vec3 r, float weich) {
+  float az = atan(r.x, -r.z);
+  float el = asin(clamp(r.y, -1.0, 1.0));
+  vec2 a = vec2(az, el);
+  float hellGrund = mix(0.62, 0.012, uDunkel);
+  vec3 c = vec3(hellGrund) * mix(0.55, 1.0, smoothstep(-0.1, 1.3, el));
+  c *= vec3(0.97, 0.985, 1.0);
+  // Schwarze Abschatter geben dem Chrom seine Kanten.
+  float flagge = kasten(a, vec2(0.25, 0.3), vec2(1.6, 0.07), 0.02 + weich);
+  flagge = max(flagge, kasten(a, vec2(-1.25, 0.7), vec2(0.12, 0.45), 0.03 + weich));
+  c *= 1.0 - 0.95 * flagge;
+  // Hauptlicht: große Softbox links oben, kühl.
+  // Im Dunkeln kleiner und schärfer: wenig Licht, klare Kanten.
+  c += vec3(7.0, 7.3, 7.8) * kasten(a, vec2(-0.55, 0.62), mix(vec2(0.38, 0.22), vec2(0.2, 0.1), uDunkel), mix(0.05, 0.025, uDunkel) + weich);
+  // Streiflicht: schmal und lang rechts, leicht warm.
+  c += vec3(6.0, 5.6, 5.0) * kasten(a, vec2(0.95, 0.5), vec2(0.035, 0.42), 0.012 + weich);
+  // Zweiter Streifen in der Statusfarbe.
+  // Zweiter Streifen in der Statusfarbe; leuchtet nicht ins Weiche aus.
+  c += (uTon * 3.2 + 0.4) * kasten(a, vec2(0.45, 0.95), vec2(0.6, 0.025), 0.01) * step(weich, 0.0);
+  // Deckenlicht.
+  c += vec3(1.6) * smoothstep(1.15 - weich, 1.3 + weich, el);
+  // Gegenlicht hinter der Kamera für Glanz an steilen Flanken.
+  c += vec3(2.2, 2.3, 2.5) * kasten(vec2(abs(az), el), vec2(3.0, 0.25), vec2(0.35, 0.12), 0.08 + weich);
+  return c;
+}
+
+vec3 filmkurve(vec3 x) {
+  return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+
+mat2 dreh(float w) { float c = cos(w), s = sin(w); return mat2(c, -s, s, c); }
+
 void main() {
   vec2 uv = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
-  vec2 p = uv * 2.2 + uNeigung * 0.15;
   float t = uPhase;
-  float e = 2.0 / uRes.y;
-  float h = hoehe(p, t);
-  float hx = hoehe(p + vec2(e, 0.0), t) - h;
-  float hy = hoehe(p + vec2(0.0, e), t) - h;
-  vec3 n = normalize(vec3(-hx / e * 0.22, -hy / e * 0.22, 1.0));
-  vec3 blick = normalize(vec3(uv * 0.6 - uNeigung * 0.25, -1.0));
-  vec3 r = reflect(blick, n);
 
-  // Studio-Umgebung: heller Himmel oben, zwei Lichtstreifen, ein Glanzpunkt.
-  float himmel = smoothstep(-0.5, 0.9, r.y);
-  float streifen = smoothstep(0.6, 0.66, 0.5 + 0.5 * sin(r.x * 2.6 + r.y * 4.2));
-  float streifen2 = smoothstep(0.75, 0.8, 0.5 + 0.5 * sin(r.x * -1.7 + r.y * 2.3 + 1.3));
-  float glanz = pow(max(dot(r, normalize(vec3(-0.4, 0.7, -0.6))), 0.0), 24.0);
-  float hell = 0.18 + 0.55 * himmel + 0.25 * streifen + 0.15 * streifen2 + 0.9 * glanz;
-  hell *= mix(0.4, 1.0, pow(n.z, 2.0));
-  hell = clamp(hell, 0.0, 1.2);
+  // Kamera 1,6 über der Fläche, um 0,62 rad nach unten geneigt.
+  vec3 ro = vec3(uNeigung.x * 0.25, 1.6, 0.0);
+  vec3 rd = normalize(vec3(uv, -1.75));
+  rd.yz *= dreh(-0.62 - uNeigung.y * 0.06);
+  float abstand = -ro.y / min(rd.y, -0.05);
+  vec2 p = ro.xz + rd.xz * abstand;
+  p.y += t * 0.18;
 
-  vec3 hellbereich = mix(vec3(0.56, 0.57, 0.6), vec3(0.0), uDunkel);
-  vec3 spitze = mix(vec3(1.0), vec3(0.55, 0.555, 0.57), uDunkel);
-  vec3 farbe = mix(hellbereich, spitze, smoothstep(0.0, 1.0, hell));
-  farbe = mix(farbe, farbe * (0.8 + 0.4 * uTon), 0.1 + 0.15 * uDunkel);
-  farbe += (rauschen(gl_FragCoord.xy) - 0.5) / 255.0;
+  // Normale aus der Höhe; mit dem Abstand flacher, wie unscharf in der Tiefe.
+  float amp = 0.55 * exp(-abstand * 0.06);
+  float e = 0.012 + abstand * 0.0025;
+  float h0 = hoehe(p, t);
+  float hx1 = hoehe(p + vec2(e, 0.0), t);
+  float hx2 = hoehe(p - vec2(e, 0.0), t);
+  float hz1 = hoehe(p + vec2(0.0, e), t);
+  float hz2 = hoehe(p - vec2(0.0, e), t);
+  vec3 n = normalize(vec3(-(hx1 - hx2) / (2.0 * e) * amp, 1.0, -(hz1 - hz2) / (2.0 * e) * amp));
+  float mulde = (hx1 + hx2 + hz1 + hz2 - 4.0 * h0) / (e * e);
+
+  vec3 r = reflect(rd, n);
+  r.xz *= dreh(uNeigung.x * 0.45);
+  float fres = 0.9 + 0.1 * pow(1.0 - max(dot(-rd, n), 0.0), 5.0);
+
+  // Leichte chromatische Aberration zum Bildrand hin.
+  vec3 ca = vec3(uv * 0.006, 0.0);
+  vec3 farbe;
+  farbe.r = studio(normalize(r + ca), 0.0).r;
+  farbe.g = studio(r, 0.0).g;
+  farbe.b = studio(normalize(r - ca), 0.0).b;
+  farbe += studio(r, 0.35) * mix(0.08, 0.035, uDunkel);
+  farbe *= fres * vec3(0.96, 0.97, 1.0);
+
+  // Kontaktschatten in Mulden, Dunst in der Tiefe.
+  farbe *= clamp(1.0 - max(mulde, 0.0) * 0.012, 0.55, 1.0);
+  vec3 dunst = vec3(mix(0.72, 0.02, uDunkel));
+  farbe = mix(farbe, dunst, smoothstep(4.0, 14.0, abstand) * 0.55);
+
+  farbe = filmkurve(farbe * mix(0.85, 1.1, uDunkel));
+  farbe = pow(farbe, vec3(1.0 / 2.2));
+  float vignette = 1.0 - 0.28 * dot(uv * vec2(0.8, 1.0), uv * vec2(0.8, 1.0)) * 2.0;
+  farbe *= mix(1.0, vignette, 0.8);
+  farbe += (rauschen(gl_FragCoord.xy + fract(t) * 91.0) - 0.5) * 0.018;
   gl_FragColor = vec4(farbe, 1.0);
 }
 `;
@@ -120,7 +200,10 @@ export class Hintergrund {
     this.canvas = canvas;
     this.an = false;
     this.stil = 'metall';
-    this.skala = 0.6;
+    // Mit Maus oder Trackpad (Mac) bis zur vollen Retina-Auflösung, auf dem
+    // Handy höchstens die CSS-Auflösung; die Anpassung senkt das bei Bedarf.
+    this.maxSkala = matchMedia('(pointer: fine)').matches ? Math.min(devicePixelRatio || 1, 2) : 1;
+    this.skala = this.maxSkala;
     this.status = 'ruhig';
     this.ton = [...STIMMUNG.ruhig.ton];
     this.tempo = STIMMUNG.ruhig.tempo;
@@ -249,8 +332,8 @@ export class Hintergrund {
       this.mittel = 16.7;
       this.guteFrames = 0;
       this.groesse();
-    } else if (this.mittel < 17.2 && this.skala < 0.6 && ++this.guteFrames > 240) {
-      this.skala = Math.min(0.6, this.skala * 1.1);
+    } else if (this.mittel < 17.2 && this.skala < this.maxSkala && ++this.guteFrames > 240) {
+      this.skala = Math.min(this.maxSkala, this.skala * 1.1);
       this.guteFrames = 0;
       this.groesse();
     }
