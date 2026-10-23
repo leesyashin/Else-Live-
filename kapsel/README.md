@@ -42,4 +42,4 @@ Token: Fine-grained, nur die gewünschten Repos, Rechte *Contents* und *Pull req
 | `js/hintergrund.js` | WebGL-Hintergrund (Metall, Lava, ASCII) mit 60-fps-Grenze und adaptiver Auflösung |
 | `js/haptik.js` | Vibration bzw. iOS-Schalter-Haptik |
 
-Kein Build-Schritt, keine Abhängigkeiten. Neue Version: `VERSION` in `sw.js` hochzählen, damit installierte Apps die neue Hülle laden.
+Kein Build-Schritt, keine Abhängigkeiten. Updates kommen von selbst: Der Service Worker holt die App-Hülle zuerst frisch aus dem Netz (Cache nur offline), fragt bei jedem Öffnen nach einer neuen Version und lädt nach dem Wechsel einmal neu. `VERSION` in `sw.js` bei jeder Änderung trotzdem hochzählen.

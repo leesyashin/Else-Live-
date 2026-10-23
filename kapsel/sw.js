@@ -1,6 +1,7 @@
-// Offline-Fähigkeit: Die App-Hülle kommt aus dem Cache und wird im
-// Hintergrund erneuert. Anfragen an GitHub gehen immer ins Netz.
-const VERSION = 'kapsel-5';
+// Offline-Fähigkeit: Die App-Hülle kommt zuerst frisch aus dem Netz und nur
+// ohne Verbindung aus dem Cache, damit Updates sofort ankommen. Anfragen an
+// GitHub gehen immer ins Netz.
+const VERSION = 'kapsel-6';
 const HUELLE = [
   './',
   'index.html',
@@ -19,7 +20,9 @@ const HUELLE = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(HUELLE)).then(() => self.skipWaiting()));
+  // cache: 'reload' umgeht den HTTP-Cache, sonst landen alte Dateien im neuen Cache.
+  const frisch = HUELLE.map((url) => new Request(url, { cache: 'reload' }));
+  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(frisch)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -36,14 +39,13 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
   e.respondWith(
     caches.open(VERSION).then(async (cache) => {
-      const treffer = await cache.match(e.request, { ignoreSearch: true });
-      const netz = fetch(e.request)
-        .then((antwort) => {
-          if (antwort.ok) cache.put(e.request, antwort.clone());
-          return antwort;
-        })
-        .catch(() => treffer);
-      return treffer ?? netz;
+      try {
+        const antwort = await fetch(e.request, { cache: 'no-cache' });
+        if (antwort.ok) cache.put(e.request, antwort.clone());
+        return antwort;
+      } catch {
+        return (await cache.match(e.request, { ignoreSearch: true })) ?? Response.error();
+      }
     }),
   );
 });
