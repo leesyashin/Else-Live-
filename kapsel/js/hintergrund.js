@@ -191,12 +191,13 @@ const ASCII = KOPF + `
 // " .:*o&8@#" (5x5-Bitmuster, als Zahl kodiert). Alles bleibt einfarbig;
 // nur rund um den Mauszeiger (oder Finger) färben sich die Zeichen blau.
 // Alle 20 bis 30 Sekunden formen die Zeichen nacheinander ein Hanfblatt,
-// einen Pimmel und einen brennenden Joint mit Rauch.
+// einen Pimmel und einen brennenden Joint, jede Form mit kleiner Geschichte.
 
 uniform vec3 uZeiger;  // x, y in Canvas-Pixeln, Stärke 0 … 1
 uniform vec2 uForm;    // welche Form (0, 1, 2), Stärke 0 … 1
 uniform vec3 uFormOrt; // Mitte der freien Fläche (uv), deren Seitenverhältnis
 uniform float uZeit;   // Sekunden, unabhängig vom Status-Tempo
+uniform float uFormZeit; // Sekunden seit Beginn der aktuellen Form
 
 float zeichen(float n, vec2 p) {
   p = floor(p * vec2(4.0, -4.0) + 2.5);
@@ -216,46 +217,89 @@ float strecke(vec2 p, vec2 a, vec2 b, float ra, float rb) {
 
 float ellipse(vec2 p, vec2 r) { return (length(p / r) - 1.0) * min(r.x, r.y); }
 
-// Hanfblatt: sieben spitze, gezackte Fiederblätter an einem Stiel.
-float hanfblatt(vec2 p) {
+// Jede Form erzählt in uFormZeit (Sekunden seit Beginn) eine kleine
+// Geschichte: aufbauen bis 2,5 s, spielen bis 13 s, auflösen bis 16 s.
+
+// Hanfblatt: der Stiel wächst, dann entfalten sich die sieben gezackten
+// Fiederblätter von der Mitte nach außen; das Blatt wiegt sich im Wind.
+float hanfblatt(vec2 p, float tau) {
   vec2 basis = vec2(0.0, -0.22);
-  float d = strecke(p, basis, vec2(0.0, -0.5), 0.013, 0.01);
+  p = basis + drehung(0.07 * sin(tau * 1.1) + 0.03 * sin(tau * 2.3)) * (p - basis);
+  float stiel = clamp(tau / 1.2, 0.0, 1.0);
+  float d = strecke(p, vec2(0.0, -0.5), mix(vec2(0.0, -0.5), basis, stiel), 0.014, 0.012);
   for (int i = 0; i < 7; i++) {
     float fi = float(i) - 3.0;
     float a = abs(fi);
-    // Fächer: mittleres Blatt am längsten, die äußeren zeigen schräg nach unten.
+    float wachs = smoothstep(0.7 + a * 0.5, 2.2 + a * 0.5, tau);
+    if (wachs < 0.01) continue;
     float winkel = sign(fi) * (a < 0.5 ? 0.0 : a < 1.5 ? 0.45 : a < 2.5 ? 0.98 : 1.65);
-    float laenge = a < 0.5 ? 0.72 : a < 1.5 ? 0.62 : a < 2.5 ? 0.46 : 0.26;
-    vec2 q = drehung(winkel) * (p - basis);
+    float laenge = (a < 0.5 ? 0.72 : a < 1.5 ? 0.62 : a < 2.5 ? 0.46 : 0.26) * wachs;
+    float flattern = 0.045 * sin(tau * 2.4 + fi * 1.7) * wachs;
+    vec2 q = drehung(winkel * mix(0.3, 1.0, wachs) + flattern) * (p - basis);
     float t = clamp(q.y / laenge, 0.0, 1.0);
     float breite = laenge * 0.085 * pow(sin(3.1416 * t), 0.7) * (1.0 + 0.3 * sin(t * 58.0));
-    float blatt = max(abs(q.x) - breite, max(-q.y, q.y - laenge));
-    d = min(d, blatt);
+    d = min(d, max(abs(q.x) - breite, max(-q.y, q.y - laenge)));
   }
   return d;
 }
 
-float pimmel(vec2 p) {
-  float schaft = strecke(p, vec2(0.0, -0.22), vec2(0.0, 0.18), 0.078, 0.07);
-  float kopf = ellipse(p - vec2(0.0, 0.25), vec2(0.108, 0.088));
-  float eier = min(length(p - vec2(-0.088, -0.31)) - 0.09, length(p - vec2(0.088, -0.31)) - 0.09);
+// Pimmel: hängt erst, richtet sich federnd auf, wippt und sinkt am Ende ab.
+float pimmel(vec2 p, float tau) {
+  vec2 basis = vec2(0.0, -0.22);
+  float r = max(tau - 1.2, 0.0);
+  float auf = (1.0 - exp(-2.0 * r) * cos(4.5 * r)) * (1.0 - smoothstep(11.0, 13.0, tau));
+  float w = mix(2.5, 0.0, auf) + 0.06 * sin(tau * 3.2) * auf;
+  float groesse = mix(0.72, 1.0, auf);
+  vec2 q = drehung(w) * (p - basis) / groesse;
+  float schaft = strecke(q, vec2(0.0), vec2(0.0, 0.4), 0.078, 0.07) * groesse;
+  float kopf = ellipse(q - vec2(0.0, 0.47), vec2(0.108, 0.088)) * groesse;
+  float eier = min(length(p - basis - vec2(-0.088, -0.09)) - 0.09, length(p - basis - vec2(0.088, -0.09)) - 0.09);
   return min(min(schaft, kopf), eier);
 }
 
-// Joint, schräg, Mundstück links, Glut rechts.
-const vec2 GLUT = vec2(0.3, 0.06);
-float joint(vec2 p) {
-  return strecke(p, vec2(-0.34, -0.12), GLUT, 0.024, 0.042);
+// Joint: wird angezündet, glüht bei drei Zügen auf, nach jedem Zug steigt ein
+// Rauchring auf; er brennt dabei langsam herunter, an der Spitze Asche.
+const vec2 MUND = vec2(-0.34, -0.12);
+const vec2 SPITZE = vec2(0.3, 0.06);
+
+float zug(float tau) {
+  float a = tau - 4.5, b = tau - 7.5, c = tau - 10.5;
+  return exp(-a * a * 5.0) + exp(-b * b * 5.0) + exp(-c * c * 5.0);
 }
 
-float rauch(vec2 p) {
-  vec2 s = p - GLUT - vec2(0.0, 0.04);
-  if (s.y < 0.0) return 0.0;
-  float welle = sin(s.y * 11.0 - uZeit * 2.2) * 0.05 * s.y + 0.06 * gradRauschen(vec2(s.y * 4.0 - uZeit * 0.6, 1.3)) * s.y * 3.0;
-  float breite = 0.03 + s.y * 0.2;
-  float x = (s.x - welle) / breite;
-  float dichte = exp(-x * x) * (1.0 - smoothstep(0.1, 0.9, s.y));
-  return dichte * (0.75 + 0.5 * gradRauschen(p * 9.0 + vec2(0.0, -uZeit * 1.5)));
+float joint(vec2 p, float tau, out float glut, out float rauch, out float asche) {
+  float rest = 1.0 - 0.2 * smoothstep(3.0, 12.5, tau);
+  vec2 ende = mix(MUND, SPITZE, rest);
+  vec2 richtung = normalize(SPITZE - MUND);
+  float papier = strecke(p, MUND, ende, 0.024, mix(0.024, 0.042, rest));
+  float aschenstueck = strecke(p, ende, ende + richtung * 0.035 * smoothstep(3.5, 6.0, tau), 0.04, 0.034);
+  asche = smoothstep(0.006, -0.006, aschenstueck) * (1.0 - smoothstep(0.006, -0.006, papier));
+
+  float an = smoothstep(2.0, 2.8, tau);
+  float z = zug(tau);
+  float flackern = 0.06 * sin(uZeit * 13.0) * gradRauschen(vec2(uZeit * 3.0, 0.0));
+  glut = an * (1.0 - smoothstep(0.025, 0.06 + 0.02 * z, length(p - ende))) * (0.8 + 0.2 * z + flackern);
+
+  // Dünner Rauchfaden, nach jedem Zug kräftiger.
+  vec2 s = p - ende - vec2(0.0, 0.04);
+  float faden = 0.0;
+  if (s.y > 0.0) {
+    float welle = sin(s.y * 11.0 - uZeit * 2.2) * 0.05 * s.y + 0.18 * gradRauschen(vec2(s.y * 4.0 - uZeit * 0.6, 1.3)) * s.y;
+    float x = (s.x - welle) / (0.025 + s.y * 0.16);
+    faden = exp(-x * x) * (1.0 - smoothstep(0.1, 0.8, s.y)) * (0.5 + 0.5 * smoothstep(0.0, 1.0, z + 0.3));
+  }
+  // Rauchringe: einer pro Zug, steigen auf und werden größer.
+  float ringe = 0.0;
+  for (int k = 0; k < 3; k++) {
+    float alter = tau - (5.0 + 3.0 * float(k));
+    if (alter < 0.0 || alter > 6.0) continue;
+    vec2 mitte = ende + vec2(0.06 * sin(alter * 0.9 + float(k)), 0.06 + alter * 0.12);
+    float radius = 0.035 + alter * 0.028;
+    float ring = abs(length((p - mitte) * vec2(1.0, 1.7)) - radius) - 0.012 * (1.0 + alter * 0.25);
+    ringe = max(ringe, (1.0 - smoothstep(0.0, 0.012, ring)) * (1.0 - alter / 6.0));
+  }
+  rauch = an * max(faden, ringe);
+  return min(papier, aschenstueck);
 }
 
 float feld(vec2 p, float t) {
@@ -286,21 +330,21 @@ void main() {
   float zeile = fract(-uv.y * 0.35 - t * 0.12);
   g += 0.35 * smoothstep(0.96, 1.0, zeile);
 
-  // Form: passt hochkant aufs iPhone und füllt am Mac gut zwei Drittel der Höhe.
+  // Form: aus dem Feld selbst gezeichnet (sein Licht, seine Bewegung), um sie
+  // herum wird es leer, der Rest des Feldes tritt zurück.
   if (uForm.y > 0.001) {
-    float k = 0.72 * min(1.0, uFormOrt.z * 1.3);
+    float k = 0.8 * min(1.0, uFormOrt.z * 1.25);
     vec2 sp = (uv - uFormOrt.xy) / k;
-    float d = uForm.x < 0.5 ? hanfblatt(sp) : uForm.x < 1.5 ? pimmel(sp) : joint(sp);
+    float glut = 0.0, rauch = 0.0, asche = 0.0;
+    float d = uForm.x < 0.5 ? hanfblatt(sp, uFormZeit) : uForm.x < 1.5 ? pimmel(sp, uFormZeit) : joint(sp, uFormZeit, glut, rauch, asche);
     float innen = smoothstep(0.006, -0.006, d);
-    float kante = smoothstep(0.02, 0.0, abs(d));
-    float form = innen * (0.66 + 0.22 * gradRauschen(sp * 9.0 + uZeit * 0.4)) + kante * 0.3;
-    if (uForm.x > 1.5) {
-      // Glut: die dichtesten Zeichen, flackernd; darüber steigt Rauch auf.
-      float glut = 1.0 - smoothstep(0.03, 0.065, length(sp - GLUT));
-      form = max(form, glut * (0.93 + 0.07 * sin(uZeit * 13.0)));
-      form = max(form, min(rauch(sp), 1.0) * 0.82);
-    }
-    g = mix(g, max(g * 0.3, form), uForm.y);
+    float kante = smoothstep(0.022, 0.0, abs(d));
+    float hof = (1.0 - smoothstep(0.01, 0.28, d)) * (1.0 - innen);
+    float aussen = g * mix(1.0, 0.45, uForm.y) * (1.0 - 0.95 * hof * uForm.y);
+    float form = 0.5 + 0.3 * diffus + 0.2 * glanz + 0.12 * gradRauschen(sp * 7.0 + uZeit * 0.3) + kante * 0.18;
+    form = mix(form, 0.3 + 0.1 * gradRauschen(sp * 20.0), asche);
+    g = mix(aussen, form, innen * uForm.y);
+    g = max(g, max(glut, min(rauch, 1.0) * 0.8) * uForm.y);
   }
 
   // Rund um den Zeiger: dichter und blau.
@@ -342,7 +386,7 @@ const STIMMUNG = {
   ruhig: { ton: [0.55, 0.45, 0.95], tempo: 0.25, welle: 0, puls: 0 },
 };
 
-const UNIFORMS = ['uRes', 'uPhase', 'uPuls', 'uWelle', 'uNeigung', 'uTon', 'uDunkel', 'uZelle', 'uZeiger', 'uForm', 'uZeit', 'uFormOrt'];
+const UNIFORMS = ['uRes', 'uPhase', 'uPuls', 'uWelle', 'uNeigung', 'uTon', 'uDunkel', 'uZelle', 'uZeiger', 'uForm', 'uZeit', 'uFormOrt', 'uFormZeit'];
 
 // Ab dieser Breite steht die App als Spalte links (siehe app.css, --spalte);
 // die Formen erscheinen dann in der freien Fläche rechts daneben.
@@ -477,7 +521,7 @@ export class Hintergrund {
     this.zeigerZuletzt = this.zeit;
   }
 
-  // Stärke der aktuellen Form: 3 s aufbauen, 7 s halten, 3 s auflösen.
+  // Stärke der aktuellen Form: 2,5 s aufbauen, bis 13 s spielen, bis 16 s auflösen.
   formStaerke() {
     if (this.zeit >= this.formNaechste) {
       this.formIndex = (this.formIndex + 1) % 3;
@@ -487,9 +531,9 @@ export class Hintergrund {
     if (this.formIndex < 0) return 0;
     const lokal = this.zeit - this.formStart;
     const weich = (x) => x * x * (3 - 2 * x);
-    if (lokal < 3) return weich(lokal / 3);
-    if (lokal < 10) return 1;
-    if (lokal < 13) return 1 - weich((lokal - 10) / 3);
+    if (lokal < 2.5) return weich(lokal / 2.5);
+    if (lokal < 13) return 1;
+    if (lokal < 16) return 1 - weich((lokal - 13) / 3);
     return 0;
   }
 
@@ -552,12 +596,13 @@ export class Hintergrund {
     gl.uniform2f(u.uNeigung, this.neigung[0], this.neigung[1]);
     gl.uniform3f(u.uTon, this.ton[0], this.ton[1], this.ton[2]);
     gl.uniform1f(u.uDunkel, this.dunkel.matches ? 1 : 0);
-    // ASCII-Zellen etwa 9 CSS-Pixel groß, egal wie fein gerechnet wird.
-    gl.uniform1f(u.uZelle, Math.max(4, Math.round(9 * this.skala)));
+    // ASCII-Zellen etwa 11 CSS-Pixel groß, egal wie fein gerechnet wird.
+    gl.uniform1f(u.uZelle, Math.max(5, Math.round(11 * this.skala)));
     const zeigerZiel = this.zeit - this.zeigerZuletzt < 1.2 ? 1 : 0;
     this.zeigerStaerke += (zeigerZiel - this.zeigerStaerke) * (1 - Math.exp(-s * (zeigerZiel ? 12 : 2.5)));
     gl.uniform3f(u.uZeiger, this.zeiger[0] * this.skala, (innerHeight - this.zeiger[1]) * this.skala, this.zeigerStaerke);
     gl.uniform2f(u.uForm, Math.max(this.formIndex, 0), this.formStaerke());
+    gl.uniform1f(u.uFormZeit, this.zeit - this.formStart);
     gl.uniform1f(u.uZeit, this.zeit);
     const frei = innerWidth >= BREIT_AB ? SPALTE_RECHTS : 0;
     const mitteX = (frei + innerWidth) / 2;
