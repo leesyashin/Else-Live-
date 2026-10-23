@@ -1,5 +1,5 @@
 import { Demo, skills, skillGenutzt } from './daten.js';
-import { Glas } from './glas.js';
+import { Hintergrund } from './hintergrund.js';
 import { haptik, haptikAktiv } from './haptik.js';
 import { GitHub, titelAusBranch } from './github.js';
 import { lesen, schreiben } from './speicher.js';
@@ -8,6 +8,7 @@ import { lesen, schreiben } from './speicher.js';
 
 const einst = {
   glas: true,
+  stil: 'metall',
   neigung: false,
   haptik: true,
   live: false,
@@ -18,7 +19,7 @@ const einst = {
 const speichereEinst = () => schreiben('kapsel.einstellungen', einst);
 
 const demo = new Demo();
-const glas = new Glas(document.getElementById('glas'));
+const glas = new Hintergrund(document.getElementById('glas'));
 const z = {
   route: { seite: 'sessions' },
   inselOffen: false,
@@ -538,7 +539,18 @@ function seiteEinstellungen() {
   const neigungMoeglich = 'DeviceOrientationEvent' in window;
   return `${seitenKopf('Einstellungen')}
     <section class="gruppe"><h2>Darstellung</h2><div class="liste">
-      ${schalter('glas', einst.glas, '3D-Hintergrund', 'Schwebende Glasformen, 60 fps, folgen dem Session-Status.')}
+      <div class="einstellung stil-wahl"><div><b>Hintergrund</b><small>Bewegt sich mit 60 fps und folgt dem Session-Status.</small></div>
+        <div class="segment" role="radiogroup" aria-label="Hintergrund">${[
+          ['metall', 'Metall'],
+          ['lava', 'Lava'],
+          ['aus', 'Aus'],
+        ]
+          .map(([wert, name]) => {
+            const an = einst.glas ? einst.stil === wert : wert === 'aus';
+            return `<button role="radio" aria-checked="${an}" class="${an ? 'aktiv' : ''}" data-aktion="stil" data-stil="${wert}">${name}</button>`;
+          })
+          .join('')}</div>
+      </div>
       ${schalter('neigung', einst.neigung, 'Auf Neigung reagieren', neigungMoeglich ? 'Nutzt den Bewegungssensor des iPhones.' : 'Dieses Gerät meldet keine Neigung.', !neigungMoeglich || !einst.glas)}
       ${schalter('haptik', einst.haptik, 'Haptik', 'Bei Statuswechseln und beim Mergen.')}
     </div><p class="fussnote">Hell und Dunkel folgen dem System.</p></section>
@@ -621,6 +633,20 @@ ansicht.addEventListener('click', async (e) => {
     if (!feld.value.startsWith('/')) feld.value = '/' + feld.value;
     feld.focus();
     entwurfMerken(feld);
+  } else if (aktion === 'stil') {
+    haptik('leicht');
+    const wert = el.dataset.stil;
+    einst.glas = wert !== 'aus';
+    if (einst.glas) einst.stil = wert;
+    speichereEinst();
+    einstellungenAnwenden();
+    for (const knopf of el.parentElement.children) {
+      const an = knopf === el;
+      knopf.classList.toggle('aktiv', an);
+      knopf.setAttribute('aria-checked', String(an));
+    }
+    const neigung = $('[data-einst="neigung"]');
+    if (neigung) neigung.disabled = !einst.glas || !('DeviceOrientationEvent' in window);
   } else if (aktion === 'archiv') {
     z.archivOffen = !z.archivOffen;
     renderAnsicht(false);
@@ -949,6 +975,7 @@ function beiZeiger(e) {
 
 function einstellungenAnwenden() {
   haptikAktiv(einst.haptik);
+  glas.setzeStil(einst.stil);
   if (einst.glas) {
     if (!glas.starten()) document.documentElement.classList.remove('mit-glas');
   } else glas.stoppen();

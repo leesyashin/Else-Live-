@@ -9,7 +9,7 @@ Die zweite Mod in Else Live, unabhängig vom Büro. Eine PWA für die Cloud-Sess
 | **Insel** | Pille oben im Stil der Dynamic Island: *Arbeitet*, *Frage wartet*, *PR fertig*, mit Zählern für die anderen Zustände. Tippen klappt sie zur Liste auf, eine Zeile öffnet die Session. Bei jedem Wechsel springt sie kurz auf, zeigt die Meldung, dazu Banner in der App und Haptik. |
 | **Sessions** | Gruppiert nach Status. Im Verlauf sind Tool-Aufrufe eingeklappt (mehrere hintereinander als eine Zeile „4 Tool-Aufrufe“), Fragen kommen als Karte mit Antwortknöpfen. Über der Eingabe liegt die Skill-Leiste, die häufigsten zuerst; die Zählung lernt mit. |
 | **PR-Knopf** | „PR erstellen“ lässt Claude den PR anlegen. Läuft die CI, zeigt die Karte den Stand (2/5). Ist sie grün, **gedrückt halten** (0,9 s): Squash-Merge, Branch löschen, Session archivieren, jeder Schritt mit Haken. |
-| **3D-Hintergrund** | Schwebende Glasformen (WebGL, Raymarching), auf 60 fps begrenzt, Auflösung passt sich der Leistung an. Blau arbeitet, orange pulsierend wartet eine Frage, grün ein PR ist fertig. Reagiert auf das Neigen des iPhones; abschaltbar. |
+| **Hintergrund** | Zwei bewegte Stile (WebGL), auf 60 fps begrenzt, Auflösung passt sich der Leistung an: **Flüssiges Metall** (fließendes Chrom; arbeitet Claude, wellt es sich stärker) und **Lava-Lampe** (weiche Blasen, die verschmelzen, in der Statusfarbe: blau arbeitet, orange Frage, grün PR fertig). Beide reagieren auf das Neigen des iPhones; Auswahl und Aus in den Einstellungen. |
 | **Oberfläche** | Ruhig und flach im Stil von Grok: weiß oder schwarz nach System-Theme, große graue Pillen, schwebende Eingabekarte (Text oben, Knopfzeile mit +, Repo-Pille und Senden), schwarze Pillen-Knöpfe, runde Knöpfe mit Schatten, Zeichen und Name oben links, blasses Zeichen in leeren Zuständen. Tab-Bar als schwebende Pille mit drei Bereichen: Sessions, PRs, Einstellungen. |
 
 ## Aufs iPhone
@@ -39,7 +39,7 @@ Token: Fine-grained, nur die gewünschten Repos, Rechte *Contents* und *Pull req
 | `js/app.js` | Navigation, Insel, Banner, Seiten, Halten zum Mergen, GitHub live, Neigung |
 | `js/daten.js` | Beispiel-Sessions, Simulation, Skill-Zählung |
 | `js/github.js` | REST-Client: PRs, CI-Auswertung, PR erstellen, Squash-Merge, Branch löschen |
-| `js/glas.js` | WebGL-Glasformen mit 60-fps-Grenze und adaptiver Auflösung |
+| `js/hintergrund.js` | WebGL-Hintergrund (Metall, Lava) mit 60-fps-Grenze und adaptiver Auflösung |
 | `js/haptik.js` | Vibration bzw. iOS-Schalter-Haptik |
 
 Kein Build-Schritt, keine Abhängigkeiten. Neue Version: `VERSION` in `sw.js` hochzählen, damit installierte Apps die neue Hülle laden.
