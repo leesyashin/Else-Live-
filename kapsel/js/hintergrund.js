@@ -3,8 +3,8 @@
 //   Umgebung spiegelt. Arbeitet Claude, wellt sie sich stärker.
 // - lava: eine Lava-Lampe, weiche Blasen, die verschmelzen und sich trennen,
 //   in der Farbe des Gesamtstatus.
-// - ascii: ein fließendes Feld aus Terminal-Zeichen, einfarbig, blau unter
-//   dem Zeiger; alle 20 bis 30 Sekunden formen die Zeichen ein Bild.
+// - ascii: Weed-Animationen aus Terminal-Zeichen, die ineinander übergehen;
+//   das Zeichenfeld zeigt sich nur rund um den Zeiger, dort blau.
 // Alle folgen der Neigung des iPhones, sind auf 60 fps begrenzt und rechnen
 // auf dem Mac in voller Retina-Auflösung, die bei Bedarf sinkt.
 
@@ -190,14 +190,16 @@ const ASCII = KOPF + `
 // Feld einmal in ihrer Mitte ab und wählt nach Helligkeit ein Zeichen aus
 // Zeichen und Ziffern (5x5-Bitmuster, als Zahl kodiert). Alles bleibt einfarbig;
 // nur rund um den Mauszeiger (oder Finger) färben sich die Zeichen blau.
-// Alle 20 bis 30 Sekunden zeigen die Zeichen nacheinander ein drehendes
-// Hanfblatt, aufsteigende Rauchschwaden und fallende Blätter.
+// Das Feld zeigt sich nur rund um den Zeiger. Sonst laufen ohne Pause
+// nacheinander ein drehendes Hanfblatt, aufsteigende Rauchschwaden und
+// fallende Blätter, die ineinander überblenden.
 
 uniform vec3 uZeiger;  // x, y in Canvas-Pixeln, Stärke 0 … 1
-uniform vec2 uForm;    // welche Form (0 Blatt, 1 Rauch, 2 Blätterregen), Stärke 0 … 1
+uniform vec2 uFormA;   // laufende Animation (0 Blatt, 1 Rauch, 2 Blätterregen), ihre Zeit
+uniform vec2 uFormB;   // nächste Animation, ihre Zeit
+uniform float uMischung; // Überblendung von A nach B, 0 … 1
 uniform vec3 uFormOrt; // Mitte der freien Fläche (uv), deren Seitenverhältnis
 uniform float uZeit;   // Sekunden, unabhängig vom Status-Tempo
-uniform float uFormZeit; // Sekunden seit Beginn der aktuellen Form
 
 float zeichen(float n, vec2 p) {
   p = floor(p * vec2(4.0, -4.0) + 2.5);
@@ -217,9 +219,9 @@ float strecke(vec2 p, vec2 a, vec2 b, float ra, float rb) {
 
 float ellipse(vec2 p, vec2 r) { return (length(p / r) - 1.0) * min(r.x, r.y); }
 
-// Drei ruhige Weed-Animationen, je 16 s (aufbauen bis 2,5 s, bis 13 s
-// spielen, bis 16 s auflösen). Die Formen sind ohne Rauschen gefüllt und nur
-// aus ihrer eigenen Geometrie schattiert, damit sie sauber wirken.
+// Drei ruhige Weed-Animationen, die ohne Pause ineinander überblenden. Die
+// Formen sind ohne Rauschen gefüllt und nur aus ihrer eigenen Geometrie
+// schattiert, damit sie sauber wirken.
 
 // Hanfblatt mit sieben Fiederblättern um den Ursprung, Höhe etwa 1,0 * s.
 // ader: wie nah der Punkt an der Mittelrippe eines Fiederblatts liegt (0 = drauf).
@@ -317,6 +319,16 @@ float feld(vec2 p, float t) {
   return v;
 }
 
+// Eine Animation an der Stelle sp; gibt die Deckung zurück, wert die Helligkeit.
+float animation(float welche, vec2 sp, float tau, out float wert) {
+  wert = 0.0;
+  float d = welche < 0.5 ? drehblatt(sp, tau, wert) : welche < 1.5 ? rauchschwaden(sp, tau, wert) : blaetterregen(sp, tau, wert);
+  float innen = smoothstep(0.004, -0.004, d);
+  float kante = smoothstep(0.02, 0.0, abs(d)) * innen;
+  wert = clamp(wert + kante * 0.15, 0.0, 1.0);
+  return innen;
+}
+
 void main() {
   vec2 zelle = floor(gl_FragCoord.xy / uZelle);
   vec2 mitte = (zelle + 0.5) * uZelle;
@@ -335,25 +347,20 @@ void main() {
   float zeile = fract(-uv.y * 0.35 - t * 0.12);
   g += 0.35 * smoothstep(0.96, 1.0, zeile);
 
-  // Form: das Feld tritt fast ganz zurück, die Form steht klar davor.
-  float inForm = 0.0;
-  if (uForm.y > 0.001) {
-    float k = 0.85 * min(1.0, uFormOrt.z * 1.25);
-    vec2 sp = (uv - uFormOrt.xy) / k;
-    float wert = 0.0;
-    float d = uForm.x < 0.5 ? drehblatt(sp, uFormZeit, wert) : uForm.x < 1.5 ? rauchschwaden(sp, uFormZeit, wert) : blaetterregen(sp, uFormZeit, wert);
-    float innen = smoothstep(0.004, -0.004, d);
-    float kante = smoothstep(0.02, 0.0, abs(d)) * innen;
-    g *= mix(1.0, 0.12, uForm.y);
-    float form = clamp(wert + kante * 0.15, 0.0, 1.0);
-    inForm = innen * uForm.y;
-    g = mix(g, form, inForm);
-  }
-
-  // Rund um den Zeiger: dichter und blau.
+  // Das Feld erscheint nur rund um den Zeiger (dort dichter und blau).
   float abstand = length(mitte - uZeiger.xy) / uZelle;
-  float zeiger = uZeiger.z * smoothstep(10.0, 2.0, abstand);
-  g += 0.25 * zeiger;
+  float zeiger = uZeiger.z * smoothstep(12.0, 2.0, abstand);
+  g = (g + 0.25) * zeiger;
+
+  // Animationen: kleiner als der Bildschirm, A blendet in B über.
+  float k = 0.7 * min(1.0, uFormOrt.z * 1.25);
+  vec2 sp = (uv - uFormOrt.xy) / k;
+  float wertA, wertB = 0.0;
+  float innenA = animation(uFormA.x, sp, uFormA.y, wertA);
+  float innenB = 0.0;
+  if (uMischung > 0.001) innenB = animation(uFormB.x, sp, uFormB.y, wertB);
+  float inForm = mix(innenA, innenB, uMischung);
+  g = max(g, mix(innenA * wertA, innenB * wertB, uMischung));
   g = clamp(g, 0.0, 1.0);
 
   // Zwölf Dichtestufen mit je zwei Zeichen, darunter Ziffern; welches von
@@ -400,7 +407,11 @@ const STIMMUNG = {
   ruhig: { ton: [0.55, 0.45, 0.95], tempo: 0.25, welle: 0, puls: 0 },
 };
 
-const UNIFORMS = ['uRes', 'uPhase', 'uPuls', 'uWelle', 'uNeigung', 'uTon', 'uDunkel', 'uZelle', 'uZeiger', 'uForm', 'uZeit', 'uFormOrt', 'uFormZeit'];
+const UNIFORMS = ['uRes', 'uPhase', 'uPuls', 'uWelle', 'uNeigung', 'uTon', 'uDunkel', 'uZelle', 'uZeiger', 'uFormA', 'uFormB', 'uMischung', 'uZeit', 'uFormOrt'];
+
+// ASCII-Animationen: jede läuft 14 s, die letzten 3 s blenden in die nächste.
+const ANIMATION_DAUER = 14;
+const UEBERGANG = 3;
 
 // Ab dieser Breite steht die App als Spalte links (siehe app.css, --spalte);
 // die Formen erscheinen dann in der freien Fläche rechts daneben.
@@ -428,10 +439,6 @@ export class Hintergrund {
     this.zeiger = [0, 0];
     this.zeigerZuletzt = -10;
     this.zeigerStaerke = 0;
-    // ASCII-Formen: alle 20 bis 30 Sekunden die nächste, die erste nach 6 s.
-    this.formIndex = -1;
-    this.formStart = 0;
-    this.formNaechste = 6;
     this.zeit = 0;
     this.letztes = 0;
     this.mittel = 16.7;
@@ -535,22 +542,6 @@ export class Hintergrund {
     this.zeigerZuletzt = this.zeit;
   }
 
-  // Stärke der aktuellen Form: 2,5 s aufbauen, bis 13 s spielen, bis 16 s auflösen.
-  formStaerke() {
-    if (this.zeit >= this.formNaechste) {
-      this.formIndex = (this.formIndex + 1) % 3;
-      this.formStart = this.zeit;
-      this.formNaechste = this.zeit + 20 + Math.random() * 10;
-    }
-    if (this.formIndex < 0) return 0;
-    const lokal = this.zeit - this.formStart;
-    const weich = (x) => x * x * (3 - 2 * x);
-    if (lokal < 2.5) return weich(lokal / 2.5);
-    if (lokal < 13) return 1;
-    if (lokal < 16) return 1 - weich((lokal - 13) / 3);
-    return 0;
-  }
-
   // x, y jeweils -1 … 1
   setzeNeigung(x, y) {
     this.neigungZiel = [Math.max(-1, Math.min(1, x)), Math.max(-1, Math.min(1, y))];
@@ -615,8 +606,13 @@ export class Hintergrund {
     const zeigerZiel = this.zeit - this.zeigerZuletzt < 1.2 ? 1 : 0;
     this.zeigerStaerke += (zeigerZiel - this.zeigerStaerke) * (1 - Math.exp(-s * (zeigerZiel ? 12 : 2.5)));
     gl.uniform3f(u.uZeiger, this.zeiger[0] * this.skala, (innerHeight - this.zeiger[1]) * this.skala, this.zeigerStaerke);
-    gl.uniform2f(u.uForm, Math.max(this.formIndex, 0), this.formStaerke());
-    gl.uniform1f(u.uFormZeit, this.zeit - this.formStart);
+    const runde = Math.floor(this.zeit / ANIMATION_DAUER);
+    const lokal = this.zeit - runde * ANIMATION_DAUER;
+    const ab = ANIMATION_DAUER - UEBERGANG;
+    const x = Math.max(0, (lokal - ab) / UEBERGANG);
+    gl.uniform2f(u.uFormA, runde % 3, lokal + UEBERGANG);
+    gl.uniform2f(u.uFormB, (runde + 1) % 3, Math.max(0, lokal - ab));
+    gl.uniform1f(u.uMischung, x * x * (3 - 2 * x));
     gl.uniform1f(u.uZeit, this.zeit);
     const frei = innerWidth >= BREIT_AB ? SPALTE_RECHTS : 0;
     const mitteX = (frei + innerWidth) / 2;
