@@ -543,6 +543,7 @@ function seiteEinstellungen() {
         <div class="segment" role="radiogroup" aria-label="Hintergrund">${[
           ['metall', 'Metall'],
           ['lava', 'Lava'],
+          ['ascii', 'ASCII'],
           ['aus', 'Aus'],
         ]
           .map(([wert, name]) => {

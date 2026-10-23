@@ -1,6 +1,6 @@
 // Offline-Fähigkeit: Die App-Hülle kommt aus dem Cache und wird im
 // Hintergrund erneuert. Anfragen an GitHub gehen immer ins Netz.
-const VERSION = 'kapsel-4';
+const VERSION = 'kapsel-5';
 const HUELLE = [
   './',
   'index.html',
