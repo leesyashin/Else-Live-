@@ -49,17 +49,17 @@ vec3 normale(vec3 p) {
   return normalize(e.xyy * szene(p + e.xyy) + e.yyx * szene(p + e.yyx) + e.yxy * szene(p + e.yxy) + e.xxx * szene(p + e.xxx));
 }
 
+// Fast flach: Weiß oder Schwarz, ein weicher Grauverlauf und nur ein Hauch
+// der Statusfarbe. Das Glas lebt von Brechung und Glanz, nicht von Farbe.
 vec3 hintergrund(vec2 u) {
-  vec3 oben = mix(vec3(0.965, 0.965, 0.98), vec3(0.0), uDunkel);
-  vec3 unten = mix(vec3(0.9, 0.91, 0.945), vec3(0.055, 0.055, 0.07), uDunkel);
-  vec3 c = mix(unten, oben, smoothstep(-0.9, 0.9, u.y));
-  vec2 a = u - vec2(0.35, 0.55);
-  vec2 b = u - vec2(-0.45, -0.5);
-  float g1 = exp(-2.6 * dot(a, a));
-  float g2 = exp(-3.2 * dot(b, b));
-  vec3 zweit = vec3(0.55, 0.38, 1.0);
-  c = mix(c, mix(uTon, vec3(1.0), 0.45 - 0.35 * uDunkel), g1 * mix(0.55, 0.45, uDunkel));
-  c = mix(c, mix(zweit, vec3(1.0), 0.5 - 0.4 * uDunkel), g2 * mix(0.35, 0.3, uDunkel));
+  vec3 hell = mix(vec3(1.0), vec3(0.0), uDunkel);
+  vec3 grau = mix(vec3(0.86), vec3(0.16), uDunkel);
+  vec2 a = u - vec2(0.3, 0.45);
+  vec2 b = u - vec2(-0.4, -0.55);
+  float g1 = exp(-2.2 * dot(a, a));
+  float g2 = exp(-2.8 * dot(b, b));
+  vec3 c = mix(hell, grau, 0.55 * g1 + 0.4 * g2);
+  c = mix(c, mix(uTon, hell, 0.55), g1 * 0.14);
   return c;
 }
 
@@ -90,14 +90,15 @@ void main() {
       hintergrund(bildschirm + r1.xy * 0.5).r,
       hintergrund(bildschirm + r2.xy * 0.5).g,
       hintergrund(bildschirm + r3.xy * 0.5).b);
-    durch = mix(durch, durch * (0.75 + 0.5 * uTon), 0.35);
+    vec3 grauGlas = mix(vec3(0.8), vec3(0.22), uDunkel);
+    durch = mix(durch, grauGlas, 0.35);
     vec3 rf = reflect(rd, n);
-    vec3 umgebung = hintergrund(rf.xy * 0.9) + 0.12;
+    vec3 umgebung = hintergrund(rf.xy * 0.9) + mix(0.04, 0.1, uDunkel);
     float glanz = pow(max(dot(rf, normalize(vec3(-0.4, 0.8, 0.6))), 0.0), 60.0);
     float glanz2 = 0.3 * pow(max(dot(rf, normalize(vec3(0.6, -0.3, 0.8))), 0.0), 18.0);
     farbe = mix(durch, umgebung, fr * 0.65) + glanz + glanz2;
-    farbe *= 1.0 - fr * 0.14 * (1.0 - uDunkel);
-    farbe += uTon * fr * 0.45 * uDunkel;
+    farbe *= 1.0 - fr * 0.18 * (1.0 - uDunkel);
+    farbe += uTon * fr * 0.18;
   }
   farbe += (rauschen(gl_FragCoord.xy) - 0.5) / 255.0;
   gl_FragColor = vec4(farbe, 1.0);

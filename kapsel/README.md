@@ -10,7 +10,7 @@ Die zweite Mod in Else Live, unabhängig vom Büro. Eine PWA für die Cloud-Sess
 | **Sessions** | Gruppiert nach Status. Im Verlauf sind Tool-Aufrufe eingeklappt (mehrere hintereinander als eine Zeile „4 Tool-Aufrufe“), Fragen kommen als Karte mit Antwortknöpfen. Über der Eingabe liegt die Skill-Leiste, die häufigsten zuerst; die Zählung lernt mit. |
 | **PR-Knopf** | „PR erstellen“ lässt Claude den PR anlegen. Läuft die CI, zeigt die Karte den Stand (2/5). Ist sie grün, **gedrückt halten** (0,9 s): Squash-Merge, Branch löschen, Session archivieren, jeder Schritt mit Haken. |
 | **3D-Hintergrund** | Schwebende Glasformen (WebGL, Raymarching), auf 60 fps begrenzt, Auflösung passt sich der Leistung an. Blau arbeitet, orange pulsierend wartet eine Frage, grün ein PR ist fertig. Reagiert auf das Neigen des iPhones; abschaltbar. |
-| **Oberfläche** | Claude Code am Mac (Prompt `>`, Claude-Punkt, Mono für Tools) trifft iOS (Großtitel, gruppierte Listen, Tab-Bar, Schalter). Hell und dunkel folgen dem System. Drei Tabs: Sessions, PRs, Einstellungen. |
+| **Oberfläche** | Ruhig und flach im Stil von Grok: weiß oder schwarz nach System-Theme, große graue Pillen, schwebende Eingabekarte (Text oben, Knopfzeile mit +, Repo-Pille und Senden), schwarze Pillen-Knöpfe, runde Knöpfe mit Schatten, Zeichen und Name oben links, blasses Zeichen in leeren Zuständen. Tab-Bar als schwebende Pille mit drei Bereichen: Sessions, PRs, Einstellungen. |
 
 ## Aufs iPhone
 

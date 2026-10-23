@@ -76,6 +76,9 @@ function gesamtStatus() {
 // ---------- Symbole ----------
 
 const ICON = {
+  logo: '<svg viewBox="0 0 32 32" aria-hidden="true"><g transform="rotate(-38 16 16)"><rect x="2.5" y="10.25" width="27" height="11.5" rx="5.75" fill="none" stroke="currentColor" stroke-width="2.8"/><circle cx="23.5" cy="16" r="2.7" fill="currentColor"/></g></svg>',
+  plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+  zweig: '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="7" cy="5.5" r="2.2"/><circle cx="7" cy="18.5" r="2.2"/><circle cx="17" cy="8" r="2.2"/><path d="M7 7.7v8.6M17 10.2c0 4-10 3-10 6"/></g></svg>',
   sessions: '<svg viewBox="0 0 28 28" aria-hidden="true"><path d="M5 6.5A3.5 3.5 0 0 1 8.5 3h11A3.5 3.5 0 0 1 23 6.5v8a3.5 3.5 0 0 1-3.5 3.5H12l-5 4.5V18h0A2 2 0 0 1 5 16z" fill="currentColor"/></svg>',
   prs: '<svg viewBox="0 0 28 28" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="8" cy="6.5" r="2.6"/><circle cx="8" cy="21.5" r="2.6"/><circle cx="20" cy="21.5" r="2.6"/><path d="M8 9.1v9.8M20 18.9V11a3.5 3.5 0 0 0-3.5-3.5H13"/><path d="m15.5 4.8-2.7 2.7 2.7 2.7"/></g></svg>',
   einstellungen: '<svg viewBox="0 0 28 28" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M12.2 2.5h3.6l.6 3a8.6 8.6 0 0 1 2.2 1.3l2.9-1 1.8 3.1-2.3 2a8.7 8.7 0 0 1 0 2.6l2.3 2-1.8 3.1-2.9-1a8.6 8.6 0 0 1-2.2 1.3l-.6 3h-3.6l-.6-3a8.6 8.6 0 0 1-2.2-1.3l-2.9 1-1.8-3.1 2.3-2a8.7 8.7 0 0 1 0-2.6l-2.3-2L5.6 5.8l2.9 1a8.6 8.6 0 0 1 2.2-1.3zM14 10a4 4 0 1 0 0 8 4 4 0 0 0 0-8"/></svg>',
@@ -283,7 +286,12 @@ function renderTabs() {
 // ---------- Seiten ----------
 
 function seitenKopf(titel, rechts = '') {
-  return `<header class="navleiste"></header><div class="titelzeile"><h1 class="grosstitel">${h(titel)}</h1>${rechts}</div>`;
+  return `<header class="navleiste"></header><div class="titelzeile"><h1 class="grosstitel"><span class="marke">${ICON.logo}</span>${h(titel)}</h1>${rechts}</div>`;
+}
+
+// Leerer Zustand: blasses Zeichen in der Mitte, Titel, Satz, optional ein Knopf.
+function leer(titel, text = '', knopf = '') {
+  return `<div class="leer-zustand"><span class="leer-zeichen">${ICON.logo}</span><b>${h(titel)}</b>${text ? `<p>${h(text)}</p>` : ''}${knopf}</div>`;
 }
 
 function sessionZeile(s) {
@@ -300,13 +308,13 @@ function seiteSessions() {
     ['pr', 'PR fertig'],
     ['ruhig', 'Bereit'],
   ];
-  let html = seitenKopf('Sessions', '<span class="hinweis-chip">Beispieldaten</span>');
+  let html = seitenKopf('Kapsel', '<span class="hinweis-chip">Beispieldaten</span>');
   for (const [st, name] of gruppen) {
     const liste = demo.sessions.filter((s) => s.status === st);
     if (!liste.length) continue;
     html += `<section class="gruppe"><h2>${name}</h2><div class="liste">${liste.map(sessionZeile).join('')}</div></section>`;
   }
-  if (!demo.sessions.length) html += '<p class="leer">Keine aktiven Sessions.</p>';
+  if (!demo.sessions.length) html += leer('Keine aktiven Sessions', 'Neue Cloud-Sessions erscheinen hier, sobald sie laufen.');
   if (demo.archiv.length) {
     html += `<section class="gruppe"><button class="h2-knopf" data-aktion="archiv" aria-expanded="${z.archivOffen}">Archiviert · ${demo.archiv.length}</button>${
       z.archivOffen ? `<div class="liste">${demo.archiv.map(sessionZeile).join('')}</div>` : ''
@@ -398,9 +406,23 @@ function verlaufHtml(s) {
   return teile.join('');
 }
 
+const SKILL_SYMBOL = {
+  review: ['#1d6bf3', '<circle cx="12" cy="12" r="3"/><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/>'],
+  commit: ['#16a34a', '<circle cx="12" cy="12" r="4"/><path d="M2 12h6M16 12h6"/>'],
+  test: ['#e5484d', '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/>'],
+  'code-review': ['#8e4ec6', '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/>'],
+  simplify: ['#e93d82', '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/>'],
+  'security-review': ['#f76b15', '<path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6Z"/>'],
+  init: ['#0d9488', '<path d="M6 3h8l4 4v14H6Z"/><path d="M14 3v4h4"/>'],
+  loop: ['#6e56cf', '<path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v5h-5"/>'],
+};
+
 function skillLeiste() {
   return skills()
-    .map((s) => `<button class="skill" data-aktion="skill" data-name="${h(s.name)}">/${h(s.name)}</button>`)
+    .map((s) => {
+      const [farbe, pfad] = SKILL_SYMBOL[s.name] ?? ['#8a8a8a', '<path d="M5 12h14"/>'];
+      return `<button class="skill" data-aktion="skill" data-name="${h(s.name)}"><svg viewBox="0 0 24 24" aria-hidden="true" style="color:${farbe}"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${pfad}</g></svg>${h(s.name)}</button>`;
+    })
     .join('');
 }
 
@@ -422,8 +444,12 @@ function seiteSession(s) {
         : `<div class="eingabe-bereich">
       <div class="skill-leiste" id="skills" role="toolbar" aria-label="Skills, die häufigsten zuerst">${skillLeiste()}</div>
       <form class="eingabe" data-sid="${s.id}">
-        <textarea rows="1" placeholder="Antworte Claude …" aria-label="Nachricht an Claude">${h(z.entwurf[s.id] ?? '')}</textarea>
-        <button type="submit" class="senden" aria-label="Senden">${ICON.senden}</button>
+        <textarea rows="1" placeholder="Frag Claude (Cloud-Session)" aria-label="Nachricht an Claude">${h(z.entwurf[s.id] ?? '')}</textarea>
+        <div class="eingabe-zeile">
+          <button type="button" class="rund" data-aktion="schraegstrich" aria-label="Skill einfügen">${ICON.plus}</button>
+          <span class="pille-klein">${ICON.zweig}${h(s.repo.split('/')[1])}</span>
+          <button type="submit" class="senden" aria-label="Senden">${ICON.senden}</button>
+        </div>
       </form>
     </div>`
     }`;
@@ -475,13 +501,13 @@ function seitePRs() {
       .map((s) => `<a class="zeile" href="#/session/${s.id}">${statusSymbol('archiviert')}<div class="zeile-text"><div class="zeile-kopf"><b>#${s.pr.nummer} ${h(s.pr.titel)}</b></div><div class="zeile-meta">${h(s.repo)} · Branch gelöscht · archiviert</div></div></a>`)
       .join('')}</div></section>`;
   }
-  if (!mitPR.length && !ohnePR.length && !gemergt.length) html += '<p class="leer">Keine PRs.</p>';
+  if (!mitPR.length && !ohnePR.length && !gemergt.length) html += leer('Keine PRs', 'Ist eine Session fertig, erstellt Claude hier den PR.');
   return html;
 }
 
 function livePRsHtml() {
   if (!einst.token || !repoListe().length) {
-    return '<p class="leer">Trag in den Einstellungen einen GitHub-Token und mindestens ein Repo ein.</p>';
+    return leer('Mit GitHub verbinden', 'Trag einen Token und mindestens ein Repo ein, dann stehen hier deine echten PRs.', '<a class="knopf hell" href="#/einstellungen">' + ICON.plus + 'Token eintragen</a>');
   }
   let html = '';
   if (live.fehler) html += `<div class="karte fehler">${h(live.fehler)}</div>`;
@@ -499,7 +525,7 @@ function livePRsHtml() {
       )
       .join('')}</section>`;
   }
-  if (!live.laden && !live.fehler && !live.prs.length && !live.branches.length) html += '<p class="leer">Keine offenen PRs und keine Claude-Branches.</p>';
+  if (!live.laden && !live.fehler && !live.prs.length && !live.branches.length) html += leer('Alles gemergt', 'Keine offenen PRs und keine Claude-Branches.');
   if (live.zuletzt) html += `<p class="fussnote">Stand ${new Date(live.zuletzt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} · aktualisiert alle 30 s</p>`;
   return html;
 }
@@ -589,6 +615,11 @@ ansicht.addEventListener('click', async (e) => {
     feld.value = `/${el.dataset.name} ${rest}`;
     feld.focus();
     feld.setSelectionRange(feld.value.length, feld.value.length);
+    entwurfMerken(feld);
+  } else if (aktion === 'schraegstrich') {
+    const feld = $('.eingabe textarea');
+    if (!feld.value.startsWith('/')) feld.value = '/' + feld.value;
+    feld.focus();
     entwurfMerken(feld);
   } else if (aktion === 'archiv') {
     z.archivOffen = !z.archivOffen;
