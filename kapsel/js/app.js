@@ -970,6 +970,7 @@ function beiNeigung(e) {
 }
 
 function beiZeiger(e) {
+  glas.setzeZeiger(e.clientX, e.clientY);
   if (neigungAktiv || e.pointerType === 'touch') return;
   glas.setzeNeigung((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1);
 }
@@ -990,6 +991,7 @@ function einstellungenAnwenden() {
 }
 
 addEventListener('pointermove', beiZeiger, { passive: true });
+addEventListener('pointerdown', (e) => glas.setzeZeiger(e.clientX, e.clientY), { passive: true });
 
 // ---------- Tastatur auf dem iPhone ----------
 
