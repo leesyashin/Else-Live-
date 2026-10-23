@@ -190,11 +190,11 @@ const ASCII = KOPF + `
 // Feld einmal in ihrer Mitte ab und wählt nach Helligkeit ein Zeichen aus
 // Zeichen und Ziffern (5x5-Bitmuster, als Zahl kodiert). Alles bleibt einfarbig;
 // nur rund um den Mauszeiger (oder Finger) färben sich die Zeichen blau.
-// Alle 20 bis 30 Sekunden formen die Zeichen abwechselnd eine wachsende
-// Hanfpflanze und eine Person, die einen Joint raucht.
+// Alle 20 bis 30 Sekunden zeigen die Zeichen nacheinander ein drehendes
+// Hanfblatt, aufsteigende Rauchschwaden und fallende Blätter.
 
 uniform vec3 uZeiger;  // x, y in Canvas-Pixeln, Stärke 0 … 1
-uniform vec2 uForm;    // welche Form (0 Pflanze, 1 Raucher), Stärke 0 … 1
+uniform vec2 uForm;    // welche Form (0 Blatt, 1 Rauch, 2 Blätterregen), Stärke 0 … 1
 uniform vec3 uFormOrt; // Mitte der freien Fläche (uv), deren Seitenverhältnis
 uniform float uZeit;   // Sekunden, unabhängig vom Status-Tempo
 uniform float uFormZeit; // Sekunden seit Beginn der aktuellen Form
@@ -217,135 +217,93 @@ float strecke(vec2 p, vec2 a, vec2 b, float ra, float rb) {
 
 float ellipse(vec2 p, vec2 r) { return (length(p / r) - 1.0) * min(r.x, r.y); }
 
-// Jede Form erzählt in uFormZeit (Sekunden seit Beginn) eine kleine
-// Geschichte: aufbauen bis 2,5 s, spielen bis 13 s, auflösen bis 16 s.
+// Drei ruhige Weed-Animationen, je 16 s (aufbauen bis 2,5 s, bis 13 s
+// spielen, bis 16 s auflösen). Die Formen sind ohne Rauschen gefüllt und nur
+// aus ihrer eigenen Geometrie schattiert, damit sie sauber wirken.
 
-float smin(float a, float b, float k) {
-  float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
-  return mix(b, a, h) - k * h * (1.0 - h);
-}
-
-// Fächerblatt aus sieben spitzen, gezackten Fiederblättern; wachs 0 … 1
-// entfaltet es von der Mitte nach außen.
-float faecher(vec2 p, vec2 basis, float richtung, float groesse, float wachs, float tau, float saat) {
-  float d = 1e3;
+// Hanfblatt mit sieben Fiederblättern um den Ursprung, Höhe etwa 1,0 * s.
+// ader: wie nah der Punkt an der Mittelrippe eines Fiederblatts liegt (0 = drauf).
+float blatt(vec2 p, float s, out float ader) {
+  vec2 basis = vec2(0.0, -0.3 * s);
+  ader = 1.0;
+  float d = strecke(p, basis, basis + vec2(0.0, -0.2 * s), 0.014 * s, 0.009 * s);
   for (int i = 0; i < 7; i++) {
     float fi = float(i) - 3.0;
     float a = abs(fi);
-    float auf = clamp(wachs * 1.6 - a * 0.2, 0.0, 1.0);
-    if (auf < 0.01) continue;
-    float winkel = sign(fi) * (a < 0.5 ? 0.0 : a < 1.5 ? 0.45 : a < 2.5 ? 0.98 : 1.65);
-    float laenge = (a < 0.5 ? 1.0 : a < 1.5 ? 0.86 : a < 2.5 ? 0.64 : 0.36) * groesse * auf;
-    float flattern = 0.05 * sin(tau * 2.2 + fi * 1.7 + saat) * auf;
-    vec2 q = drehung(richtung + winkel * mix(0.3, 1.0, auf) + flattern) * (p - basis);
+    float winkel = sign(fi) * (a < 0.5 ? 0.0 : a < 1.5 ? 0.46 : a < 2.5 ? 0.98 : 1.62);
+    float laenge = (a < 0.5 ? 0.72 : a < 1.5 ? 0.62 : a < 2.5 ? 0.46 : 0.26) * s;
+    vec2 q = drehung(winkel) * (p - basis);
     float t = clamp(q.y / laenge, 0.0, 1.0);
-    float breite = laenge * 0.12 * pow(sin(3.1416 * t), 0.7) * (1.0 + 0.3 * sin(t * 58.0));
-    d = min(d, max(abs(q.x) - breite, max(-q.y, q.y - laenge)));
+    float breite = laenge * 0.12 * pow(sin(3.1416 * t), 0.8) * (1.0 + 0.1 * sin(t * 44.0));
+    float fieder = max(abs(q.x) - breite, max(-q.y, q.y - laenge));
+    d = min(d, fieder);
+    if (fieder < 0.0) ader = min(ader, abs(q.x) / max(breite, 1e-3));
   }
   return d;
 }
 
-// Pflanze: aus einem Erdhügel wächst der Stängel, an drei Knoten entfalten
-// sich nacheinander Blattpaare, zuletzt das große Fächerblatt an der Spitze;
-// die ganze Pflanze wiegt sich im Wind.
-float pflanze(vec2 p, float tau) {
-  vec2 boden = vec2(0.0, -0.55);
-  float d = ellipse(p - boden - vec2(0.0, -0.03), vec2(0.26, 0.05));
-  float wind = 0.05 * sin(tau * 1.1) + 0.02 * sin(tau * 2.3);
-  float hoehe = 0.7 * smoothstep(0.4, 6.5, tau);
-  if (hoehe < 0.005) return d;
-  // Stängel biegt sich mit der Höhe im Wind.
-  vec2 q = p - boden;
-  float y = clamp(q.y, 0.0, hoehe);
-  float biegung = wind * y * y * 1.6;
-  d = min(d, length(vec2(q.x - biegung, q.y - y)) - mix(0.016, 0.009, y / 0.7));
-  for (int i = 0; i < 3; i++) {
-    float fi = float(i);
-    float knoten = 0.15 + fi * 0.18;
-    float wachs = smoothstep(1.4 + fi * 1.5, 3.4 + fi * 1.5, tau);
-    if (knoten > hoehe || wachs < 0.01) continue;
-    vec2 basis = boden + vec2(wind * knoten * knoten * 1.6, knoten);
-    float groesse = 0.3 - fi * 0.05;
-    d = min(d, faecher(p, basis, 0.95 + wind, groesse, wachs, tau, fi));
-    d = min(d, faecher(p, basis, -0.95 + wind, groesse, wachs, tau, fi + 3.0));
-  }
-  float spitze = smoothstep(5.8, 8.0, tau);
-  if (spitze > 0.01) {
-    vec2 basis = boden + vec2(wind * hoehe * hoehe * 1.6, hoehe);
-    d = min(d, faecher(p, basis, wind * 0.8, 0.28, spitze, tau, 7.0));
-  }
+// 1: großes Blatt, das sich langsam um die senkrechte Achse dreht und schwebt.
+float drehblatt(vec2 p, float tau, out float wert) {
+  float w = tau * 0.42;
+  float c = cos(w);
+  vec2 q = vec2(p.x / max(abs(c), 0.07), p.y - 0.025 * sin(tau * 1.1));
+  float ader;
+  float d = blatt(q, 1.0, ader) * max(abs(c), 0.07);
+  float licht = c > 0.0 ? 0.62 + 0.33 * c : 0.42 + 0.2 * abs(c);
+  wert = licht * (1.0 - 0.55 * (1.0 - smoothstep(0.0, 0.2, ader)));
   return d;
 }
 
-// Raucher im Profil mit dem Joint im Mund: Feuerzeug, Anzünden, drei Züge
-// (Kopf geht leicht zurück, Glut leuchtet auf), nach jedem Zug Rauch aus dem
-// Mund; der Joint brennt dabei mit Asche herunter.
-const vec2 NACKEN = vec2(-0.15, -0.06);
-
-float zug(float tau) {
-  float a = tau - 4.5, b = tau - 7.5, c = tau - 10.5;
-  return exp(-a * a * 3.0) + exp(-b * b * 3.0) + exp(-c * c * 3.0);
-}
-
-vec2 kopfZuWelt(vec2 x, float neigung) { return NACKEN + drehung(-neigung) * (x - NACKEN); }
-
-float raucher(vec2 p, float tau, out float glut, out float rauch, out float asche) {
-  float neigung = 0.07 * zug(tau);
-  vec2 k = NACKEN + drehung(neigung) * (p - NACKEN);
-
-  // Kopf, Kiefer, Nase, Lippen weich verbunden; das Auge bleibt frei.
-  float kopf = ellipse(k - vec2(-0.13, 0.14), vec2(0.17, 0.2));
-  kopf = smin(kopf, ellipse(k - vec2(-0.05, -0.0), vec2(0.1, 0.08)), 0.05);
-  kopf = smin(kopf, strecke(k, vec2(0.02, 0.19), vec2(0.085, 0.09), 0.014, 0.02), 0.03);
-  kopf = smin(kopf, length(k - vec2(0.045, 0.025)) - 0.024, 0.02);
-  kopf = max(kopf, -(length(k - vec2(-0.015, 0.165)) - 0.016));
-  // Hals und Schultern bleiben ruhig.
-  float koerper = strecke(p, vec2(-0.14, -0.04), vec2(-0.16, -0.3), 0.075, 0.085);
-  koerper = smin(koerper, ellipse(p - vec2(-0.2, -0.47), vec2(0.36, 0.15)), 0.06);
-  float d = smin(kopf, koerper, 0.04);
-
-  // Joint vom Mund schräg nach vorn, brennt herunter.
-  vec2 mund = vec2(0.06, 0.02);
-  vec2 richtung = normalize(vec2(0.97, -0.22));
-  float rest = 1.0 - 0.3 * smoothstep(3.0, 12.5, tau);
-  vec2 ende = mund + richtung * 0.36 * rest;
-  float papier = strecke(k, mund, ende, 0.017, 0.026);
-  float aschenstueck = strecke(k, ende, ende + richtung * 0.03 * smoothstep(3.5, 6.0, tau), 0.026, 0.022);
-  asche = smoothstep(0.006, -0.006, aschenstueck) * (1.0 - smoothstep(0.006, -0.006, papier));
-  d = min(d, min(papier, aschenstueck));
-
-  vec2 glutOrt = kopfZuWelt(ende, neigung);
-  float an = smoothstep(2.2, 2.8, tau);
-  float z = zug(tau);
-  float flackern = 0.06 * sin(uZeit * 13.0) * gradRauschen(vec2(uZeit * 3.0, 0.0));
-  glut = an * (1.0 - smoothstep(0.022, 0.05 + 0.02 * z, length(p - glutOrt))) * (0.8 + 0.2 * z + flackern);
-  // Feuerzeugflamme unter der Spitze beim Anzünden.
-  float flammeZeit = smoothstep(1.2, 1.6, tau) * (1.0 - smoothstep(2.5, 2.9, tau));
-  vec2 f = p - glutOrt - vec2(0.0, -0.07);
-  float flamme = ellipse(vec2(f.x, f.y - 0.02 * sin(uZeit * 17.0)), vec2(0.022, 0.05 + 0.01 * sin(uZeit * 11.0)));
-  glut = max(glut, flammeZeit * (1.0 - smoothstep(-0.004, 0.006, flamme)));
-
-  // Dünner Rauchfaden von der Glut.
-  vec2 s = p - glutOrt - vec2(0.0, 0.03);
-  float faden = 0.0;
+// 2: Rauch: zwei verschlungene Bänder steigen von einer Glut auf, dazu alle
+// vier Sekunden ein Rauchring.
+float rauchschwaden(vec2 p, float tau, out float wert) {
+  vec2 glut = vec2(0.0, -0.48);
+  vec2 s = p - glut;
+  float dichte = 0.0;
   if (s.y > 0.0) {
-    float welle = sin(s.y * 11.0 - uZeit * 2.2) * 0.05 * s.y + 0.18 * gradRauschen(vec2(s.y * 4.0 - uZeit * 0.6, 1.3)) * s.y;
-    float x = (s.x - welle) / (0.02 + s.y * 0.14);
-    faden = exp(-x * x) * (1.0 - smoothstep(0.08, 0.6, s.y)) * 0.75;
+    for (int j = 0; j < 2; j++) {
+      float phase = float(j) * 3.1416;
+      float breite = 0.012 + s.y * 0.05;
+      float x = s.x - (0.04 + s.y * 0.16) * sin(s.y * 7.0 - tau * 1.6 + phase);
+      float band = 1.0 - smoothstep(breite * 0.5, breite, abs(x));
+      dichte = max(dichte, band * (1.0 - smoothstep(0.35, 1.05, s.y)) * (0.75 - 0.15 * float(j)));
+    }
   }
-  // Ausatmen: nach jedem Zug eine Rauchwolke aus dem Mund, die aufsteigt.
-  float wolken = 0.0;
-  vec2 mundWelt = kopfZuWelt(mund, neigung);
-  for (int i = 0; i < 3; i++) {
-    float alter = tau - (5.3 + 3.0 * float(i));
-    if (alter < 0.0 || alter > 4.0) continue;
-    vec2 mitte = mundWelt + vec2(0.06 + alter * 0.1, 0.02 + alter * 0.09 + 0.03 * sin(alter * 2.0));
-    float radius = 0.03 + alter * 0.045;
-    float r = length((p - mitte) * vec2(1.0, 1.3)) / radius;
-    float wolke = exp(-r * r * 1.6) * (0.65 + 0.5 * gradRauschen(p * 10.0 + vec2(alter, -uZeit)));
-    wolken = max(wolken, wolke * (1.0 - alter / 4.0));
+  for (int k = 0; k < 3; k++) {
+    float alter = mod(tau - float(k) * 4.0, 12.0);
+    if (alter > 6.0) continue;
+    vec2 mitte = glut + vec2(0.05 * sin(alter * 0.8 + float(k)), 0.15 + alter * 0.15);
+    float radius = 0.05 + alter * 0.035;
+    float ring = abs(length((p - mitte) * vec2(1.0, 1.9)) - radius);
+    dichte = max(dichte, (1.0 - smoothstep(0.008, 0.018, ring)) * (1.0 - alter / 6.0) * 0.8);
   }
-  rauch = an * max(faden, wolken);
+  float funke = 1.0 - smoothstep(0.012, 0.03, length(s));
+  wert = max(dichte, funke * (0.85 + 0.15 * sin(uZeit * 9.0)));
+  return wert > 0.05 ? -0.01 : 0.01;
+}
+
+// 3: fünf Blätter fallen langsam und drehen sich; kleinere liegen weiter
+// hinten und sind blasser.
+float blaetterregen(vec2 p, float tau, out float wert) {
+  float d = 1e3;
+  wert = 0.0;
+  for (int i = 0; i < 5; i++) {
+    float fi = float(i);
+    float zufall = fract(sin(fi * 91.7) * 4375.85);
+    float groesse = 0.26 + 0.16 * zufall;
+    float x = -0.44 + fi * 0.22 + 0.05 * sin(tau * 0.7 + fi * 2.0);
+    float y = 0.75 - mod(tau * (0.07 + 0.05 * zufall) + fi * 0.27, 1.5);
+    vec2 q = drehung(0.6 * sin(tau * 0.8 + fi * 1.3)) * (p - vec2(x, y));
+    // Nur leicht kippen, damit die Blattform immer lesbar bleibt.
+    float c = 0.72 + 0.28 * cos(tau * (0.4 + 0.3 * zufall) + fi);
+    q.x /= c;
+    float ader;
+    float di = blatt(q, groesse, ader) * c;
+    if (di < d) {
+      d = di;
+      wert = (0.45 + 0.4 * zufall) * (0.75 + 0.25 * abs(c)) * (1.0 - 0.5 * (1.0 - smoothstep(0.0, 0.25, ader)));
+    }
+  }
   return d;
 }
 
@@ -377,21 +335,19 @@ void main() {
   float zeile = fract(-uv.y * 0.35 - t * 0.12);
   g += 0.35 * smoothstep(0.96, 1.0, zeile);
 
-  // Form: aus dem Feld selbst gezeichnet (sein Licht, seine Bewegung), um sie
-  // herum wird es leer, der Rest des Feldes tritt zurück.
+  // Form: das Feld tritt fast ganz zurück, die Form steht klar davor.
+  float inForm = 0.0;
   if (uForm.y > 0.001) {
-    float k = 0.8 * min(1.0, uFormOrt.z * 1.25);
+    float k = 0.85 * min(1.0, uFormOrt.z * 1.25);
     vec2 sp = (uv - uFormOrt.xy) / k;
-    float glut = 0.0, rauch = 0.0, asche = 0.0;
-    float d = uForm.x < 0.5 ? pflanze(sp, uFormZeit) : raucher(sp, uFormZeit, glut, rauch, asche);
-    float innen = smoothstep(0.006, -0.006, d);
-    float kante = smoothstep(0.022, 0.0, abs(d));
-    float hof = (1.0 - smoothstep(0.01, 0.28, d)) * (1.0 - innen);
-    float aussen = g * mix(1.0, 0.45, uForm.y) * (1.0 - 0.95 * hof * uForm.y);
-    float form = 0.5 + 0.3 * diffus + 0.2 * glanz + 0.12 * gradRauschen(sp * 7.0 + uZeit * 0.3) + kante * 0.18;
-    form = mix(form, 0.3 + 0.1 * gradRauschen(sp * 20.0), asche);
-    g = mix(aussen, form, innen * uForm.y);
-    g = max(g, max(glut, min(rauch, 1.0) * 0.8) * uForm.y);
+    float wert = 0.0;
+    float d = uForm.x < 0.5 ? drehblatt(sp, uFormZeit, wert) : uForm.x < 1.5 ? rauchschwaden(sp, uFormZeit, wert) : blaetterregen(sp, uFormZeit, wert);
+    float innen = smoothstep(0.004, -0.004, d);
+    float kante = smoothstep(0.02, 0.0, abs(d)) * innen;
+    g *= mix(1.0, 0.12, uForm.y);
+    float form = clamp(wert + kante * 0.15, 0.0, 1.0);
+    inForm = innen * uForm.y;
+    g = mix(g, form, inForm);
   }
 
   // Rund um den Zeiger: dichter und blau.
@@ -403,8 +359,10 @@ void main() {
   // Zwölf Dichtestufen mit je zwei Zeichen, darunter Ziffern; welches von
   // beiden, wechselt pro Zelle alle paar Sekunden zufällig.
   float zufall = rauschen(zelle + 0.37);
-  float variante = rauschen(zelle + floor(uZeit * 0.35 + zufall * 7.0));
-  bool b = variante > 0.5;
+  // In einer Form stehen die Zeichen still, im Feld wechseln sie langsam.
+  float variante = rauschen(zelle + (inForm > 0.5 ? 0.0 : floor(uZeit * 0.2 + zufall * 7.0)));
+  // In Formen immer dieselbe Zeichenfamilie, damit sie ruhig und klar wirken.
+  bool b = inForm < 0.5 && variante > 0.5;
   float n = 0.0;
   if (g > 0.16) n = b ? 2228224.0 : 4194304.0;    // , .
   if (g > 0.24) n = b ? 131200.0 : 14336.0;       // : -
@@ -580,7 +538,7 @@ export class Hintergrund {
   // Stärke der aktuellen Form: 2,5 s aufbauen, bis 13 s spielen, bis 16 s auflösen.
   formStaerke() {
     if (this.zeit >= this.formNaechste) {
-      this.formIndex = (this.formIndex + 1) % 2;
+      this.formIndex = (this.formIndex + 1) % 3;
       this.formStart = this.zeit;
       this.formNaechste = this.zeit + 20 + Math.random() * 10;
     }
