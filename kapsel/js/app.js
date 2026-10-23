@@ -1027,6 +1027,22 @@ renderAlles(true);
 demo.start();
 if (einst.live) liveLaden();
 
+// Service Worker: sw.js nie aus dem HTTP-Cache, bei jedem Öffnen nach einer
+// neuen Version fragen und nach dem Wechsel einmal neu laden.
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  const hatteSteuerung = !!navigator.serviceWorker.controller;
+  let neuGeladen = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hatteSteuerung || neuGeladen) return;
+    neuGeladen = true;
+    location.reload();
+  });
+  navigator.serviceWorker
+    .register('sw.js', { updateViaCache: 'none' })
+    .then((reg) => {
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) reg.update().catch(() => {});
+      });
+    })
+    .catch(() => {});
 }
