@@ -1,0 +1,18 @@
+{
+  "name": "Kapsel",
+  "short_name": "Kapsel",
+  "description": "Cloud-Sessions von claude.ai/code auf dem Home-Bildschirm, mit PR, CI und Merge über GitHub.",
+  "lang": "de",
+  "start_url": "./#/sessions",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

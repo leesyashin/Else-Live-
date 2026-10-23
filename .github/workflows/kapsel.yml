@@ -1,0 +1,47 @@
+name: Kapsel
+
+# Prüft die PWA auf Syntaxfehler. Veröffentlichen auf GitHub Pages geht von
+# Hand (Actions → Kapsel → Run workflow), nachdem Pages mit Quelle
+# „GitHub Actions“ eingeschaltet ist.
+on:
+  pull_request:
+    paths: ['kapsel/**', '.github/workflows/kapsel.yml']
+  push:
+    branches: [main]
+    paths: ['kapsel/**', '.github/workflows/kapsel.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: for f in kapsel/js/*.js kapsel/sw.js; do node --check "$f"; done
+      - name: Manifest
+        run: node -e "JSON.parse(require('fs').readFileSync('kapsel/manifest.webmanifest','utf8'))"
+
+  veroeffentlichen:
+    if: github.event_name == 'workflow_dispatch'
+    needs: pruefen
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: kapsel
+      - id: deploy
+        uses: actions/deploy-pages@v4
