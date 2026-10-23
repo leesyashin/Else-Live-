@@ -815,3 +815,19 @@ body.ohne-tabs .tabbar { transform: translate(-50%, 160%); opacity: 0; }
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   .ring { animation: drehen 1.6s linear infinite !important; }
 }
+
+/* ---------- Breite Bildschirme (Mac): App als Spalte links ----------
+   Der Hintergrund bekommt die freie Fläche rechts; dort erscheinen die
+   ASCII-Formen (hintergrund.js rechnet mit denselben Maßen). */
+
+@media (min-width: 900px) {
+  :root { --spalte: 460px; --spalte-links: 32px; --spalte-mitte: calc(var(--spalte-links) + var(--spalte) / 2); }
+  .ansicht { max-width: var(--spalte); margin: 0 0 0 var(--spalte-links); padding: 0; }
+  .insel { left: var(--spalte-mitte); }
+  .banner { left: var(--spalte-mitte); width: min(var(--spalte), 420px); }
+  .tabbar { left: var(--spalte-mitte); }
+  .navleiste { right: auto; width: calc(var(--spalte-links) * 2 + var(--spalte)); padding-left: var(--spalte-links); padding-right: var(--spalte-links); }
+  .eingabe-bereich { right: auto; width: calc(var(--spalte-links) * 2 + var(--spalte)); }
+  .skill-leiste { max-width: none; margin: 0; padding: 0 var(--spalte-links) 10px; }
+  .eingabe { max-width: none; margin: 0 var(--spalte-links); }
+}
