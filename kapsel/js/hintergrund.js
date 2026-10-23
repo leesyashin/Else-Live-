@@ -3,8 +3,8 @@
 //   Umgebung spiegelt. Arbeitet Claude, wellt sie sich stärker.
 // - lava: eine Lava-Lampe, weiche Blasen, die verschmelzen und sich trennen,
 //   in der Farbe des Gesamtstatus.
-// - ascii: ein fließendes Feld aus Terminal-Zeichen, die hellsten in der
-//   Statusfarbe.
+// - ascii: ein fließendes Feld aus Terminal-Zeichen, einfarbig, blau unter
+//   dem Zeiger; alle 20 bis 30 Sekunden formen die Zeichen ein Bild.
 // Alle folgen der Neigung des iPhones, sind auf 60 fps begrenzt und rechnen
 // auf dem Mac in voller Retina-Auflösung, die bei Bedarf sinkt.
 
@@ -188,8 +188,14 @@ void main() {
 const ASCII = KOPF + `
 // Ein fließendes Feld, gezeichnet als Terminal-Zeichen. Jede Zelle fragt das
 // Feld einmal in ihrer Mitte ab und wählt nach Helligkeit ein Zeichen aus
-// " .:*o&8@#" (5x5-Bitmuster, als Zahl kodiert). Die hellsten Zeichen tragen
-// die Statusfarbe; eine Abtastzeile läuft langsam nach unten.
+// " .:*o&8@#" (5x5-Bitmuster, als Zahl kodiert). Alles bleibt einfarbig;
+// nur rund um den Mauszeiger (oder Finger) färben sich die Zeichen blau.
+// Alle 20 bis 30 Sekunden formen die Zeichen nacheinander ein Hanfblatt,
+// einen Pimmel und einen brennenden Joint mit Rauch.
+
+uniform vec3 uZeiger;  // x, y in Canvas-Pixeln, Stärke 0 … 1
+uniform vec2 uForm;    // welche Form (0, 1, 2), Stärke 0 … 1
+uniform float uZeit;   // Sekunden, unabhängig vom Status-Tempo
 
 float zeichen(float n, vec2 p) {
   p = floor(p * vec2(4.0, -4.0) + 2.5);
@@ -197,6 +203,58 @@ float zeichen(float n, vec2 p) {
     if (int(mod(n / exp2(p.x + 5.0 * p.y), 2.0)) == 1) return 1.0;
   }
   return 0.0;
+}
+
+mat2 drehung(float w) { float c = cos(w), s = sin(w); return mat2(c, -s, s, c); }
+
+float strecke(vec2 p, vec2 a, vec2 b, float ra, float rb) {
+  vec2 pa = p - a, ba = b - a;
+  float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+  return length(pa - ba * h) - mix(ra, rb, h);
+}
+
+float ellipse(vec2 p, vec2 r) { return (length(p / r) - 1.0) * min(r.x, r.y); }
+
+// Hanfblatt: sieben spitze, gezackte Fiederblätter an einem Stiel.
+float hanfblatt(vec2 p) {
+  vec2 basis = vec2(0.0, -0.22);
+  float d = strecke(p, basis, vec2(0.0, -0.5), 0.013, 0.01);
+  for (int i = 0; i < 7; i++) {
+    float fi = float(i) - 3.0;
+    float a = abs(fi);
+    // Fächer: mittleres Blatt am längsten, die äußeren zeigen schräg nach unten.
+    float winkel = sign(fi) * (a < 0.5 ? 0.0 : a < 1.5 ? 0.45 : a < 2.5 ? 0.98 : 1.65);
+    float laenge = a < 0.5 ? 0.72 : a < 1.5 ? 0.62 : a < 2.5 ? 0.46 : 0.26;
+    vec2 q = drehung(winkel) * (p - basis);
+    float t = clamp(q.y / laenge, 0.0, 1.0);
+    float breite = laenge * 0.085 * pow(sin(3.1416 * t), 0.7) * (1.0 + 0.3 * sin(t * 58.0));
+    float blatt = max(abs(q.x) - breite, max(-q.y, q.y - laenge));
+    d = min(d, blatt);
+  }
+  return d;
+}
+
+float pimmel(vec2 p) {
+  float schaft = strecke(p, vec2(0.0, -0.22), vec2(0.0, 0.18), 0.078, 0.07);
+  float kopf = ellipse(p - vec2(0.0, 0.25), vec2(0.108, 0.088));
+  float eier = min(length(p - vec2(-0.088, -0.31)) - 0.09, length(p - vec2(0.088, -0.31)) - 0.09);
+  return min(min(schaft, kopf), eier);
+}
+
+// Joint, schräg, Mundstück links, Glut rechts.
+const vec2 GLUT = vec2(0.3, 0.06);
+float joint(vec2 p) {
+  return strecke(p, vec2(-0.34, -0.12), GLUT, 0.024, 0.042);
+}
+
+float rauch(vec2 p) {
+  vec2 s = p - GLUT - vec2(0.0, 0.04);
+  if (s.y < 0.0) return 0.0;
+  float welle = sin(s.y * 11.0 - uZeit * 2.2) * 0.05 * s.y + 0.06 * gradRauschen(vec2(s.y * 4.0 - uZeit * 0.6, 1.3)) * s.y * 3.0;
+  float breite = 0.03 + s.y * 0.2;
+  float x = (s.x - welle) / breite;
+  float dichte = exp(-x * x) * (1.0 - smoothstep(0.1, 0.9, s.y));
+  return dichte * (0.75 + 0.5 * gradRauschen(p * 9.0 + vec2(0.0, -uZeit * 1.5)));
 }
 
 float feld(vec2 p, float t) {
@@ -214,6 +272,7 @@ void main() {
   vec2 mitte = (zelle + 0.5) * uZelle;
   vec2 uv = (mitte - 0.5 * uRes) / uRes.y;
   float t = uPhase;
+
   // Feld als Höhe lesen und beleuchten, damit es plastisch wirkt.
   vec2 fp = uv * 2.6 + uNeigung * 0.25;
   float v = feld(fp, t);
@@ -223,9 +282,30 @@ void main() {
   float diffus = max(dot(normale, licht), 0.0);
   float glanz = pow(max(dot(reflect(-licht, normale), vec3(0.0, 0.0, 1.0)), 0.0), 12.0);
   float g = smoothstep(0.15, 0.85, v) * 0.45 + diffus * 0.55 + glanz * 0.35;
-  // Abtastzeile wie auf einem alten Terminal.
   float zeile = fract(-uv.y * 0.35 - t * 0.12);
   g += 0.35 * smoothstep(0.96, 1.0, zeile);
+
+  // Form: passt hochkant aufs iPhone und füllt am Mac gut zwei Drittel der Höhe.
+  if (uForm.y > 0.001) {
+    float k = 0.72 * min(1.0, uRes.x / uRes.y * 1.3);
+    vec2 sp = uv / k;
+    float d = uForm.x < 0.5 ? hanfblatt(sp) : uForm.x < 1.5 ? pimmel(sp) : joint(sp);
+    float innen = smoothstep(0.006, -0.006, d);
+    float kante = smoothstep(0.02, 0.0, abs(d));
+    float form = innen * (0.66 + 0.22 * gradRauschen(sp * 9.0 + uZeit * 0.4)) + kante * 0.3;
+    if (uForm.x > 1.5) {
+      // Glut: die dichtesten Zeichen, flackernd; darüber steigt Rauch auf.
+      float glut = 1.0 - smoothstep(0.03, 0.065, length(sp - GLUT));
+      form = max(form, glut * (0.93 + 0.07 * sin(uZeit * 13.0)));
+      form = max(form, min(rauch(sp), 1.0) * 0.82);
+    }
+    g = mix(g, max(g * 0.3, form), uForm.y);
+  }
+
+  // Rund um den Zeiger: dichter und blau.
+  float abstand = length(mitte - uZeiger.xy) / uZelle;
+  float zeiger = uZeiger.z * smoothstep(10.0, 2.0, abstand);
+  g += 0.25 * zeiger;
   g = clamp(g, 0.0, 1.0);
 
   float n = 0.0;
@@ -242,9 +322,10 @@ void main() {
   float an = zeichen(n, lokal * 2.0 - 1.0);
 
   vec3 grund = mix(vec3(1.0), vec3(0.0), uDunkel);
-  vec3 tinte = mix(vec3(0.42), vec3(0.62), uDunkel);
-  tinte = mix(tinte, uTon, smoothstep(0.7, 0.9, g) * 0.9);
-  float deckung = mix(0.55, 0.8, uDunkel) * (0.45 + 0.55 * g);
+  vec3 tinte = mix(vec3(0.26), vec3(0.64), uDunkel);
+  vec3 blau = mix(vec3(0.11, 0.36, 0.96), vec3(0.36, 0.55, 1.0), uDunkel);
+  tinte = mix(tinte, blau, zeiger);
+  float deckung = mix(0.6, 0.82, uDunkel) * (0.45 + 0.55 * g);
   vec3 farbe = mix(grund, tinte, an * deckung);
   gl_FragColor = vec4(farbe, 1.0);
 }
@@ -260,7 +341,7 @@ const STIMMUNG = {
   ruhig: { ton: [0.55, 0.45, 0.95], tempo: 0.25, welle: 0, puls: 0 },
 };
 
-const UNIFORMS = ['uRes', 'uPhase', 'uPuls', 'uWelle', 'uNeigung', 'uTon', 'uDunkel', 'uZelle'];
+const UNIFORMS = ['uRes', 'uPhase', 'uPuls', 'uWelle', 'uNeigung', 'uTon', 'uDunkel', 'uZelle', 'uZeiger', 'uForm', 'uZeit'];
 
 export class Hintergrund {
   constructor(canvas) {
@@ -279,6 +360,14 @@ export class Hintergrund {
     this.phase = Math.random() * 50;
     this.neigung = [0, 0];
     this.neigungZiel = [0, 0];
+    // Zeiger (CSS-Pixel) und wann er sich zuletzt bewegt hat.
+    this.zeiger = [0, 0];
+    this.zeigerZuletzt = -10;
+    this.zeigerStaerke = 0;
+    // ASCII-Formen: alle 20 bis 30 Sekunden die nächste, die erste nach 6 s.
+    this.formIndex = -1;
+    this.formStart = 0;
+    this.formNaechste = 6;
     this.zeit = 0;
     this.letztes = 0;
     this.mittel = 16.7;
@@ -376,6 +465,28 @@ export class Hintergrund {
     this.status = STIMMUNG[status] ? status : 'ruhig';
   }
 
+  // Position in CSS-Pixeln; die Zeichen dort färben sich blau.
+  setzeZeiger(x, y) {
+    this.zeiger = [x, y];
+    this.zeigerZuletzt = this.zeit;
+  }
+
+  // Stärke der aktuellen Form: 3 s aufbauen, 7 s halten, 3 s auflösen.
+  formStaerke() {
+    if (this.zeit >= this.formNaechste) {
+      this.formIndex = (this.formIndex + 1) % 3;
+      this.formStart = this.zeit;
+      this.formNaechste = this.zeit + 20 + Math.random() * 10;
+    }
+    if (this.formIndex < 0) return 0;
+    const lokal = this.zeit - this.formStart;
+    const weich = (x) => x * x * (3 - 2 * x);
+    if (lokal < 3) return weich(lokal / 3);
+    if (lokal < 10) return 1;
+    if (lokal < 13) return 1 - weich((lokal - 10) / 3);
+    return 0;
+  }
+
   // x, y jeweils -1 … 1
   setzeNeigung(x, y) {
     this.neigungZiel = [Math.max(-1, Math.min(1, x)), Math.max(-1, Math.min(1, y))];
@@ -435,8 +546,13 @@ export class Hintergrund {
     gl.uniform2f(u.uNeigung, this.neigung[0], this.neigung[1]);
     gl.uniform3f(u.uTon, this.ton[0], this.ton[1], this.ton[2]);
     gl.uniform1f(u.uDunkel, this.dunkel.matches ? 1 : 0);
-    // ASCII-Zellen etwa 13 CSS-Pixel groß, egal wie fein gerechnet wird.
-    gl.uniform1f(u.uZelle, Math.max(5, Math.round(13 * this.skala)));
+    // ASCII-Zellen etwa 9 CSS-Pixel groß, egal wie fein gerechnet wird.
+    gl.uniform1f(u.uZelle, Math.max(4, Math.round(9 * this.skala)));
+    const zeigerZiel = this.zeit - this.zeigerZuletzt < 1.2 ? 1 : 0;
+    this.zeigerStaerke += (zeigerZiel - this.zeigerStaerke) * (1 - Math.exp(-s * (zeigerZiel ? 12 : 2.5)));
+    gl.uniform3f(u.uZeiger, this.zeiger[0] * this.skala, (innerHeight - this.zeiger[1]) * this.skala, this.zeigerStaerke);
+    gl.uniform2f(u.uForm, Math.max(this.formIndex, 0), this.formStaerke());
+    gl.uniform1f(u.uZeit, this.zeit);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 }
