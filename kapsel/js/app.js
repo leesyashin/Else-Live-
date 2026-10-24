@@ -544,6 +544,7 @@ function seiteEinstellungen() {
           ['metall', 'Metall'],
           ['lava', 'Lava'],
           ['ascii', 'ASCII'],
+          ['porsche', 'GT3 RS'],
           ['aus', 'Aus'],
         ]
           .map(([wert, name]) => {

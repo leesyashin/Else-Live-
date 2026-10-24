@@ -739,6 +739,7 @@ body.ohne-tabs .tabbar { transform: translate(-50%, 160%); opacity: 0; }
   font-size: 15px;
   font-weight: 600;
   color: var(--text2);
+  white-space: nowrap;
 }
 .segment button.aktiv { background: var(--rund); color: var(--text); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); }
 

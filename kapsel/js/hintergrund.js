@@ -5,10 +5,13 @@
 //   in der Farbe des Gesamtstatus.
 // - ascii: ein Porsche 911 GT3 RS als 3D-Modell in Terminal-Zeichen, die
 //   Kamera kreist darum (siehe ascii-porsche.js); der Lack hat die Statusfarbe.
+// - porsche: derselbe GT3 RS in voller Auflösung, er fährt über eine
+//   Landstraße, schnell wenn Claude arbeitet, sonst langsam (porsche-hd.js).
 // Alle folgen der Neigung des iPhones, sind auf 60 fps begrenzt und rechnen
 // auf dem Mac in voller Retina-Auflösung, die bei Bedarf sinkt.
 
 import { ASCII_PORSCHE, ASCII_ZEICHEN, atlasZeichnen } from './ascii-porsche.js';
+import { PORSCHE_HD } from './porsche-hd.js';
 
 const VERTEX = `
 attribute vec2 p;
@@ -186,18 +189,29 @@ void main() {
 }
 `;
 
-export const STILE = { metall: METALL, lava: LAVA, ascii: ASCII_PORSCHE };
+export const STILE = { metall: METALL, lava: LAVA, ascii: ASCII_PORSCHE, porsche: PORSCHE_HD };
 
-// Ton (RGB), Tempo, Welle und Puls je Gesamtstatus.
+// Ton (RGB), Tempo, Welle und Puls je Gesamtstatus; fahrt ist die
+// Geschwindigkeit des Porsche in m/s (58 m/s sind gut 200 km/h).
 const STIMMUNG = {
-  arbeitet: { ton: [0.12, 0.42, 1.0], tempo: 1.0, welle: 1, puls: 0 },
-  frage: { ton: [1.0, 0.58, 0.05], tempo: 0.55, welle: 0.4, puls: 1 },
-  pr: { ton: [0.15, 0.75, 0.35], tempo: 0.4, welle: 0.2, puls: 0 },
-  ruhig: { ton: [0.55, 0.45, 0.95], tempo: 0.25, welle: 0, puls: 0 },
+  arbeitet: { ton: [0.12, 0.42, 1.0], tempo: 1.0, welle: 1, puls: 0, fahrt: 58 },
+  frage: { ton: [1.0, 0.58, 0.05], tempo: 0.55, welle: 0.4, puls: 1, fahrt: 7 },
+  pr: { ton: [0.15, 0.75, 0.35], tempo: 0.4, welle: 0.2, puls: 0, fahrt: 20 },
+  ruhig: { ton: [0.55, 0.45, 0.95], tempo: 0.25, welle: 0, puls: 0, fahrt: 4 },
 };
 
 const UNIFORMS = ['uRes', 'uPhase', 'uPuls', 'uWelle', 'uNeigung', 'uTon', 'uDunkel', 'uZelle', 'uZeiger', 'uZeit',
-  'uRahmen', 'uGitter', 'uGlyphen', 'uZellen', 'uAtlas'];
+  'uRahmen', 'uGitter', 'uGlyphen', 'uZellen', 'uAtlas', 'uWeg', 'uTempo', 'uBremse'];
+
+// Höchste Auflösung je Stil: Mit Maus oder Trackpad (Mac) bis zur vollen
+// Retina-Auflösung, auf dem Handy höchstens die CSS-Auflösung; der Porsche
+// in HD rechnet überall 1:1 in Gerätepixeln. Die Anpassung senkt das nur,
+// wenn das Gerät nicht mitkommt.
+function skalaGrenze(stil) {
+  const dpr = devicePixelRatio || 1;
+  if (stil === 'porsche') return Math.min(dpr, 3);
+  return matchMedia('(pointer: fine)').matches ? Math.min(dpr, 2) : 1;
+}
 
 // Zeichenzelle in CSS-Pixeln, schmal und hoch wie im Terminal; auf dem
 // Handy etwas feiner, damit das Auto genug Zeichen bekommt.
@@ -213,9 +227,7 @@ export class Hintergrund {
     this.canvas = canvas;
     this.an = false;
     this.stil = 'metall';
-    // Mit Maus oder Trackpad (Mac) bis zur vollen Retina-Auflösung, auf dem
-    // Handy höchstens die CSS-Auflösung; die Anpassung senkt das bei Bedarf.
-    this.maxSkala = matchMedia('(pointer: fine)').matches ? Math.min(devicePixelRatio || 1, 2) : 1;
+    this.maxSkala = skalaGrenze(this.stil);
     this.skala = this.maxSkala;
     this.status = 'ruhig';
     this.ton = [...STIMMUNG.ruhig.ton];
@@ -230,6 +242,10 @@ export class Hintergrund {
     this.zeigerZuletzt = -10;
     this.zeigerStaerke = 0;
     this.zeit = 0;
+    // Porsche: Geschwindigkeit, gefahrener Weg, wie stark er gerade bremst.
+    this.fahrt = STIMMUNG.ruhig.fahrt;
+    this.weg = Math.random() * 1000;
+    this.bremse = 0;
     // Die Kamera beginnt an einer zufälligen Stelle der Runde.
     this.asciiZeit = Math.random() * 100;
     this.zelle = ZELLE;
@@ -299,6 +315,9 @@ export class Hintergrund {
   setzeStil(stil) {
     if (!STILE[stil] || stil === this.stil) return;
     this.stil = stil;
+    this.maxSkala = skalaGrenze(stil);
+    this.skala = this.maxSkala;
+    this.groesse();
     try {
       this.programmWaehlen();
     } catch (fehler) {
@@ -377,9 +396,10 @@ export class Hintergrund {
     if (dt < 1000 / 60 - 2) return; // auf 60 fps begrenzen
     this.letztes = jetzt;
     if (document.hidden || !this.gl) return;
-    // Der ASCII-Film rechnet pro Zeichenzelle; eine kleinere Auflösung spart
-    // dort nichts und machte nur die Schrift unscharf.
-    if (dt < 100 && this.stil !== 'ascii') this.anpassen(dt);
+    // ASCII rechnet pro Zeichenzelle; eine kleinere Auflösung spart dort
+    // nichts und machte nur die Schrift unscharf. Längere Pausen (Tab im
+    // Hintergrund) zählen nicht, sehr langsame Frames schon.
+    if (dt < 400 && this.stil !== 'ascii') this.anpassen(Math.min(dt, 60));
     const s = Math.min(dt, 50) / 1000;
     const ziel = STIMMUNG[this.status];
     const weich = 1 - Math.exp(-s * 2.5);
@@ -389,6 +409,13 @@ export class Hintergrund {
     this.pulsStaerke += (ziel.puls - this.pulsStaerke) * weich;
     this.phase += s * this.tempo;
     this.zeit += s;
+    // Beschleunigen und Bremsen dauern ein paar Sekunden, wie bei einem Auto.
+    const fahrtZiel = ziel.fahrt * (this.ruhe.matches ? 0.3 : 1);
+    const vorher = this.fahrt;
+    this.fahrt += (fahrtZiel - this.fahrt) * (1 - Math.exp(-s * (fahrtZiel > this.fahrt ? 0.45 : 0.7)));
+    this.weg += this.fahrt * s;
+    const verzoegerung = (vorher - this.fahrt) / Math.max(s, 1e-3);
+    this.bremse += (Math.min(1, Math.max(0, verzoegerung / 6)) - this.bremse) * (1 - Math.exp(-s * 8));
     const n = 1 - Math.exp(-s * 6);
     this.neigung[0] += (this.neigungZiel[0] - this.neigung[0]) * n;
     this.neigung[1] += (this.neigungZiel[1] - this.neigung[1]) * n;
@@ -409,6 +436,15 @@ export class Hintergrund {
     gl.uniform2f(u.uNeigung, this.neigung[0], this.neigung[1]);
     gl.uniform3f(u.uTon, this.ton[0], this.ton[1], this.ton[2]);
     gl.uniform1f(u.uDunkel, this.dunkel.matches ? 1 : 0);
+    if (this.stil === 'porsche') {
+      // Das Auto steht in der freien Fläche neben der App-Spalte.
+      const frei = innerWidth >= BREIT_AB ? SPALTE_RECHTS : 0;
+      gl.uniform4f(u.uRahmen, (frei / 2) / innerHeight, 0, 1, (innerWidth - frei) / innerHeight);
+      gl.uniform1f(u.uZeit, this.zeit);
+      gl.uniform1f(u.uWeg, this.weg);
+      gl.uniform1f(u.uTempo, this.fahrt);
+      gl.uniform1f(u.uBremse, this.bremse);
+    }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
