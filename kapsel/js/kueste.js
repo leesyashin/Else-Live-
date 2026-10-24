@@ -1,5 +1,6 @@
-// Hintergrund „Küste“: ein Porsche 911 Carrera 4S in Navy fährt eine
-// Klippenstraße entlang. Die Kamera schwebt seitlich über dem Hang, fährt mit
+// Hintergrund „Küste“: ein Porsche 911 Carrera 4S fährt eine Klippenstraße
+// entlang, gezeichnet wie ein Zeichentrickfilm: Licht in Stufen, satte
+// Farben, dunkle Umrisse, gemalter Himmel mit Wolken, Fahrtwind-Striche. Die Kamera schwebt seitlich über dem Hang, fährt mit
 // und schaut mit langer Brennweite über Auto und Leitplanke hinunter aufs
 // Meer; draußen stehen Felsnadeln in der Brandung, dahinter Steilküsten und
 // Inseln im Dunst, Möwen segeln mit. Hell ist Nachmittag, im Dunkeln geht die
@@ -30,23 +31,30 @@ const DACH = 1.32; // höchster Punkt des Autos
 const KANTE = -STRASSE - 6; // Abbruchkante der Klippe (wandert um ±2 m)
 const MEER = -42; // Meeresspiegel unter der Straße
 const AUTO_Y = 0.66; // wo Auto und Horizont im Bild stehen (Anteil der Höhe)
-const HORIZONT_Y = 0.13;
+const HORIZONT_Y = 0.19;
 const PERIODE = 144; // Wiederholung der nahen Welt; Vielfaches aller Muster
 const MITTEL = 2400; // Wiederholung der Felsnadeln
 const WELLEN_L = 4096; // Wiederholung des Wellenmusters in x
 
-// Licht je Stimmung. Sonne: Höhe und Richtung in Grad (0 = Blick der Kamera
+// Licht und Farben je Stimmung, gemalt statt fotografiert: kräftige Töne,
+// Licht in Stufen. Sonne: Höhe und Richtung in Grad (0 = Blick der Kamera
 // aufs Meer, positiv nach rechts).
 const STIMMUNGEN = {
   hell: {
-    sonne: [32, 138], trueb: 2.2, rayleigh: 1.4, mie: 0.004, mieG: 0.82, wolken: 0.32,
-    belichtung: 0.52, licht: [1.0, 0.93, 0.84], lichtStaerke: 3.6, umgebung: 1.0, scheinwerfer: 0.0, rueck: 0.35, aufheller: 0,
-    meerSpiegel: [0.38, 0.58, 0.9], dunst: 1 / 14000, schaum: [2.4, 2.45, 2.5],
+    sonne: [32, 138], licht: 0xfff1d8, lichtStaerke: 2.3, belichtung: 1.0,
+    himmel: [0x2c78d6, 0x77bdf0, 0xd8f3f8], sonnenFarbe: 0xfff4d0, scheibe: 0,
+    hemi: [0xcfe8ff, 0x9a7a52, 1.25], umgebung: 0.9, aufheller: 0,
+    meer: [0x1cc0c8, 0x1a63b8, 0xbff6ff], glanz: [0.25, 0.5, -1], schaum: [1, 1, 1],
+    wolke: [0xffffff, 0x9fc4ec], umriss: 0x24314a, dunst: 1 / 12000,
+    scheinwerfer: 0, rueck: 0.35,
   },
   dunkel: {
-    sonne: [-1.2, 14], trueb: 4, rayleigh: 2.2, mie: 0.006, mieG: 0.88, wolken: 0.34,
-    belichtung: 0.9, licht: [1.0, 0.45, 0.25], lichtStaerke: 0, umgebung: 0.8, scheinwerfer: 6.0, rueck: 4.0, aufheller: 0.6,
-    meerSpiegel: [1, 1, 1], dunst: 1 / 6500, schaum: [0.8, 0.52, 0.4],
+    sonne: [4, 14], licht: 0xffa070, lichtStaerke: 1.6, belichtung: 1.0,
+    himmel: [0x1a1650, 0x8a4b9a, 0xffa86a], sonnenFarbe: 0xffc27a, scheibe: 1,
+    hemi: [0x8f78d8, 0x2a1838, 0.85], umgebung: 0.7, aufheller: 0.7,
+    meer: [0x2b3c86, 0x3a2a72, 0xffc89a], glanz: [0.25, 0.08, -1], schaum: [1, 0.78, 0.7],
+    wolke: [0xffb59a, 0x6a4a9a], umriss: 0x140c24, dunst: 1 / 7000,
+    scheinwerfer: 5.0, rueck: 4.0,
   },
 };
 
@@ -115,7 +123,7 @@ function strassenTextur(renderer) {
       let s = 0;
       for (let k = -4; k <= 4; k++) s += zeile[(x + k + w) % w];
       const flecken = rauschen(x / 90, y / 22, w / 90, 3);
-      const v = 62 + (s / 9 - 0.5) * 64 + (flecken - 0.5) * 18;
+      const v = 150 + (s / 9 - 0.5) * 40 + (flecken - 0.5) * 16;
       // Dunklere Fahrspuren der Reifen.
       const quer = y / h;
       const spur = Math.exp(-(((quer - 0.22) / 0.05) ** 2)) + Math.exp(-(((quer - 0.38) / 0.05) ** 2))
@@ -187,6 +195,161 @@ function felgenTextur() {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
+}
+
+// ---------- Zeichenstil ----------
+
+// Licht in drei Stufen wie in einem Zeichentrickfilm.
+const STUFEN = (() => {
+  const t = new THREE.DataTexture(new Uint8Array([90, 180, 255]), 3, 1, THREE.RedFormat);
+  t.minFilter = t.magFilter = THREE.NearestFilter;
+  t.needsUpdate = true;
+  return t;
+})();
+
+const toon = (werte) => new THREE.MeshToonMaterial({ gradientMap: STUFEN, ...werte });
+
+// Glanz auf Lack und Scheiben: ein harter weißer Streifen, wo der Himmel
+// sich spiegelt, statt einer fotografischen Spiegelung.
+function mitGlanz(material) {
+  material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <tonemapping_fragment>', `{
+  vec3 n = normalize(vNormal);
+  vec3 v = normalize(vViewPosition);
+  // Wo sich die Fläche vom Himmel zur Seite wölbt (Schulter, Dachkante),
+  // liegt ein harter heller Streifen.
+  float oben = dot(n, normalize(viewMatrix[1].xyz));
+  float streifen = smoothstep(0.5, 0.54, oben) * (1.0 - smoothstep(0.76, 0.8, oben));
+  gl_FragColor.rgb += vec3(0.5, 0.58, 0.72) * streifen * 0.45;
+}
+#include <tonemapping_fragment>`);
+  };
+  material.customProgramCacheKey = () => 'glanz';
+  return material;
+}
+
+// Wind: Büsche und Gras wiegen sich, oben mehr als unten.
+const WIND = { uWind: { value: 0 } };
+const wiegen = (staerke) => `{
+  vec3 wo = vec3(0.0);
+  #ifdef USE_INSTANCING
+  wo = instanceMatrix[3].xyz;
+  #endif
+  float oben = max(position.y + 0.2, 0.0);
+  transformed.x += sin(uWind * 2.1 + wo.x * 0.7 + wo.z) * ${staerke.toFixed(3)} * oben;
+  transformed.z += sin(uWind * 1.6 + wo.x * 0.45 + 1.0) * ${(staerke * 0.6).toFixed(3)} * oben;
+}`;
+
+function mitWind(material, staerke) {
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, WIND);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uWind;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + wiegen(staerke));
+  };
+  material.customProgramCacheKey = () => 'wind-' + staerke;
+  return material;
+}
+
+// Umrisslinien: die Rückseite, ein paar Bildpunkte nach außen geschoben und
+// dunkel gefärbt (inverted hull). Breite in Bildpunkten, unabhängig von der
+// Entfernung.
+const UMRISS = { uFarbe: { value: new THREE.Color(0x24314a) }, uPixel: { value: new THREE.Vector2(0.002, 0.002) } };
+
+function umrissMaterial(breite, staerke = 0) {
+  return new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    uniforms: { ...UMRISS, ...WIND, uBreite: { value: breite } },
+    vertexShader: `
+uniform vec2 uPixel;
+uniform float uBreite;
+uniform float uWind;
+void main() {
+  vec3 transformed = position;
+  ${staerke ? wiegen(staerke) : ''}
+  mat4 mv = modelViewMatrix;
+  #ifdef USE_INSTANCING
+  mv = modelViewMatrix * instanceMatrix;
+  #endif
+  vec3 nv = normalize(mat3(mv) * normal);
+  vec4 clip = projectionMatrix * mv * vec4(transformed, 1.0);
+  clip.xy += normalize(nv.xy + 1e-5) * uBreite * uPixel * clip.w;
+  gl_Position = clip;
+}`,
+    fragmentShader: `
+uniform vec3 uFarbe;
+void main() {
+  gl_FragColor = vec4(uFarbe, 1.0);
+  #include <colorspace_fragment>
+}`,
+  });
+}
+
+// Hängt einem Mesh seinen Umriss an (teilt Geometrie und, bei vielen
+// Exemplaren, deren Lage).
+function umreissen(mesh, breite, staerke = 0) {
+  const material = umrissMaterial(breite, staerke);
+  let u;
+  if (mesh.isInstancedMesh) {
+    u = new THREE.InstancedMesh(mesh.geometry, material, mesh.count);
+    u.instanceMatrix = mesh.instanceMatrix;
+    u.position.copy(mesh.position);
+    u.quaternion.copy(mesh.quaternion);
+    u.scale.copy(mesh.scale);
+    mesh.parent.add(u);
+  } else {
+    u = new THREE.Mesh(mesh.geometry, material);
+    mesh.add(u);
+  }
+  u.castShadow = false;
+  u.frustumCulled = mesh.frustumCulled;
+  return u;
+}
+
+// Gemalter Himmel: Verlauf vom Horizont nach oben, weicher Schein um die Sonne.
+const HIMMEL_FRAGMENT = `
+uniform vec3 uOben;
+uniform vec3 uMitte;
+uniform vec3 uHorizont;
+uniform vec3 uSonne;
+uniform vec3 uSonnenFarbe;
+uniform float uScheibe;
+varying vec3 vRichtung;
+void main() {
+  vec3 d = normalize(vRichtung);
+  float h = d.y;
+  vec3 c = mix(uHorizont, uMitte, smoothstep(-0.01, 0.16, h));
+  c = mix(c, uOben, smoothstep(0.16, 0.6, h));
+  float s = max(dot(d, uSonne), 0.0);
+  c += uSonnenFarbe * (pow(s, 8.0) * 0.25 + pow(s, 80.0) * 0.45);
+  // Sonnenscheibe mit hartem Rand und Hof.
+  c = mix(c, uSonnenFarbe * 1.6, uScheibe * smoothstep(0.99955, 0.9997, s));
+  gl_FragColor = vec4(c, 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+
+function himmelKuppel(scheibe) {
+  const material = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: {
+      uOben: { value: new THREE.Color() }, uMitte: { value: new THREE.Color() }, uHorizont: { value: new THREE.Color() },
+      uSonne: { value: new THREE.Vector3(0, 1, 0) }, uSonnenFarbe: { value: new THREE.Color() }, uScheibe: { value: scheibe },
+    },
+    vertexShader: `
+varying vec3 vRichtung;
+void main() {
+  vRichtung = position;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`,
+    fragmentShader: HIMMEL_FRAGMENT,
+  });
+  const kuppel = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), material);
+  kuppel.scale.setScalar(20000);
+  kuppel.frustumCulled = false;
+  kuppel.renderOrder = -10;
+  return kuppel;
 }
 
 // ---------- Rad-Geometrie ----------
@@ -320,7 +483,6 @@ const MEER_KOPF = `
 uniform vec4 uWelle[${WELLEN.length}];
 uniform float uFahrtMeer;
 uniform float uMeerZeit;
-uniform vec3 uMeerSpiegel;
 float meerHash(vec2 p) {
   vec3 p3 = fract(vec3(p.xyx) * 0.1031);
   p3 += dot(p3, p3.yzx + 33.33);
@@ -418,7 +580,8 @@ export class Kueste {
   constructor(canvas, kontext) {
     this.canvas = canvas;
     const r = (this.renderer = new THREE.WebGLRenderer({ canvas, context: kontext, antialias: true, powerPreference: 'high-performance' }));
-    r.toneMapping = THREE.ACESFilmicToneMapping;
+    // Neutral lässt die gemalten Farben satt, wie sie sind.
+    r.toneMapping = THREE.NeutralToneMapping;
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFShadowMap;
     r.shadowMap.autoUpdate = false;
@@ -444,20 +607,18 @@ export class Kueste {
     this.nadelnBauen();
     this.nahBauen();
     this.moewenBauen();
+    this.fahrtwindBauen();
     this.lichtBauen();
     this.autoLaden();
   }
 
   himmelBauen() {
-    this.himmel = new THREE.Sky();
-    this.himmel.scale.setScalar(20000);
+    this.himmel = himmelKuppel(1);
     this.szene.add(this.himmel);
 
     // Zweiter Himmel ohne Sonnenscheibe für Umgebungslicht und Dunst.
     this.umgebungSzene = new THREE.Scene();
-    this.umgebungHimmel = new THREE.Sky();
-    this.umgebungHimmel.scale.setScalar(20000);
-    this.umgebungHimmel.material.uniforms.showSunDisc.value = 0;
+    this.umgebungHimmel = himmelKuppel(0);
     this.umgebungSzene.add(this.umgebungHimmel);
 
     // Was das Auto in der Umgebung spiegelt: Meer tief unten, Straße, der
@@ -486,44 +647,107 @@ export class Kueste {
     this.umgebungBoden.add(meer, strasse, land, huegel);
     this.umgebungSzene.add(this.umgebungBoden);
 
+    this.wolkenBauen();
+
     this.pmrem = new THREE.PMREMGenerator(this.renderer);
     this.himmelWuerfel = new THREE.WebGLCubeRenderTarget(64, { type: THREE.HalfFloatType });
     this.wuerfelKamera = new THREE.CubeCamera(1, 50000, this.himmelWuerfel);
     DUNST.uHimmel.value = this.himmelWuerfel.texture;
   }
 
+  // Meer wie gemalt: Farbe von Türkis in der Nähe zu Tiefblau in der Ferne,
+  // Wellenflanken in zwei, drei Tönen, harte weiße Glitzer, wo eine Welle das
+  // Licht zurückwirft; zum Horizont spiegelt es den Himmel.
   meerBauen() {
     this.wellenWerte = WELLEN.map(() => new THREE.Vector4());
     this.fahrtMeer = { value: 0 };
     this.meerZeit = { value: 0 };
-    this.meerSpiegel = { value: new THREE.Color(1, 1, 1) };
-    const material = mitDunst(new THREE.MeshStandardMaterial({ color: 0x0f5a86, roughness: 0.08, metalness: 0 }), {
-      name: 'meer',
-      uniforms: { uWelle: { value: this.wellenWerte }, uFahrtMeer: this.fahrtMeer, uMeerZeit: this.meerZeit, uMeerSpiegel: this.meerSpiegel },
-      kopf: MEER_KOPF,
-      ersetzen: [
-        ['#include <color_fragment>', `#include <color_fragment>
-{
-  // Wo der Wind das Wasser aufraut, ist es dunkler und tiefer blau.
+    this.meerFarben = [{ value: new THREE.Color() }, { value: new THREE.Color() }, { value: new THREE.Color() }];
+    this.glanzRichtung = { value: new THREE.Vector3(0, 1, 0) };
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        ...DUNST,
+        uWelle: { value: this.wellenWerte }, uFahrtMeer: this.fahrtMeer, uMeerZeit: this.meerZeit,
+        uNah: this.meerFarben[0], uFern: this.meerFarben[1], uHell: this.meerFarben[2], uGlanz: this.glanzRichtung,
+      },
+      vertexShader: `
+varying vec3 vWelt;
+void main() {
+  vec4 w = modelMatrix * vec4(position, 1.0);
+  vWelt = w.xyz;
+  gl_Position = projectionMatrix * viewMatrix * w;
+}`,
+      fragmentShader: `
+${MEER_KOPF}
+uniform samplerCube uHimmel;
+uniform float uDunst;
+uniform vec3 uNah;
+uniform vec3 uFern;
+uniform vec3 uHell;
+uniform vec3 uGlanz;
+varying vec3 vWelt;
+void main() {
+  vec3 blick = vWelt - cameraPosition;
+  float weite = length(blick);
+  vec3 v = blick / weite;
   vec2 p = vec2(vWelt.x + uFahrtMeer, vWelt.z);
-  diffuseColor.rgb *= mix(1.15, 0.8, meerWind(p));
-}`],
-        ['#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-float meerWeite = length(vWelt - cameraPosition);
-roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite));`],
-        ['#include <normal_fragment_maps>', `{
-  vec3 nWelt = meerNormale(vec2(vWelt.x + uFahrtMeer, vWelt.z));
-  normal = normalize((viewMatrix * vec4(nWelt, 0.0)).xyz);
-}`],
-        // Tagsüber spiegelt das Meer den blassen Horizont zu hell; ein Hauch
-        // Blau in der Spiegelung macht es tiefer, wie durch einen Polfilter.
-        ['#include <lights_fragment_end>', 'radiance *= uMeerSpiegel;\n#include <lights_fragment_end>'],
-      ],
+  vec3 n = meerNormale(p);
+  float fern = smoothstep(60.0, 3500.0, weite);
+  vec3 c = mix(uNah, uFern, pow(fern, 0.6));
+  c *= mix(1.08, 0.9, meerWind(p));
+  // Zum Horizont spiegelt das Wasser den Himmel.
+  vec3 r = reflect(v, n);
+  vec3 himmelR = textureCube(uHimmel, normalize(vec3(r.x, abs(r.y) + 0.02, r.z))).rgb;
+  float fres = pow(1.0 - max(dot(-v, n), 0.0), 5.0);
+  c = mix(c, min(himmelR, vec3(0.9)), clamp(fres * 0.7, 0.0, 0.45));
+  // Flanken, die zur Kamera kippen, heller; abgewandte dunkler; in Stufen.
+  float kipp = dot(n.xz, -normalize(v.xz)) * 14.0;
+  c *= 1.0 + 0.14 * smoothstep(0.25, 0.4, kipp) - 0.14 * smoothstep(-0.25, -0.4, kipp);
+  // Glitzer: harte Funken.
+  float g = dot(r, uGlanz);
+  float funke = smoothstep(0.972, 0.978, g) * (1.0 - fern * 0.7);
+  c = mix(c, uHell * 1.3, funke);
+  // Dunst wie bei den anderen Flächen.
+  vec3 himmel = textureCube(uHimmel, normalize(vec3(v.x, max(v.y, 0.0) + 0.012, v.z))).rgb;
+  float dunst = 1.0 - exp(-weite * uDunst);
+  c = mix(c, min(himmel, vec3(1.0 / max(1.0 - dunst, 0.02))), dunst);
+  gl_FragColor = vec4(c, 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`,
     });
     const meer = new THREE.Mesh(new THREE.PlaneGeometry(60000, 25000), material);
     meer.rotation.x = -Math.PI / 2;
     meer.position.set(0, MEER, -12500 + 60);
     this.szene.add(meer);
+  }
+
+  // Dicke Haufenwolken über dem Horizont, die langsam ziehen.
+  wolkenBauen() {
+    const kugel = new THREE.IcosahedronGeometry(1, 3);
+    // Wolken haben einen flachen Boden.
+    const kp = kugel.attributes.position;
+    for (let i = 0; i < kp.count; i++) kp.setY(i, Math.max(kp.getY(i), -0.35));
+    kugel.computeVertexNormals();
+    this.wolkenHell = mitDunst(toon({ color: 0xffffff, emissive: 0x9fc4ec, emissiveIntensity: 0.55 }), { name: 'wolke' });
+    this.wolken = [];
+    const r = zufall(91);
+    for (let i = 0; i < 9; i++) {
+      const wolke = new THREE.Group();
+      const breite = 260 + r() * 420;
+      for (let j = 0, n = 4 + Math.floor(r() * 4); j < n; j++) {
+        const t = j / (n - 1) - 0.5;
+        const ball = new THREE.Mesh(kugel, this.wolkenHell);
+        const g = breite * (0.22 + 0.2 * (1 - Math.abs(t) * 1.6) + r() * 0.08);
+        ball.scale.set(g * 1.2, g, g);
+        ball.position.set(t * breite * 1.3, g * 0.35 + r() * g * 0.2, (r() - 0.5) * g);
+        wolke.add(ball);
+      }
+      const z = -3500 - r() * 7000;
+      wolke.position.set(0, MEER + 30 + r() * 0.035 * -z, z);
+      this.szene.add(wolke);
+      this.wolken.push({ wolke, x: (r() - 0.5) * 16000, tempo: 2 + r() * 4 });
+    }
   }
 
   // Steilküste als Höhenfeld: eine Hochfläche mit Macchia, die zum Meer hin
@@ -550,8 +774,8 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
     // Farben nach Steilheit: Fels in den Wänden, Macchia oben, Schaum am Fuß.
     const nrm = geo.attributes.normal;
     const farben = [];
-    const fels = new THREE.Color(0.4, 0.3, 0.21), hell = new THREE.Color(0.6, 0.5, 0.37);
-    const gruen = new THREE.Color(0.08, 0.11, 0.05), trocken = new THREE.Color(0.22, 0.21, 0.12);
+    const fels = new THREE.Color(0xc0805a), hell = new THREE.Color(0xeab984);
+    const gruen = new THREE.Color(0x3c8c3a), trocken = new THREE.Color(0x9ea24c);
     const c = new THREE.Color(), d = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i) / breite, y = pos.getY(i), z = pos.getZ(i) / tiefe;
@@ -559,7 +783,7 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
       // Schichten im Kalkstein, dazu dunkle Rinnen, wo Wasser herabläuft.
       const w = Math.atan2(z, x);
       c.copy(fels).lerp(hell, rauschen((w / Math.PI) * 12, y / 7, 24, seed + 7));
-      c.multiplyScalar(0.6 + 0.55 * rauschen((w / Math.PI) * 180, y / 30, 360, seed + 8));
+      c.multiplyScalar(0.8 + 0.3 * rauschen((w / Math.PI) * 180, y / 30, 360, seed + 8));
       d.copy(gruen).lerp(trocken, glatt(0.35, 0.75, fbm(x * 30, z * 30, 1 << 20, seed + 9, 4)));
       c.lerp(d, 1 - glatt(0.25, 0.55, steil));
       farben.push(c.r, c.g, c.b);
@@ -569,7 +793,7 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
   }
 
   fernBauen() {
-    this.landMaterial = mitDunst(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }), { name: 'land' });
+    this.landMaterial = mitDunst(toon({ vertexColors: true }), { name: 'land' });
     // x wandert mit der Fahrt und läuft nach `periode` Metern um.
     this.ferne = [];
     const setze = (mesh, x, z, periode) => {
@@ -612,10 +836,10 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
     const c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const y = pos.getY(i);
-      c.setRGB(0.27, 0.23, 0.19).lerp(new THREE.Color(0.44, 0.39, 0.31), rauschen(y / 3, pos.getX(i) / 7, 1 << 20, seed + 3));
+      c.set(0xb27650).lerp(new THREE.Color(0xdca472), rauschen(y / 3, pos.getX(i) / 7, 1 << 20, seed + 3));
       // Nass und dunkel an der Wasserlinie, oben etwas Grün.
-      c.multiplyScalar(0.55 + 0.45 * glatt(0, 4, y));
-      c.lerp(new THREE.Color(0.14, 0.18, 0.08), glatt(0.6, 0.85, nrm.getY(i)) * glatt(hoehe * 0.6, hoehe, y));
+      c.multiplyScalar(0.6 + 0.4 * glatt(0, 4, y));
+      c.lerp(new THREE.Color(0x4a9a3c), glatt(0.6, 0.85, nrm.getY(i)) * glatt(hoehe * 0.6, hoehe, y));
       farben.push(c.r, c.g, c.b);
     }
     geo.setAttribute('color', new THREE.Float32BufferAttribute(farben, 3));
@@ -653,6 +877,7 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
         const fels = new THREE.Mesh(geo, this.landMaterial);
         fels.position.set(x + versatz, MEER, z);
         fels.rotation.y = r() * 6.28;
+        umreissen(fels, 1.6);
         const ring = new THREE.Mesh(new THREE.RingGeometry(1, 2.8, 64, 4), schaum);
         ring.rotation.x = -Math.PI / 2;
         ring.position.set(x + versatz, MEER + 0.4, z);
@@ -678,21 +903,21 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
     // Straße
     const strTex = strassenTextur(this.renderer);
     strTex.repeat.set(laenge / 18, 1);
-    const strasse = new THREE.Mesh(new THREE.PlaneGeometry(laenge, STRASSE * 2), new THREE.MeshStandardMaterial({ map: strTex, roughness: 0.92, envMapIntensity: 0.55 }));
+    const strasse = new THREE.Mesh(new THREE.PlaneGeometry(laenge, STRASSE * 2), toon({ map: strTex, color: 0xa3acc8 }));
     strasse.rotation.x = -Math.PI / 2;
     strasse.receiveShadow = true;
     nah.add(strasse);
 
     // Schotterstreifen zu beiden Seiten.
     const schotter = (breite, z, farbe) => {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(laenge, breite), new THREE.MeshStandardMaterial({ color: farbe, map: korn(laenge / 8, breite / 8), roughness: 1 }));
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(laenge, breite), toon({ color: farbe, map: korn(laenge / 8, breite / 8) }));
       m.rotation.x = -Math.PI / 2;
       m.position.set(0, -0.01, z);
       m.receiveShadow = true;
       nah.add(m);
     };
-    schotter(-STRASSE - PLANKE + 0.6, (PLANKE - 0.6 - STRASSE) / 2, 0x9a907c);
-    schotter(1.6, STRASSE + 0.7, 0x7d7464);
+    schotter(-STRASSE - PLANKE + 0.6, (PLANKE - 0.6 - STRASSE) / 2, 0xd8c8a4);
+    schotter(1.6, STRASSE + 0.7, 0xc2ae88);
 
     // Gelände als Höhenfeld mit Eckfarben.
     const gelaende = (tiefe, z0, nx, nz, hoeheBei, farbeBei, name) => {
@@ -713,7 +938,7 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
         farben.push(c.r, c.g, c.b);
       }
       geo.setAttribute('color', new THREE.Float32BufferAttribute(farben, 3));
-      const m = new THREE.Mesh(geo, mitDunst(new THREE.MeshStandardMaterial({ vertexColors: true, map: korn(laenge / 8, tiefe / 8), roughness: 1 }), { name }));
+      const m = new THREE.Mesh(geo, mitDunst(toon({ vertexColors: true, map: korn(laenge / 8, tiefe / 8) }), { name }));
       m.receiveShadow = true;
       nah.add(m);
       return m;
@@ -722,8 +947,8 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
     // Wo die Klippe abbricht: wandert mit dem Gelände um ein paar Meter.
     const kante = (x) => KANTE + (fbm(x / 24, 0.5, PERIODE / 24, 31, 3) - 0.5) * 5;
     this.kanteBei = kante;
-    const felsFarbe = (c, x, y) => c.setRGB(0.5, 0.45, 0.37).lerp(new THREE.Color(0.7, 0.64, 0.53), rauschen(y / 2.5, x / 9, PERIODE / 9, 17));
-    const macchia = (c, x, z) => c.setRGB(0.15, 0.17, 0.08).lerp(new THREE.Color(0.44, 0.37, 0.22), glatt(0.35, 0.65, fbm(x / 6, z / 6, PERIODE / 6, 12, 4)));
+    const felsFarbe = (c, x, y) => c.set(0xc48a5c).lerp(new THREE.Color(0xecbd88), rauschen(y / 2.5, x / 9, PERIODE / 9, 17));
+    const macchia = (c, x, z) => c.set(0x4f9a3a).lerp(new THREE.Color(0xb4ab55), glatt(0.35, 0.65, fbm(x / 6, z / 6, PERIODE / 6, 12, 4)));
 
     // Meerseite: Kuppe hinter der Leitplanke, dann die Wand hinunter ins Meer.
     gelaende(70, PLANKE - 35 + 0.3, 288, 70, (x, z) => {
@@ -740,7 +965,7 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
       const fels = new THREE.Color();
       felsFarbe(fels, x, y);
       c.lerp(fels, glatt(0.2, 0.45, steil));
-      if (z > PLANKE - 1.2) c.setRGB(0.58, 0.54, 0.46);
+      if (z > PLANKE - 1.2) c.set(0xd8c8a4);
     }, 'klippe');
 
     // Bergseite: Graben, dann der Hang hinauf zur Kamera.
@@ -754,11 +979,11 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
       const fels = new THREE.Color();
       felsFarbe(fels, x, y);
       c.lerp(fels, glatt(0.15, 0.35, steil) * 0.8);
-      if (z < STRASSE + 2.2) c.setRGB(0.42, 0.39, 0.33);
+      if (z < STRASSE + 2.2) c.set(0xb39d78);
     }, 'hang');
 
     // Leitplanke: Stahlprofil mit zwei Sicken (W-Profil) auf Pfosten alle 4 m.
-    const stahl = new THREE.MeshStandardMaterial({ color: 0xb4b9be, metalness: 0.85, roughness: 0.42, side: THREE.DoubleSide });
+    const stahl = toon({ color: 0xe6ebf2, side: THREE.DoubleSide });
     const profil = [];
     const stufen = 16;
     for (let i = 0; i <= stufen; i++) {
@@ -782,9 +1007,15 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
     plankeGeo.setAttribute('position', new THREE.Float32BufferAttribute(ecken, 3));
     plankeGeo.setIndex(flaechen);
     plankeGeo.computeVertexNormals();
-    nah.add(new THREE.Mesh(plankeGeo, stahl));
+    const planke = new THREE.Mesh(plankeGeo, stahl);
+    nah.add(planke);
+    // Dunkle Unterkante als Strich, wie gezeichnet.
+    const kanteUnten = new THREE.Mesh(new THREE.BoxGeometry(laenge, 0.035, 0.07), new THREE.MeshBasicMaterial({ color: 0x3a4660 }));
+    kanteUnten.position.set(0, PLANKE_UNTEN, PLANKE + 0.005);
+    this.plankenStrich = kanteUnten.material;
+    nah.add(kanteUnten);
     const pfostenZahl = laenge / 4;
-    const pfosten = new THREE.InstancedMesh(new THREE.BoxGeometry(0.1, PLANKE_OBEN + 0.25, 0.12), new THREE.MeshStandardMaterial({ color: 0x8e9398, metalness: 0.7, roughness: 0.55 }), pfostenZahl);
+    const pfosten = new THREE.InstancedMesh(new THREE.BoxGeometry(0.1, PLANKE_OBEN + 0.25, 0.12), toon({ color: 0x9aa4b6 }), pfostenZahl);
     // Rückstrahler auf jedem zweiten Pfosten, nachts im Scheinwerferlicht hell.
     const strahler = new THREE.InstancedMesh(new THREE.BoxGeometry(0.06, 0.1, 0.01), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0 }), pfostenZahl / 2);
     this.strahler = strahler.material;
@@ -813,7 +1044,7 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
       bp.setXYZ(i, x * k, Math.max(-0.2, y * k), z * k);
       bn.setXYZ(i, x, y + 0.3, z);
       // Innen und unten dunkler, wie Laub, das sich selbst beschattet.
-      const hell = (0.35 + 0.65 * glatt(-0.4, 0.9, y)) * (0.7 + 0.3 * rauschen(x * 4 + 1, z * 4 + y * 3, 1 << 20, 6));
+      const hell = (0.6 + 0.4 * glatt(-0.4, 0.9, y)) * (0.8 + 0.2 * rauschen(x * 4 + 1, z * 4 + y * 3, 1 << 20, 6));
       buschFarben.push(hell, hell, hell);
     }
     busch.normalizeNormals();
@@ -870,24 +1101,68 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
         }
       }
       nah.add(im);
+      return im;
     };
-    setzen(busch, new THREE.MeshStandardMaterial({ roughness: 0.9, vertexColors: true }), buesche, (c, rr) =>
-      c.setRGB(0.06, 0.09, 0.035).lerp(new THREE.Color(0.2, 0.2, 0.08), rr() ** 2));
-    setzen(stein, new THREE.MeshStandardMaterial({ roughness: 0.95 }), steine, (c, rr) =>
-      c.setRGB(0.33, 0.29, 0.24).multiplyScalar(0.7 + rr() * 0.45));
+    umreissen(setzen(busch, mitWind(toon({ vertexColors: true }), 0.06), buesche, (c, rr) =>
+      c.set(0x2f8a34).lerp(new THREE.Color(0x8fbf3e), rr() ** 2)), 1.5, 0.06);
+    umreissen(setzen(stein, toon({}), steine, (c, rr) =>
+      c.set(0xc9b49a).multiplyScalar(0.8 + rr() * 0.3)), 1.3);
     // Trockene Grasbüschel am Hang.
     const halm = new THREE.ConeGeometry(0.018, 1, 3, 1, true);
     halm.translate(0, 0.5, 0);
     const gras = [];
     for (let i = 0; i < 420; i++) {
-      const x0 = (r() - 0.5) * PERIODE, z0 = STRASSE + 2.6 + r() ** 1.5 * 14;
+      const x0 = (r() - 0.5) * PERIODE, z0 = STRASSE + 2.6 + r() ** 1.5 * 4;
       for (let j = 0; j < 7; j++) {
         const z = z0 + (r() - 0.5) * 0.25;
-        gras.push([x0 + (r() - 0.5) * 0.25, Math.max(0, z - STRASSE - 2.3) * 0.16 - 0.03, z, 1, 0.12 + r() * 0.22, 1]);
+        gras.push([x0 + (r() - 0.5) * 0.25, Math.max(0, z - STRASSE - 2.3) * 0.16 - 0.03, z, 1, 0.1 + r() * 0.16, 1]);
       }
     }
-    setzen(halm, new THREE.MeshStandardMaterial({ roughness: 1 }), gras, (c, rr) =>
-      c.setRGB(0.36, 0.31, 0.17).lerp(new THREE.Color(0.17, 0.19, 0.08), rr()), 0.9);
+    setzen(halm, mitWind(toon({}), 0.35), gras, (c, rr) =>
+      c.set(0xd2bd5e).lerp(new THREE.Color(0x6fa33c), rr()), 0.9);
+  }
+
+  // Fahrtwind: helle Striche, die am Auto vorbei nach hinten fliegen, wie in
+  // einem Zeichentrickfilm. Je schneller, desto deutlicher.
+  fahrtwindBauen() {
+    const c = leinwand(128, 4);
+    const g = c.getContext('2d');
+    const v = g.createLinearGradient(0, 0, 128, 0);
+    v.addColorStop(0, 'rgba(255,255,255,0)');
+    v.addColorStop(0.75, 'rgba(255,255,255,0.9)');
+    v.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = v;
+    g.fillRect(0, 0, 128, 4);
+    const tex = new THREE.CanvasTexture(c);
+    const geo = new THREE.PlaneGeometry(1, 1);
+    this.striche = [];
+    const r = (this.windZufall = zufall(5));
+    for (let i = 0; i < 9; i++) {
+      const strich = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0, color: 0xffffff }));
+      strich.renderOrder = 2;
+      this.szene.add(strich);
+      this.striche.push(strich);
+      this.strichSetzen(strich, -12 + r() * 16);
+    }
+  }
+
+  strichSetzen(strich, x) {
+    const r = this.windZufall;
+    const ueber = r() < 0.35;
+    // Über dem Dach oder an der Flanke vorbei, ein Stück vor dem Auto.
+    strich.position.set(x, ueber ? 1.45 + r() * 0.5 : 0.2 + r() * 0.85, SPUR + (ueber ? 0 : 1.05 + r() * 0.3));
+    strich.scale.set(1.6 + r() * 2.8, 0.05 + r() * 0.04, 1);
+    strich.userData.tempo = 1 + r() * 0.5;
+  }
+
+  fahrtwind(s) {
+    const deutlich = glatt(12, 28, this.tempo) * 0.85;
+    for (const strich of this.striche) {
+      strich.position.x -= s * (this.tempo * 0.9 * strich.userData.tempo + 6);
+      if (strich.position.x < -9) this.strichSetzen(strich, 3 + this.windZufall() * 4);
+      // Am Anfang und Ende der Bahn ein- und ausblenden.
+      strich.material.opacity = deutlich * glatt(4, 2, strich.position.x) * glatt(-9, -5, strich.position.x);
+    }
   }
 
   // Möwen, die mit dem Auto über dem Abgrund segeln.
@@ -907,8 +1182,8 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
       0.75, 0.77, 0.8, 0.75, 0.77, 0.8, 0.08, 0.08, 0.09,
     ], 3));
     fluegel.computeVertexNormals();
-    const weiss = new THREE.MeshStandardMaterial({ color: 0xf2f2f0, roughness: 0.8 });
-    const fluegelMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide });
+    const weiss = toon({ color: 0xffffff });
+    const fluegelMat = toon({ vertexColors: true, side: THREE.DoubleSide });
     this.moewen = [];
     const r = zufall(77);
     for (let i = 0; i < 4; i++) {
@@ -971,7 +1246,9 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
     this.aufheller = new THREE.DirectionalLight(0x9fb4ff, 0);
     this.aufheller.position.set(-25, 18, 40);
     this.aufheller.target.position.set(0, 0.6, SPUR);
-    this.szene.add(sonne, sonne.target, this.aufheller, this.aufheller.target);
+    // Himmel von oben, warmer Boden von unten: füllt die Schatten farbig.
+    this.hemi = new THREE.HemisphereLight(0xcfe8ff, 0x9a7a52, 1.2);
+    this.szene.add(sonne, sonne.target, this.aufheller, this.aufheller.target, this.hemi);
   }
 
   stimmungSetzen(dunkel) {
@@ -981,22 +1258,27 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
     const richtungSonne = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - hoehe), THREE.MathUtils.degToRad(180 - richtung));
     for (const himmel of [this.himmel, this.umgebungHimmel]) {
       const u = himmel.material.uniforms;
-      u.sunPosition.value.copy(richtungSonne);
-      u.turbidity.value = s.trueb;
-      u.rayleigh.value = s.rayleigh;
-      u.mieCoefficient.value = s.mie;
-      u.mieDirectionalG.value = s.mieG;
-      u.cloudCoverage.value = s.wolken;
-      u.cloudScale.value = 0.00028;
-      u.cloudSpeed.value = 0.00004;
-      u.cloudElevation.value = 0.35;
-      u.cloudDensity.value = 0.45;
+      u.uOben.value.set(s.himmel[0]);
+      u.uMitte.value.set(s.himmel[1]);
+      u.uHorizont.value.set(s.himmel[2]);
+      u.uSonne.value.copy(richtungSonne);
+      u.uSonnenFarbe.value.set(s.sonnenFarbe);
+      u.uScheibe.value = himmel === this.himmel ? s.scheibe : 0;
     }
+    this.hemi.color.set(s.hemi[0]);
+    this.hemi.groundColor.set(s.hemi[1]);
+    this.hemi.intensity = s.hemi[2];
+    this.meerFarben[0].value.set(s.meer[0]);
+    this.meerFarben[1].value.set(s.meer[1]);
+    this.meerFarben[2].value.set(s.meer[2]);
+    this.glanzRichtung.value.set(...s.glanz).normalize();
+    this.wolkenHell.color.set(s.wolke[0]);
+    this.wolkenHell.emissive.set(s.wolke[1]);
+    UMRISS.uFarbe.value.set(s.umriss);
     this.renderer.toneMappingExposure = s.belichtung;
-    this.sonne.color.setRGB(...s.licht);
+    this.sonne.color.set(s.licht);
     this.sonne.intensity = s.lichtStaerke;
     this.aufheller.intensity = s.aufheller;
-    this.meerSpiegel.value.setRGB(...s.meerSpiegel);
     this.schaumFarbe.value.setRGB(...s.schaum);
     this.strahler.emissiveIntensity = dunkel ? 0.8 : 0;
     this.sonne.position.copy(richtungSonne).multiplyScalar(60).add(this.sonne.target.position);
@@ -1047,22 +1329,27 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
 
     this.lampen = [];
     this.rueckLichter = [];
-    const lack = new THREE.Color('#142850');
+    const lackToon = mitGlanz(toon({ color: 0x24479c }));
+    const scheibeToon = mitGlanz(toon({ color: 0x1a2236 }));
+    const umrisse = [];
     modell.traverse((o) => {
       if (!o.isMesh) return;
       o.castShadow = true;
       const m = o.material;
       switch (m.name) {
         case 'paint':
-          m.color.copy(lack);
-          m.metalness = 0.65;
-          m.roughness = 0.32;
-          m.clearcoat = 1;
-          m.clearcoatRoughness = 0.03;
-          m.envMapIntensity = 1.3;
+          // Lack in Stufen wie gezeichnet, dazu ein harter Glanzstreifen.
+          o.material = lackToon;
+          umrisse.push(o);
           break;
         case 'window':
-          m.envMapIntensity = 1.4;
+          o.material = scheibeToon;
+          umrisse.push(o);
+          break;
+        case 'plastic':
+        case 'full_black':
+        case 'silver':
+          umrisse.push(o);
           break;
         case 'glass':
         case 'lights':
@@ -1082,16 +1369,18 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
           this.rueckLichter.push(m);
           break;
         case 'Material':
-          // Eingebackener Kontaktschatten unter dem Auto.
+          // Eingebackener Kontaktschatten unter dem Auto, unbeleuchtet.
           o.castShadow = false;
-          m.depthWrite = false;
-          m.polygonOffset = true;
-          m.polygonOffsetFactor = -2;
-          m.polygonOffsetUnits = -2;
+          o.material = new THREE.MeshBasicMaterial({
+            color: 0x000000, alphaMap: null, map: m.map, transparent: true, opacity: 0.85, depthWrite: false,
+            polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+          });
           o.renderOrder = -1;
           break;
       }
     });
+
+    for (const o of umrisse) umreissen(o, 1.4);
 
     // Räder. Im Modell liegen beide Räder einer Achse in einem Mesh, und die
     // vorderen sind eingeschlagen: um eine gemeinsame Achse gedreht eierten
@@ -1130,6 +1419,7 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
           const teil = new THREE.Mesh(geo, t.material);
           teil.castShadow = true;
           (t.material.name === 'Material.001' ? sattel : nabe).add(teil);
+          if (t === reifen) umreissen(teil, 1.4);
         }
         // Gerade gestellt sitzt der Reifen auf der Straße auf.
         nabe.position.y = sattel.position.y = radius;
@@ -1171,6 +1461,7 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
     this.renderer.setPixelRatio(skala);
     this.renderer.setSize(breite, hoehe, false);
     this.bildgroesse = [breite, hoehe];
+    UMRISS.uPixel.value.set(2 / (breite * skala), 2 / (hoehe * skala));
   }
 
   // Bildausschnitt wie aus einer Drohne über dem Hang: das Auto in der Mitte
@@ -1247,7 +1538,8 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
     }
     this.fahrtMeer.value = this.fahrt % WELLEN_L;
     this.meerZeit.value = this.zeit % 5000;
-    this.himmel.material.uniforms.time.value = this.zeit;
+    WIND.uWind.value = this.zeit % 1000;
+    for (const w of this.wolken) w.wolke.position.x = ((((w.x + this.zeit * w.tempo) % 16000) + 24000) % 16000) - 8000;
 
     // Kamera: ruhige Fahraufnahme, leichtes Schwanken wie von einer Drohne.
     const t = this.zeit;
@@ -1259,6 +1551,7 @@ roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(250.0, 7000.0, meerWeite)
     ];
     this.kameraSetzen(z.frei, z.neigung, schwanken);
     this.moewenFliegen(t);
+    this.fahrtwind(s);
 
     if (this.auto) {
       // Einfahrt: das Auto holt die Kamera von links ein.
