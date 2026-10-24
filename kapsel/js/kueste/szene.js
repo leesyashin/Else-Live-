@@ -209,8 +209,14 @@ export class Kueste {
       ziel.z + Math.cos(drehung) * abstand,
     );
     k.lookAt(ziel);
-    const cx = frei + breite / 2;
-    const cy = H * 0.68;
+    // Den Ausschnitt so legen, dass das Auto selbst (nicht der Zielpunkt vor
+    // ihm) in der Mitte der freien Fläche steht, bei 70 % der Höhe; hochkant
+    // fiele es sonst links aus dem Bild.
+    k.updateMatrixWorld();
+    const v = new THREE.Vector3(0, 0.6, SPUR).applyMatrix4(k.matrixWorldInverse);
+    const f = H / 2 / tanHalb;
+    const cx = frei + breite / 2 - (v.x / -v.z) * f;
+    const cy = H * 0.7 + (v.y / -v.z) * f;
     const fw = 2 * Math.max(cx, W - cx);
     const fh = 2 * Math.max(cy, H - cy);
     k.fov = THREE.MathUtils.radToDeg(2 * Math.atan(tanHalb * (fh / H)));
