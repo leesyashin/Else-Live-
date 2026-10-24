@@ -55,38 +55,109 @@ const float LINKS = -1.7;
 const float RECHTS = 1.55;
 const vec3 MITTE = vec3(0.0, 0.8, 0.0);
 const float NEIGUNG = 0.1;
-// Grenze zwischen Papier und Asche
-const float ASCHE = RECHTS - 0.17;
+// So weit brennt er herunter, der Rest bleibt als Stummel.
+const float STUMMEL = LINKS + 0.55;
+// Ein Leben dauert so viele Sekunden (siehe leben()).
+const float LEBEN = 170.0;
+
+// Zustand im Lebenslauf, einmal pro Bildpunkt in leben() gesetzt.
+float gFront;   // Grenze zwischen Papier und Glut (lokales x)
+float gAsche;   // Länge der Aschekappe vor der Glut
+float gGlut;    // 0 aus … 1 glüht
+float gRauch;   // Stärke des Rauchs aus der Spitze
+float gZug;     // ein Zug: Glut heller, Rauch dichter
+float gSchnitt; // alles hinter diesem x fehlt noch bzw. ist schon zerfallen
+float gHaufen;  // Größe des Aschehaufens am Boden
+float gFlocken; // Ascheflocken in der Luft, Stärke
+float gSteigen; // +1 Flocken steigen (Aufbau), -1 sie fallen
+float gFlockX;  // wo die Flocken fliegen (lokales x)
+float gRing;    // Alter des aktuellen Rauchrings in Sekunden, < 0 keiner
+
+// Der Lebenslauf: aus dem Haufen bildet sich ein neuer Joint, er wird
+// angezündet, brennt langsam ab, die Asche fällt ab und zu herunter, er
+// verglimmt, und der Stummel zerfällt wieder zu Asche.
+void leben() {
+  float z = mod(uZeit, LEBEN);
+  float aufbau = sanft(z / 16.0);
+  float an = sanft((z - 17.0) / 3.0);
+  float f = sanft((z - 20.0) / 115.0);
+  float aus = sanft((z - 135.0) / 10.0);
+  float zerfall = sanft((z - 146.0) / 20.0);
+
+  gFront = mix(RECHTS, STUMMEL, f);
+  // Die Kappe wächst und bricht viermal ab
+  float kappe = fract(f * 4.0 + 0.15);
+  gAsche = an * (0.03 + 0.17 * kappe * step(0.001, f));
+  gGlut = an * (1.0 - aus);
+  gRauch = an * (1.0 - sanft((z - 135.0) / 16.0));
+  // Alle 23 Sekunden ein Zug
+  gZug = gGlut * pow(max(sin((z - 20.0) * 0.273), 0.0), 16.0);
+  float ende = gFront + gAsche;
+  gSchnitt = z < 20.0 ? mix(LINKS - 0.06, RECHTS + 0.06, aufbau) : mix(ende + 0.06, LINKS - 0.06, zerfall);
+  gHaufen = z < 20.0 ? 1.0 - aufbau : mix(0.25 + 0.6 * f, 1.0, zerfall);
+  // Flocken: beim Aufbau steigen sie, beim Zerfall und wenn die Kappe
+  // bricht fallen sie.
+  float bruch = (1.0 - smoothstep(0.0, 0.05, kappe)) * step(0.02, f) * (1.0 - aus);
+  if (z < 20.0) {
+    gFlocken = sin(3.1416 * clamp(z / 16.0, 0.0, 1.0));
+    gSteigen = 1.0;
+    gFlockX = gSchnitt;
+  } else if (z > 146.0) {
+    gFlocken = sin(3.1416 * clamp((z - 146.0) / 20.0, 0.0, 1.0));
+    gSteigen = -1.0;
+    gFlockX = gSchnitt;
+  } else {
+    gFlocken = bruch;
+    gSteigen = -1.0;
+    gFlockX = ende;
+  }
+  // Rauchringe alle 19 Sekunden, solange er brennt
+  float alter = mod(z - 26.0, 19.0);
+  gRing = (z > 26.0 && z < 130.0) ? alter : -1.0;
+}
 
 vec3 lokal(vec3 p) {
   vec3 j = p - MITTE;
   j.xy = drehung(NEIGUNG) * j.xy;
   return j;
 }
-vec3 spitze() { return MITTE + vec3(cos(NEIGUNG), sin(NEIGUNG), 0.0) * (RECHTS + 0.02); }
+vec3 welt(float x) { return MITTE + vec3(cos(NEIGUNG), sin(NEIGUNG), 0.0) * x; }
+vec3 spitze() { return welt(gFront + gAsche * 0.6); }
 
 // Kegel: schmal am Filter, nach vorn weiter, die Asche schrumpft etwas.
 float radius(float x) {
   float u = clamp((x - LINKS) / (RECHTS - LINKS), 0.0, 1.0);
   float r = mix(0.115, 0.215, sanft(u * 1.2));
-  return r * (1.0 - 0.07 * smoothstep(ASCHE - 0.01, RECHTS, x));
+  return r * (1.0 - 0.08 * smoothstep(gFront - 0.01, gFront + 0.12, x));
 }
 
-float gMat;   // 0 Papier, 1 Filter, 2 Asche, 3 Glut
+float gMat;   // 0 Papier, 1 Filter, 2 Asche, 3 Glut, 4 Aschehaufen
 
 float joint(vec3 p) {
   vec3 j = lokal(p);
   float w = atan(j.z, j.y);
   float r = radius(j.x);
   // Feine Knitter im Papier
-  r += 0.003 * sin(w * 9.0 + j.x * 7.0) * step(j.x, ASCHE);
+  r += 0.003 * sin(w * 9.0 + j.x * 7.0) * step(j.x, gFront);
   float d = length(j.yz) - r;
-  // Vorn eine unregelmäßige, verkohlte Kante
-  float ende = RECHTS - 0.035 * rauschen3(vec3(j.yz * 14.0, uZeit * 0.05));
+  // Vorn eine unregelmäßige, verkohlte Kante, beim neuen Joint glatt
+  float ende = gFront + gAsche - (0.01 + 0.03 * sanft(gAsche * 20.0)) * rauschen3(vec3(j.yz * 14.0, uZeit * 0.05));
   d = smax(d, j.x - ende, 0.03);
   d = smax(d, LINKS - j.x, 0.012);
-  float grenze = ASCHE + 0.03 * sin(w * 3.0) + 0.02 * rauschen3(vec3(j.yz * 10.0, 1.0));
+  // Entstehen und Zerfallen: eine bröselige Kante wandert am Joint entlang
+  float schnitt = gSchnitt + 0.07 * (rauschen3(vec3(j.yz * 18.0, j.x * 6.0 + uZeit * 0.3)) - 0.5);
+  d = smax(d, j.x - schnitt, 0.015);
+  float grenze = gFront + 0.03 * sin(w * 3.0) + 0.02 * rauschen3(vec3(j.yz * 10.0, 1.0));
   gMat = j.x < LINKS + 0.012 ? 1.0 : j.x > grenze + 0.06 ? 2.0 : j.x > grenze ? 3.0 : 0.0;
+  // Aschehaufen am Boden, flach, mit Krümeln
+  if (gHaufen > 0.01) {
+    float h = gHaufen;
+    vec3 a = p - vec3(0.3, 0.0, 0.0);
+    vec3 rh = vec3(0.6 * h + 0.04, 0.2 * h + 0.01, 0.5 * h + 0.04);
+    float haufen = (length(a / rh) - 1.0) * min(rh.y, rh.z);
+    haufen += 0.02 * h * (rauschen3(p * 14.0) - 0.5) + 0.008 * rauschen3(p * 40.0);
+    if (haufen < d) { d = haufen; gMat = 4.0; }
+  }
   return d;
 }
 
@@ -106,23 +177,66 @@ float studio(vec3 r) {
   return l;
 }
 
-// Glimmen der Glut, flackert langsam.
-float glimmen() { return 0.75 + 0.25 * rauschen3(vec3(uZeit * 1.7, 0.0, 0.0)); }
+// Glimmen der Glut, flackert langsam; beim Zug leuchtet sie auf.
+float glimmen() { return gGlut * (0.75 + 0.25 * rauschen3(vec3(uZeit * 1.7, 0.0, 0.0)) + 0.6 * gZug); }
 
-// Rauchdichte: eine Fahne aus der Spitze, die sich nach oben weitet, pendelt
-// und in Schwaden zerfällt.
-float rauch(vec3 q) {
-  vec3 r = q - spitze();
+// Eine Rauchfahne aus quelle: weitet sich nach oben, pendelt, dreht sich
+// in Schwaden, vom Wind (Neigung) zur Seite gedrückt.
+float fahne(vec3 q, vec3 quelle, float breite, float hoch, float phase) {
+  vec3 r = q - quelle;
   float s = r.y;
-  if (s < -0.05) return 0.0;
-  float cx = 0.12 * s + 0.28 * s * sin(s * 1.4 - uZeit * 0.55);
-  float cz = 0.22 * s * cos(s * 1.1 - uZeit * 0.4);
-  float w = 0.03 + 0.11 * s;
+  if (s < -0.05 || s > hoch) return 0.0;
+  float t = uZeit + phase;
+  float cx = 0.1 * s + 0.3 * s * sin(s * 1.3 - t * 0.5) + 0.35 * uNeigung.x * s;
+  float cz = 0.24 * s * cos(s * 1.05 - t * 0.37);
+  float w = breite + 0.12 * s;
   vec2 dd = vec2(r.x - cx, r.z - cz);
   float kern = exp(-dot(dd, dd) / (w * w));
-  float n = wolke(vec3(r.x * 2.6, s * 1.8 - uZeit * 0.8, r.z * 2.6));
-  float schwaden = smoothstep(0.35, 0.7, n + 0.25 * kern);
-  return kern * schwaden * smoothstep(-0.05, 0.06, s) * smoothstep(2.9, 0.8, s);
+  if (kern < 0.02) return 0.0;
+  // Verwirbelt: die Wolke wird von einer zweiten verschoben
+  vec3 wp = vec3(r.x * 2.4, s * 1.7 - t * 0.7, r.z * 2.4);
+  wp += 0.9 * vec3(rauschen3(wp * 0.6 + t * 0.1), 0.0, rauschen3(wp * 0.6 - 3.7));
+  float n = wolke(wp);
+  // Unten glatt und dünn wie ein Faden, oben zerfasert
+  float faser = mix(0.0, 0.45, smoothstep(0.1, 0.9, s));
+  float schwaden = mix(1.0, smoothstep(0.3, 0.7, n + 0.25 * kern), faser / 0.45);
+  return kern * schwaden * smoothstep(-0.05, 0.06, s) * smoothstep(hoch, hoch * 0.3, s);
+}
+
+// Rauchring: ein Torus, der aus der Glut aufsteigt, sich weitet und zerfließt.
+float ring(vec3 q) {
+  if (gRing < 0.0 || gRing > 11.0) return 0.0;
+  float a = gRing;
+  vec3 m = spitze() + vec3(0.12 * a + 0.2 * uNeigung.x * a, 0.12 + 0.24 * a, 0.0);
+  vec3 r = q - m;
+  r.xy = drehung(0.25 * sin(a * 0.4)) * r.xy;
+  float R = 0.1 + 0.13 * pow(a, 0.7);
+  vec2 tq = vec2(length(r.xz) - R, r.y);
+  float w = 0.035 + 0.018 * a;
+  float dichte = exp(-dot(tq, tq) / (w * w));
+  return dichte * smoothstep(0.0, 0.6, a) * smoothstep(11.0, 4.0, a) * (0.6 + 0.4 * wolke(r * 5.0 + a));
+}
+
+// Ascheflocken: einzelne helle Punkte in einer Säule zwischen Joint und Haufen.
+float flocken(vec3 q) {
+  if (gFlocken < 0.01) return 0.0;
+  vec3 x = welt(gFlockX);
+  float saeule = exp(-pow((q.x - x.x) / 0.35, 2.0)) * exp(-pow(q.z / 0.3, 2.0)) * step(0.0, q.y) * step(q.y, x.y + 0.15);
+  if (saeule < 0.02) return 0.0;
+  vec3 g = q * vec3(11.0, 7.0, 11.0) + vec3(0.0, gSteigen * uZeit * 2.2, 0.0);
+  g.x += 0.4 * sin(q.y * 6.0 + uZeit);
+  return gFlocken * saeule * smoothstep(0.78, 0.86, rauschen3(g));
+}
+
+// Gesamter Rauch und Flocken an einem Punkt.
+float rauch(vec3 q) {
+  float d = (gRauch + 0.8 * gZug) * fahne(q, spitze(), 0.025, 3.0, 0.0);
+  // Zweiter, dünner Faden zieht etwas versetzt hoch und verflicht sich mit dem ersten
+  d += 0.55 * gRauch * fahne(q, spitze() + vec3(0.03, 0.0, 0.0), 0.015, 2.4, 9.0);
+  // Ein schwacher Faden aus dem Filter
+  d += 0.3 * gRauch * fahne(q, welt(LINKS - 0.02), 0.012, 1.4, 4.0);
+  d += 0.9 * ring(q);
+  return d;
 }
 
 // Was die Probe getroffen hat und wie weit weg; verschiedene Treffer in
@@ -142,7 +256,7 @@ vec4 probe(vec2 px) {
   float az = 1.5708 + 0.35 * sin(uZeit * 0.09) + uNeigung.x * 0.35;
   float el = 0.16 + 0.08 * sin(uZeit * 0.11) - uNeigung.y * 0.08;
   float abstand = 6.0 * (1.0 + 0.05 * sin(uZeit * 0.07)) * max(1.0, 1.3 / A);
-  vec3 ziel = vec3(0.3, 1.5, 0.0);
+  vec3 ziel = vec3(0.3, 1.2, 0.0);
   vec3 ro = ziel + abstand * vec3(cos(el) * cos(az), sin(el), cos(el) * sin(az));
   vec3 vor = normalize(ziel - ro);
   vec3 rechts = normalize(cross(vor, vec3(0.0, 1.0, 0.0)));
@@ -158,7 +272,7 @@ vec4 probe(vec2 px) {
   float tEnde = 40.0;
 
   // Nur im Kasten um den Joint marschieren
-  vec3 bmin = vec3(-1.8, 0.5, -0.32), bmax = vec3(1.75, 1.25, 0.32);
+  vec3 bmin = vec3(-1.8, 0.0, -0.5), bmax = vec3(1.75, 1.25, 0.5);
   vec3 t0 = (bmin - ro) / rd, t1 = (bmax - ro) / rd;
   vec3 tk = min(t0, t1), tg = max(t0, t1);
   float tn = max(max(tk.x, tk.y), max(tk.z, 0.0));
@@ -166,7 +280,7 @@ vec4 probe(vec2 px) {
   float t = tn;
   bool treffer = false;
   if (tf > tn) {
-    for (int i = 0; i < 80; i++) {
+    for (int i = 0; i < 96; i++) {
       vec3 q = ro + rd * t;
       float d = joint(q);
       if (d < 0.0012 * t) { treffer = true; break; }
@@ -192,11 +306,11 @@ vec4 probe(vec2 px) {
     vec3 j = lokal(q);
     float w = atan(j.z, j.y);
     // Licht der Glut auf dem Papier davor
-    float schein = exp(-max(ASCHE - j.x, 0.0) * 9.0) * glimmen();
+    float schein = exp(-max(gFront - j.x, 0.0) * 9.0) * glimmen();
     if (mat < 0.5) {
       // Papier: matt, mit gedrehter Klebenaht und angekohltem Rand zur Asche
       float naht = smoothstep(0.06, 0.0, abs(fract(w / 6.2832 + j.x * 0.45) - 0.5) - 0.44);
-      float kohle = smoothstep(ASCHE - 0.12, ASCHE + 0.02, j.x);
+      float kohle = smoothstep(gFront - 0.12, gFront + 0.02, j.x) * step(0.001, gAsche);
       hell = 0.15 + 0.75 * diffus + 0.2 * himmel + 0.35 * auf + 0.15 * studio(r) + 0.2 * glanz;
       hell *= 1.0 - 0.18 * naht;
       hell *= 1.0 - 0.75 * kohle;
@@ -212,14 +326,20 @@ vec4 probe(vec2 px) {
       // Asche: grau, rissig, an den Rissen schimmert die Glut durch
       float riss = smoothstep(0.62, 0.72, rauschen3(vec3(j.yz * 22.0, j.x * 22.0)));
       hell = 0.18 + 0.32 * diffus + 0.12 * auf + 0.1 * rauschen3(q * 40.0);
-      float durch = riss * smoothstep(RECHTS, ASCHE, j.x) * glimmen();
+      float durch = riss * smoothstep(gFront + gAsche, gFront, j.x) * glimmen();
       hell = mix(hell, 0.85, durch);
       farbe = glut;
       menge = durch;
+    } else if (mat < 3.5) {
+      // Glut; ohne Feuer (neu oder verglommen) Papier bzw. dunkle Asche
+      float g = glimmen();
+      float kalt = step(0.001, gAsche) * (0.15 + 0.2 * diffus) + (1.0 - step(0.001, gAsche)) * (0.15 + 0.7 * diffus + 0.35 * auf);
+      hell = mix(kalt, 0.85 + 0.4 * g, min(gGlut, 1.0));
+      farbe = mix(glut, vec3(1.0, 0.85, 0.5), 0.3 * g);
+      menge = min(gGlut, 1.0);
     } else {
-      hell = 0.85 + 0.4 * glimmen();
-      farbe = mix(glut, vec3(1.0, 0.85, 0.5), 0.3 * glimmen());
-      menge = 1.0;
+      // Aschehaufen: grau und körnig
+      hell = 0.12 + 0.3 * diffus + 0.1 * auf + 0.12 * rauschen3(q * 50.0);
     }
     // Weiche Tonkurve: Lichter laufen sanft aus, statt alles auf @ zu drücken
     hell = max(1.0 - exp(-2.0 * hell), 0.13);
@@ -237,7 +357,7 @@ vec4 probe(vec2 px) {
   }
 
   // Rauch als Volumen vor allem, was schon getroffen wurde
-  vec3 rmin = vec3(E.x - 1.4, E.y - 0.05, -1.3), rmax = vec3(E.x + 1.6, E.y + 3.0, 1.3);
+  vec3 rmin = vec3(-2.2, 0.0, -1.3), rmax = vec3(E.x + 1.9, E.y + 3.2, 1.3);
   t0 = (rmin - ro) / rd;
   t1 = (rmax - ro) / rd;
   tk = min(t0, t1);
@@ -245,13 +365,13 @@ vec4 probe(vec2 px) {
   float rn = max(max(tk.x, tk.y), max(tk.z, 0.0));
   float rf = min(min(min(tg.x, tg.y), tg.z), tEnde);
   if (rf > rn) {
-    float schritt = (rf - rn) / 22.0;
+    float schritt = (rf - rn) / 28.0;
     float tr = rn + schritt * rauschen(px);
     float dichte = 0.0;
     float waerme = 0.0;
-    for (int i = 0; i < 22; i++) {
+    for (int i = 0; i < 28; i++) {
       vec3 q = ro + rd * tr;
-      float dd = rauch(q) * schritt * 3.5 * (1.0 - dichte);
+      float dd = (rauch(q) * 3.5 + flocken(q) * 12.0) * schritt * (1.0 - dichte);
       dichte += dd;
       waerme += dd * exp(-(q.y - E.y) * 5.0);
       tr += schritt;
@@ -276,6 +396,7 @@ float ebene(float k) {
 }
 
 void main() {
+  leben();
   vec2 zelle = floor(gl_FragCoord.xy);
   vec2 mitte = (zelle + 0.5) * uZelle;
   vec4 s = vec4(0.0);

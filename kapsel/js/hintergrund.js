@@ -239,8 +239,8 @@ export class Hintergrund {
     this.zeigerZuletzt = -10;
     this.zeigerStaerke = 0;
     this.zeit = 0;
-    // Die Kamera beginnt an einer zufälligen Stelle der Runde.
-    this.asciiZeit = Math.random() * 100;
+    // Der Joint beginnt an einer zufälligen Stelle seines Lebens (170 s, siehe ascii-joint.js).
+    this.asciiZeit = Math.random() * 170;
     this.zelle = ZELLE;
     this.letztes = 0;
     this.mittel = 16.7;
