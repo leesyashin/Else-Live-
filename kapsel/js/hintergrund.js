@@ -5,6 +5,9 @@
 //   in der Farbe des Gesamtstatus.
 // - ascii: ein Porsche 911 GT3 RS als 3D-Modell in Terminal-Zeichen, die
 //   Kamera kreist darum (siehe ascii-porsche.js); der Lack hat die Statusfarbe.
+// - kueste: ein Porsche 911 in Navy fährt eine Küstenstraße entlang, gefilmt
+//   von der Seite mit Blick aufs Meer (three.js, siehe kueste.js). Er läuft
+//   auf einer eigenen WebGL-2-Fläche und wird erst bei Bedarf geladen.
 // Alle folgen der Neigung des iPhones, sind auf 60 fps begrenzt und rechnen
 // auf dem Mac in voller Retina-Auflösung, die bei Bedarf sinkt.
 
@@ -186,7 +189,8 @@ void main() {
 }
 `;
 
-export const STILE = { metall: METALL, lava: LAVA, ascii: ASCII_PORSCHE };
+// Die Küste ist kein einzelner Shader, sondern eine three.js-Szene.
+export const STILE = { metall: METALL, lava: LAVA, ascii: ASCII_PORSCHE, kueste: null };
 
 // Ton (RGB), Tempo, Welle und Puls je Gesamtstatus.
 const STIMMUNG = {
@@ -215,8 +219,12 @@ export class Hintergrund {
     this.stil = 'metall';
     // Mit Maus oder Trackpad (Mac) bis zur vollen Retina-Auflösung, auf dem
     // Handy höchstens die CSS-Auflösung; die Anpassung senkt das bei Bedarf.
-    this.maxSkala = matchMedia('(pointer: fine)').matches ? Math.min(devicePixelRatio || 1, 2) : 1;
-    this.skala = this.maxSkala;
+    // Die Küste ist echtes 3D mit feinen Kanten; dort darf es auch auf dem
+    // Handy etwas mehr sein.
+    const fein = matchMedia('(pointer: fine)').matches;
+    this.maxSkalaFlach = fein ? Math.min(devicePixelRatio || 1, 2) : 1;
+    this.maxSkala3d = Math.min(devicePixelRatio || 1, fein ? 2 : 1.5);
+    this.skala = this.maxSkalaFlach;
     this.status = 'ruhig';
     this.ton = [...STIMMUNG.ruhig.ton];
     this.tempo = STIMMUNG.ruhig.tempo;
@@ -245,6 +253,39 @@ export class Hintergrund {
       this.gl = null;
     });
     canvas.addEventListener('webglcontextrestored', () => this.einrichten());
+    this.kueste = null;
+    this.kuesteFlaeche = null;
+  }
+
+  get maxSkala() {
+    return this.stil === 'kueste' ? this.maxSkala3d : this.maxSkalaFlach;
+  }
+
+  // Eigene Fläche mit WebGL 2 für die Küste; three.js und das Modell kommen
+  // erst jetzt. Gibt false zurück, wenn das Gerät kein WebGL 2 kann.
+  kuesteEinrichten() {
+    if (this.kuesteFlaeche) return true;
+    const flaeche = document.createElement('canvas');
+    flaeche.id = 'glas3d';
+    flaeche.hidden = true;
+    flaeche.setAttribute('aria-hidden', 'true');
+    const kontext = flaeche.getContext('webgl2', { antialias: true, alpha: false, depth: true, stencil: false, powerPreference: 'high-performance' });
+    if (!kontext) return false;
+    this.canvas.after(flaeche);
+    this.kuesteFlaeche = flaeche;
+    import('./kueste.js')
+      .then(({ Kueste }) => {
+        this.kueste = new Kueste(flaeche, kontext);
+        this.groesse();
+      })
+      .catch((fehler) => console.warn('Hintergrund: Küste nicht verfügbar', fehler));
+    return true;
+  }
+
+  flaecheZeigen() {
+    const k = this.an && this.stil === 'kueste';
+    this.canvas.hidden = !this.an || k;
+    if (this.kuesteFlaeche) this.kuesteFlaeche.hidden = !k;
   }
 
   einrichten() {
@@ -283,7 +324,7 @@ export class Hintergrund {
   // Shader werden beim ersten Gebrauch gebaut und dann behalten.
   programmWaehlen() {
     const gl = this.gl;
-    if (!gl) return;
+    if (!gl || this.stil === 'kueste') return;
     if (this.stil === 'ascii') {
       this.programme.ascii ??= { auto: this.programmBauen(ASCII_PORSCHE), zeichen: this.programmBauen(ASCII_ZEICHEN) };
       return;
@@ -297,25 +338,35 @@ export class Hintergrund {
   }
 
   setzeStil(stil) {
-    if (!STILE[stil] || stil === this.stil) return;
+    if (!(stil in STILE) || stil === this.stil) return;
+    const vorher = this.stil;
     this.stil = stil;
     try {
-      this.programmWaehlen();
+      if (stil === 'kueste') {
+        if (this.an && !this.kuesteEinrichten()) throw new Error('kein WebGL 2');
+      } else if (this.an && !this.gl) {
+        if (!this.einrichten()) throw new Error('kein WebGL');
+      } else this.programmWaehlen();
     } catch (fehler) {
       console.warn('Hintergrund: Stil nicht verfügbar', fehler);
+      this.stil = vorher;
     }
+    this.skala = Math.min(this.skala, this.maxSkala);
+    this.flaecheZeigen();
+    if (this.an) this.groesse();
   }
 
   starten() {
     if (this.an) return true;
     try {
-      if (!this.gl && !this.einrichten()) return false;
+      if (this.stil === 'kueste' ? !this.kuesteEinrichten() : !this.gl && !this.einrichten()) return false;
     } catch (fehler) {
       console.warn('Hintergrund: WebGL nicht verfügbar', fehler);
       return false;
     }
     this.an = true;
-    this.canvas.hidden = false;
+    this.flaecheZeigen();
+    this.groesse();
     document.documentElement.classList.add('mit-glas');
     addEventListener('resize', this.groesse);
     this.letztes = performance.now();
@@ -325,7 +376,7 @@ export class Hintergrund {
 
   stoppen() {
     this.an = false;
-    this.canvas.hidden = true;
+    this.flaecheZeigen();
     document.documentElement.classList.remove('mit-glas');
     removeEventListener('resize', this.groesse);
   }
@@ -346,6 +397,10 @@ export class Hintergrund {
   }
 
   groesse() {
+    if (this.stil === 'kueste') {
+      this.kueste?.groesse(innerWidth, innerHeight, this.skala);
+      return;
+    }
     const w = Math.max(1, Math.round(innerWidth * this.skala));
     const h = Math.max(1, Math.round(innerHeight * this.skala));
     if (this.canvas.width !== w || this.canvas.height !== h) {
@@ -358,8 +413,9 @@ export class Hintergrund {
   // Auflösung an die Leistung anpassen: zu langsam -> kleiner, lange flüssig -> größer.
   anpassen(dt) {
     this.mittel = this.mittel * 0.95 + dt * 0.05;
-    if (this.mittel > 19.5 && this.skala > 0.3) {
-      this.skala = Math.max(0.3, this.skala * 0.85);
+    const min = this.stil === 'kueste' ? 0.6 : 0.3;
+    if (this.mittel > 19.5 && this.skala > min) {
+      this.skala = Math.max(min, this.skala * 0.85);
       this.mittel = 16.7;
       this.guteFrames = 0;
       this.groesse();
@@ -376,7 +432,7 @@ export class Hintergrund {
     const dt = jetzt - this.letztes;
     if (dt < 1000 / 60 - 2) return; // auf 60 fps begrenzen
     this.letztes = jetzt;
-    if (document.hidden || !this.gl) return;
+    if (document.hidden || (this.stil === 'kueste' ? !this.kueste : !this.gl)) return;
     // Der ASCII-Film rechnet pro Zeichenzelle; eine kleinere Auflösung spart
     // dort nichts und machte nur die Schrift unscharf.
     if (dt < 100 && this.stil !== 'ascii') this.anpassen(dt);
@@ -395,6 +451,16 @@ export class Hintergrund {
 
     const zeigerZiel = this.zeit - this.zeigerZuletzt < 1.2 ? 1 : 0;
     this.zeigerStaerke += (zeigerZiel - this.zeigerStaerke) * (1 - Math.exp(-s * (zeigerZiel ? 12 : 2.5)));
+    if (this.stil === 'kueste') {
+      this.kueste.zeichnen(s, {
+        tempo: this.tempo,
+        neigung: this.neigung,
+        dunkel: this.dunkel.matches,
+        frei: innerWidth >= BREIT_AB ? SPALTE_RECHTS : 0,
+        ruhe: this.ruhe.matches,
+      });
+      return;
+    }
     if (this.stil === 'ascii') {
       this.asciiZeit += s * (this.ruhe.matches ? 0.4 : 1);
       this.asciiZeichnen();
