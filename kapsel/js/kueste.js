@@ -1,6 +1,7 @@
-// Hintergrund „Küste“: ein Porsche 911 Carrera 4S fährt eine Klippenstraße
-// entlang, gezeichnet wie ein Zeichentrickfilm: Licht in Stufen, satte
-// Farben, dunkle Umrisse, gemalter Himmel mit Wolken, Fahrtwind-Striche. Die Kamera schwebt seitlich über dem Hang, fährt mit
+// Hintergrund „Küste“: ein Porsche 911 Carrera 4S in Navy fährt eine
+// Klippenstraße entlang. Das Auto ist fotografisch, die Welt drumherum
+// gezeichnet wie ein Zeichentrickfilm: Licht in Stufen, satte Farben,
+// dunkle Umrisse, gemalter Himmel mit Wolken, Fahrtwind-Striche. Die Kamera schwebt seitlich über dem Hang, fährt mit
 // und schaut mit langer Brennweite über Auto und Leitplanke hinunter aufs
 // Meer; draußen stehen Felsnadeln in der Brandung, dahinter Steilküsten und
 // Inseln im Dunst, Möwen segeln mit. Hell ist Nachmittag, im Dunkeln geht die
@@ -208,25 +209,6 @@ const STUFEN = (() => {
 })();
 
 const toon = (werte) => new THREE.MeshToonMaterial({ gradientMap: STUFEN, ...werte });
-
-// Glanz auf Lack und Scheiben: ein harter weißer Streifen, wo der Himmel
-// sich spiegelt, statt einer fotografischen Spiegelung.
-function mitGlanz(material) {
-  material.onBeforeCompile = (shader) => {
-    shader.fragmentShader = shader.fragmentShader.replace('#include <tonemapping_fragment>', `{
-  vec3 n = normalize(vNormal);
-  vec3 v = normalize(vViewPosition);
-  // Wo sich die Fläche vom Himmel zur Seite wölbt (Schulter, Dachkante),
-  // liegt ein harter heller Streifen.
-  float oben = dot(n, normalize(viewMatrix[1].xyz));
-  float streifen = smoothstep(0.5, 0.54, oben) * (1.0 - smoothstep(0.76, 0.8, oben));
-  gl_FragColor.rgb += vec3(0.5, 0.58, 0.72) * streifen * 0.45;
-}
-#include <tonemapping_fragment>`);
-  };
-  material.customProgramCacheKey = () => 'glanz';
-  return material;
-}
 
 // Wind: Büsche und Gras wiegen sich, oben mehr als unten.
 const WIND = { uWind: { value: 0 } };
@@ -1329,27 +1311,23 @@ void main() {
 
     this.lampen = [];
     this.rueckLichter = [];
-    const lackToon = mitGlanz(toon({ color: 0x24479c }));
-    const scheibeToon = mitGlanz(toon({ color: 0x1a2236 }));
-    const umrisse = [];
+    const lack = new THREE.Color('#142850');
     modell.traverse((o) => {
       if (!o.isMesh) return;
       o.castShadow = true;
       const m = o.material;
       switch (m.name) {
         case 'paint':
-          // Lack in Stufen wie gezeichnet, dazu ein harter Glanzstreifen.
-          o.material = lackToon;
-          umrisse.push(o);
+          // Das Auto bleibt fotografisch, nur die Welt ist gezeichnet.
+          m.color.copy(lack);
+          m.metalness = 0.65;
+          m.roughness = 0.32;
+          m.clearcoat = 1;
+          m.clearcoatRoughness = 0.03;
+          m.envMapIntensity = 1.3;
           break;
         case 'window':
-          o.material = scheibeToon;
-          umrisse.push(o);
-          break;
-        case 'plastic':
-        case 'full_black':
-        case 'silver':
-          umrisse.push(o);
+          m.envMapIntensity = 1.4;
           break;
         case 'glass':
         case 'lights':
@@ -1379,8 +1357,6 @@ void main() {
           break;
       }
     });
-
-    for (const o of umrisse) umreissen(o, 1.4);
 
     // Räder. Im Modell liegen beide Räder einer Achse in einem Mesh, und die
     // vorderen sind eingeschlagen: um eine gemeinsame Achse gedreht eierten
@@ -1419,7 +1395,6 @@ void main() {
           const teil = new THREE.Mesh(geo, t.material);
           teil.castShadow = true;
           (t.material.name === 'Material.001' ? sattel : nabe).add(teil);
-          if (t === reifen) umreissen(teil, 1.4);
         }
         // Gerade gestellt sitzt der Reifen auf der Straße auf.
         nabe.position.y = sattel.position.y = radius;
