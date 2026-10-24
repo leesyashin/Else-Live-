@@ -1,9 +1,11 @@
 // Bewegter Hintergrund in WebGL, zwei Stile:
 // - metall: flüssiges Chrom, eine fließende Oberfläche, die eine Studio-
 //   Umgebung spiegelt. Arbeitet Claude, wellt sie sich stärker.
-// - lava: eine Lava-Lampe als Messröhre im Labor. Glasblasen in der Farbe des
-//   Gesamtstatus steigen zäh auf und sinken, verschmelzen, drücken sich an die
-//   Glaswände und spiegeln und brechen das Licht (Bewegung in LavaFluss).
+// - lava: eine echte Lava-Lampe. Rot-oranges Wachs, von unten durchleuchtet,
+//   steigt zäh aus dem Klumpen am Boden auf, zieht sich dabei lang, kühlt oben
+//   ab und sinkt; Blasen verschmelzen und drücken sich an die Glaswand
+//   (Bewegung in LavaFluss). Der Status bestimmt das Tempo, bei einer Frage
+//   pulsiert die Birne.
 // - ascii: ein Porsche 911 GT3 RS als 3D-Modell in Terminal-Zeichen, die
 //   Kamera kreist darum (siehe ascii-porsche.js); der Lack hat die Statusfarbe.
 // - kueste: ein Porsche 911 in Navy fährt eine Klippenstraße an der Küste
@@ -153,31 +155,26 @@ void main() {
 `;
 
 const LAVA = KOPF + `
-// Lava-Lampe als Messröhre im Labor: Glasblasen mit Neonkante, die Rückwand
-// mit Gitter, Skala und Abtastlinie wird durch sie gebrochen gesehen.
+// Echte Lava-Lampe: rot-oranges Wachs, von der Glühbirne im Sockel von unten
+// durchleuchtet, in warmer Flüssigkeit in einem Glasgefäß, das nach oben
+// schmaler wird.
 // Blase 0 ist der Klumpen am Boden; xy Mitte, zw Halbachsen.
 uniform vec4 uBlasen[12];
 
 float pixel;
 float breite;
 
-float kasten(vec2 a, vec2 m, vec2 g, float w) {
-  vec2 d = abs(a - m) - g;
-  return 1.0 - smoothstep(-w, w, max(d.x, d.y));
-}
-
-// Linie im Abstand abst, so breit wie ein Bildpunkt.
-float linie(float x, float abst) {
-  float a = abs(fract(x / abst + 0.5) - 0.5) * abst;
-  return 1.0 - smoothstep(0.0, pixel, a);
-}
-
 // Farbiges Licht: im Dunkeln addiert, im Hellen eingefärbt.
 vec3 leuchten(vec3 c, vec3 farbe, float a) {
   return mix(mix(c, farbe, clamp(a, 0.0, 1.0)), c + farbe * a, uDunkel);
 }
 
-// Metaball-Feld (Halbachsen in zw) und sein Gradient.
+// Gleiche Form wie gefaess() in JS.
+float gefaess(float y) {
+  return breite * (1.0 - 0.14 * smoothstep(-0.1, 1.05, y) - 0.05 * smoothstep(-0.55, -1.05, y));
+}
+
+// Metaball-Feld und sein Gradient.
 float feld(vec2 p, out vec2 g) {
   float f = 0.0;
   g = vec2(0.0);
@@ -192,89 +189,17 @@ float feld(vec2 p, out vec2 g) {
   return f;
 }
 
-float feldNur(vec2 p) {
-  float f = 0.0;
-  for (int i = 0; i < 12; i++) {
-    vec2 d = (p - uBlasen[i].xy) / uBlasen[i].zw;
-    float q = dot(d, d) + 1e-3;
-    f += 1.0 / (q * q);
-  }
-  return f;
-}
+const vec3 BIRNE = vec3(1.0, 0.56, 0.2);
 
-vec3 tonBei(vec2 p) {
-  // Oben ist das Wachs kühler und heller.
-  return mix(uTon, mix(uTon, vec3(1.0), 0.5), 0.45 * smoothstep(-0.6, 1.0, p.y));
-}
-
-// Winzige Perlen, die langsam aufsteigen.
-float perlen(vec2 p) {
-  float s = 0.0;
-  for (int l = 0; l < 2; l++) {
-    float fl = float(l);
-    float zell = 0.2 - fl * 0.07;
-    vec2 q = p;
-    q.y -= uPhase * (0.06 + fl * 0.04);
-    vec2 id = floor(q / zell);
-    vec2 f = fract(q / zell) - 0.5;
-    float h = rauschen(id + fl * 17.0);
-    if (h < 0.7) continue;
-    vec2 off = vec2(rauschen(id + 3.1), rauschen(id + 7.7)) - 0.5;
-    off *= 0.5;
-    off.x += 0.1 * sin(uPhase * 0.7 + h * 30.0);
-    float rr = (0.05 + 0.07 * rauschen(id + 1.3)) * zell;
-    float d = length(f - off) * zell;
-    float ring = 1.0 - smoothstep(0.0, pixel * 1.3, abs(d - rr));
-    float glanz = 1.0 - smoothstep(0.0, pixel * 1.2, length(f - off + vec2(0.35, -0.35) * rr / zell) * zell - rr * 0.25);
-    s += ring * 0.7 + glanz * 0.8 + (1.0 - smoothstep(rr - pixel, rr, d)) * 0.12;
-  }
-  return s;
-}
-
-// Rückwand der Lampe, ohne Blasen.
-vec3 labor(vec2 p) {
+// Die Flüssigkeit, beleuchtet von unten.
+vec3 fluessigkeit(vec2 p, float licht) {
   float d = uDunkel;
-  vec2 q = p + uNeigung * 0.03;
-  vec3 c = mix(vec3(0.955, 0.962, 0.975), vec3(0.012, 0.015, 0.024), d);
-  float gitter = max(linie(q.x, 0.2), linie(q.y, 0.2));
-  float kreuz = (1.0 - smoothstep(0.0, pixel, abs(fract(q.x / 0.2 + 0.5) - 0.5) * 0.2)) * step(abs(fract(q.y / 0.2 + 0.5) - 0.5) * 0.2, 0.018)
-              + (1.0 - smoothstep(0.0, pixel, abs(fract(q.y / 0.2 + 0.5) - 0.5) * 0.2)) * step(abs(fract(q.x / 0.2 + 0.5) - 0.5) * 0.2, 0.018);
-  c = mix(c, mix(vec3(0.62, 0.66, 0.74), mix(uTon, vec3(1.0), 0.4) * 0.3, d), gitter * 0.22 + min(kreuz, 1.0) * 0.4);
-  // Glut vom Sockel.
-  float boden = exp(-(p.y + 1.0) * 2.2);
-  c = leuchten(c, mix(uTon, vec3(1.0), 0.45 * (1.0 - d)), boden * mix(0.32, 0.3, d));
-
-  // Gespiegelt, damit gebrochene Blicke hinter die Wand nichts Fremdes zeigen.
-  float w = abs(breite - abs(p.x));
-  // Messskala an beiden Glaswänden.
-  float fein = linie(p.y, 0.1) * step(w, 0.04) * step(0.016, w);
-  float grob = linie(p.y, 0.5) * step(w, 0.075) * step(0.016, w);
-  float schiene = (1.0 - smoothstep(0.0, pixel, abs(w - 0.04))) * step(abs(p.y), 0.95);
-  c = leuchten(c, mix(uTon, vec3(1.0), 0.25), max(fein * 0.45, grob) * 0.55 + schiene * 0.25);
-  // Abtastlinie zieht langsam nach oben, mit Nachglühen darunter.
-  float sy = mod(uPhase * 0.07, 2.8) - 1.4;
-  float dy = p.y - sy;
-  float spur = dy < 0.0 ? exp(dy * 14.0) : 0.0;
-  float strich = 1.0 - smoothstep(0.0, pixel * 1.2, abs(dy));
-  c = leuchten(c, uTon, spur * 0.06 + strich * 0.35);
-  c = leuchten(c, mix(uTon, vec3(1.0), 0.5), perlen(p) * mix(0.35, 0.3, d));
-  // Glasrohr: schmale Lichtkante innen, breiter Reflex daneben, Rand dunkler.
-  float kante = exp(-w / (pixel * 1.6));
-  float reflex = exp(-pow((w - 0.1) / 0.03, 2.0));
-  c *= 1.0 - 0.1 * exp(-w / 0.06) * (1.0 - d);
-  c += vec3(0.85, 0.9, 1.0) * (kante * mix(0.0, 0.5, d) + reflex * mix(0.025, 0.06, d));
-  c = mix(c, c * 0.7, kante * (1.0 - d) * 0.6);
+  vec3 c = mix(vec3(0.995, 0.955, 0.885), vec3(0.045, 0.016, 0.012), d);
+  float unten = exp(-(p.y + 1.0) * 1.7);
+  float kegel = exp(-abs(p.x) / (0.28 + 0.5 * (p.y + 1.0))) * exp(-(p.y + 1.0) * 0.75);
+  c = leuchten(c, BIRNE, (unten * mix(0.22, 0.5, d) + kegel * mix(0.12, 0.3, d)) * licht);
+  c *= mix(1.0, mix(0.96, 0.55, d), smoothstep(-0.2, 1.0, p.y));
   return c;
-}
-
-// Was die Glasoberfläche spiegelt: Softbox, Lichtstreifen, Glut von unten.
-vec3 umgebung(vec3 r, vec3 ton) {
-  vec3 e = mix(vec3(0.8, 0.82, 0.86), vec3(0.02, 0.025, 0.04), uDunkel);
-  e += ton * mix(0.25, 1.1, uDunkel) * smoothstep(-0.3, -0.95, r.y);
-  e += vec3(2.4) * kasten(r.xy, vec2(-0.36, 0.48), vec2(0.17, 0.1), 0.04);
-  e += vec3(1.2) * kasten(r.xy, vec2(0.62, 0.12), vec2(0.03, 0.4), 0.025);
-  e += (ton * 2.2 + 0.15) * kasten(r.xy, vec2(-0.74, -0.08), vec2(0.018, 0.32), 0.012);
-  return e;
 }
 
 void main() {
@@ -282,55 +207,73 @@ void main() {
   vec2 p = uv * 2.0;
   pixel = 2.0 / uRes.y;
   breite = uRes.x / uRes.y;
+  float d = uDunkel;
+  // Bei einer Frage pulsiert die Birne.
+  float licht = 1.0 + 0.25 * uPuls;
 
   vec2 g;
   float f = feld(p, g);
   float lg = max(length(g), 1e-4);
   float sd = (f - 1.0) / lg;
   float innen = smoothstep(-pixel, pixel, sd);
-  vec3 ton = tonBei(p);
 
-  vec3 hinten = labor(p);
-  // Die Blasen werfen Licht auf die Rückwand, im Hellen auch einen Schatten.
-  float schein = smoothstep(0.08, 1.0, f) * (1.0 - innen);
-  hinten = leuchten(hinten, ton, schein * mix(0.1, 0.22, uDunkel));
-  float fs = feldNur(p + vec2(-0.04, 0.07));
-  hinten *= 1.0 - (1.0 - uDunkel) * 0.08 * smoothstep(0.3, 1.2, fs) * (1.0 - innen);
+  vec3 farbe = fluessigkeit(p, licht);
+  // Etwas Licht streut vom Wachs in die Flüssigkeit.
+  farbe = leuchten(farbe, vec3(1.0, 0.3, 0.06), smoothstep(0.1, 1.0, f) * (1.0 - innen) * mix(0.07, 0.16, d));
 
-  vec3 farbe = hinten;
   if (innen > 0.0) {
     float rho = sqrt(sqrt(clamp(1.0 / f, 0.0, 1.0)));
     vec2 nxy = -g / lg * rho;
     vec3 n = vec3(nxy, sqrt(max(1.0 - rho * rho, 0.0)));
-    vec3 r = reflect(vec3(0.0, 0.0, -1.0), n);
-    float fres = 0.04 + 0.96 * pow(1.0 - n.z, 5.0);
-    vec3 spieg = umgebung(r, ton);
-
-    // Durch das Glas sieht man die Rückwand gebrochen, dicke Stellen färben stärker.
-    vec3 durch = labor(p - nxy * 0.28);
-    vec3 absorb = exp(-(1.0 - ton) * (0.5 + 2.2 * n.z) * 0.95);
-    // Von unten beleuchtet: unten und im unteren Bild glüht das Wachs stärker.
-    float glut = (0.4 + 0.6 * smoothstep(0.8, -1.0, p.y)) * (0.5 + 0.5 * smoothstep(0.5, -0.8, n.y));
-    vec3 hell = mix(durch * absorb, mix(ton, vec3(1.0), 0.3), 0.28);
-    vec3 dunkel = durch * absorb * 0.55 + ton * glut * (0.2 + 0.65 * n.z) * 0.9;
-    vec3 koerper = mix(hell, dunkel, uDunkel);
-    koerper *= 1.0 - (1.0 - uDunkel) * 0.3 * smoothstep(0.75, 1.0, rho);
-    vec3 glas = mix(koerper, spieg, fres);
-    glas += pow(max(dot(n, normalize(vec3(-0.21, 0.29, 1.0))), 0.0), 260.0) * 1.8;
-    glas += mix(ton, vec3(1.0), 0.5) * pow(max(dot(n, normalize(vec3(0.28, -0.38, 1.0))), 0.0), 70.0) * 0.45;
-    // Neonkante innen am Rand.
-    float kante = exp(-max(sd, 0.0) / (pixel * 2.2));
-    glas = leuchten(glas, mix(ton, vec3(1.0), 0.3), kante * 0.85);
-    farbe = mix(hinten, glas, innen);
+    // Durchleuchtung: am dünnen Rand, an der Unterseite und nah an der Birne
+    // scheint das Licht durchs Wachs, dicke Stellen oben bleiben tiefrot.
+    float vonUnten = smoothstep(0.5, -0.9, n.y);
+    float naehe = smoothstep(0.9, -1.0, p.y);
+    float durch = ((1.0 - n.z) * 0.85 + vonUnten * 0.55 + naehe * 0.45) * licht;
+    vec3 wachs = mix(vec3(0.55, 0.05, 0.025), vec3(0.95, 0.19, 0.03), smoothstep(0.05, 0.75, durch));
+    wachs = mix(wachs, vec3(1.0, 0.58, 0.12), smoothstep(0.8, 1.65, durch));
+    wachs *= mix(1.12, 1.0, d);
+    // Heller Saum, wo das Wachs am dünnsten ist.
+    wachs += vec3(1.0, 0.5, 0.1) * 0.3 * exp(-max(sd, 0.0) / (pixel * 3.0)) * (0.4 + 0.6 * vonUnten);
+    // Oberseite im Schatten.
+    wachs *= 1.0 - 0.2 * smoothstep(0.0, 0.9, n.y) * (1.0 - naehe);
+    // Wachs glänzt matt: breiter, schwacher Schimmer, kleiner Lichtpunkt.
+    float glanz = max(dot(n, normalize(vec3(-0.3, 0.45, 1.0))), 0.0);
+    wachs += vec3(1.0, 0.85, 0.7) * (pow(glanz, 14.0) * 0.1 + pow(glanz, 110.0) * 0.22);
+    farbe = mix(farbe, wachs, innen);
   }
 
-  farbe *= 1.0 - uDunkel * 0.22 * dot(uv, uv);
+  // Das Glasgefäß: außen der Raum, am Rand gewölbtes Glas mit Lichtstreifen.
+  float hw = gefaess(p.y);
+  float x = p.x / hw;
+  farbe *= 1.0 - mix(0.12, 0.4, d) * pow(min(abs(x), 1.0), 6.0);
+  float fenster = exp(-pow((x + 0.74) / 0.05, 2.0)) * smoothstep(1.0, 0.2, p.y) * smoothstep(-1.0, -0.5, p.y);
+  float streif = exp(-pow((x - 0.84) / 0.012, 2.0)) * smoothstep(0.95, 0.0, abs(p.y));
+  farbe += vec3(1.0, 0.95, 0.9) * (fenster * mix(0.05, 0.1, d) + streif * mix(0.08, 0.16, d));
+  float aussen = smoothstep(-pixel, pixel, abs(p.x) - hw);
+  vec3 raum = mix(vec3(0.93, 0.925, 0.93), vec3(0.012, 0.01, 0.012), d);
+  raum = leuchten(raum, BIRNE, exp(-(p.y + 1.0) * 3.0) * mix(0.15, 0.12, d) * licht);
+  farbe = mix(farbe, raum, aussen);
+  float kante = exp(-abs(abs(p.x) - hw) / (pixel * 1.3));
+  farbe = mix(farbe, mix(farbe * 0.55, farbe + vec3(0.35, 0.3, 0.28), d), kante * 0.8);
+
+  farbe *= 1.0 - d * 0.2 * dot(uv, uv);
   farbe += (rauschen(gl_FragCoord.xy + fract(uPhase) * 91.0) - 0.5) / 160.0;
   gl_FragColor = vec4(farbe, 1.0);
 }
 `;
 
 const LAVA_ANZAHL = 12; // Blase 0 ist der Klumpen am Boden
+
+const glatt = (a, b, x) => {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
+// Halbe Innenbreite des Glasgefäßes auf Höhe y (-1 unten … 1 oben): nach
+// oben schmaler, am Sockel leicht eingezogen wie bei einer Lava-Lampe.
+// Gleiche Formel wie gefaess() im Shader.
+const gefaess = (y, k) => k * (1 - 0.14 * glatt(-0.1, 1.05, y) - 0.05 * glatt(-0.55, -1.05, y));
 
 // Die Blasen der Lava-Lampe: unten heizt die Lampe, oben kühlt das Wachs ab,
 // alles stark gedämpft. Ab und zu treibt eine Blase an eine Glaswand, drückt
@@ -347,7 +290,7 @@ class LavaFluss {
         y: Math.random() * 1.7 - 0.85,
         vx: 0,
         vy: 0,
-        r: 0.07 + 0.1 * Math.random() ** 1.5,
+        r: 0.08 + 0.13 * Math.random() ** 1.5,
         waerme: Math.random(),
         heiz: 0.7 + Math.random() * 0.6,
         ziel: 0,
@@ -376,13 +319,13 @@ class LavaFluss {
     const t = this.zeit;
     // Auf schmalen Handys etwas kleinere Blasen.
     const skala = Math.min(1, 0.62 + 0.38 * k) * (1 + 0.06 * puls);
-    const rand = k - 0.015;
     for (const b of this.blasen) {
       const r = b.r * skala;
+      const rand = gefaess(b.y, k) - 0.015;
       // Ab und zu ein neues Ziel: oft eine Wand, sonst irgendwo dazwischen.
       if (t > b.zielBis) {
-        b.wand = Math.random() < 0.55 ? Math.sign(Math.random() - 0.5) : 0;
-        b.ziel = (Math.random() * 1.2 - 0.6) * k;
+        b.wand = Math.random() < 0.4 ? Math.sign(Math.random() - 0.5) : 0;
+        b.ziel = (Math.random() * 1.1 - 0.55) * k;
         b.zielBis = t + (b.wand ? 9 : 5) + Math.random() * 10;
       }
       // Unten heizt die Lampe, oben kühlt das Wachs ab.
@@ -409,10 +352,11 @@ class LavaFluss {
       b.x += b.vx * s;
       b.y += b.vy * s;
 
-      // Plattdrücken an Wand und Decke, gestreckt beim Steigen; Volumen bleibt.
+      // Plattdrücken an Wand und Decke, beim Steigen lang gezogen wie Wachs;
+      // das Volumen bleibt.
       const px = 1 - 1.2 * Math.min(0.4, Math.max(ueL, ueR, 0) / r);
       const py = 1 - 1.2 * Math.min(0.4, Math.max(ueU, ueO, 0) / r);
-      const zug = 1 + Math.min(0.28, Math.abs(b.vy) * 2.2);
+      const zug = 1 + Math.min(0.6, Math.abs(b.vy) * 4.5);
       const sx = Math.sqrt(px / py / zug);
       const sy = Math.sqrt((py / px) * zug);
       // Zäh nachfedern, ein leichtes Wabbeln.
