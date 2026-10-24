@@ -6,8 +6,8 @@
 //   ab und sinkt; Blasen verschmelzen und drücken sich an die Glaswand
 //   (Bewegung in LavaFluss). Der Status bestimmt das Tempo, bei einer Frage
 //   pulsiert die Birne.
-// - ascii: ein Porsche 911 GT3 RS als 3D-Modell in Terminal-Zeichen, die
-//   Kamera kreist darum (siehe ascii-porsche.js); der Lack hat die Statusfarbe.
+// - ascii: ein brennender Joint als 3D-Modell in Terminal-Zeichen, mit Glut
+//   und aufsteigendem Rauch; die Kamera schwenkt um ihn (siehe ascii-joint.js).
 // - kueste: ein Porsche 911 in Navy fährt eine Klippenstraße an der Küste
 //   entlang, gefilmt von schräg oben mit Blick hinunter aufs Meer (three.js,
 //   siehe kueste.js). Er läuft
@@ -15,7 +15,7 @@
 // Alle folgen der Neigung des iPhones, sind auf 60 fps begrenzt und rechnen
 // auf dem Mac in voller Retina-Auflösung, die bei Bedarf sinkt.
 
-import { ASCII_PORSCHE, ASCII_ZEICHEN, atlasZeichnen } from './ascii-porsche.js';
+import { ASCII_JOINT, ASCII_ZEICHEN, atlasZeichnen } from './ascii-joint.js';
 
 const VERTEX = `
 attribute vec2 p;
@@ -402,7 +402,7 @@ class LavaFluss {
 }
 
 // Die Küste ist kein einzelner Shader, sondern eine three.js-Szene.
-export const STILE = { metall: METALL, lava: LAVA, ascii: ASCII_PORSCHE, kueste: null };
+export const STILE = { metall: METALL, lava: LAVA, ascii: ASCII_JOINT, kueste: null };
 
 // Ton (RGB), Tempo, Welle und Puls je Gesamtstatus.
 const STIMMUNG = {
@@ -416,11 +416,11 @@ const UNIFORMS = ['uRes', 'uPhase', 'uPuls', 'uWelle', 'uNeigung', 'uTon', 'uDun
   'uRahmen', 'uGitter', 'uGlyphen', 'uZellen', 'uAtlas', 'uBlasen'];
 
 // Zeichenzelle in CSS-Pixeln, schmal und hoch wie im Terminal; auf dem
-// Handy etwas feiner, damit das Auto genug Zeichen bekommt.
+// Handy etwas feiner, damit der Joint genug Zeichen bekommt.
 const ZELLE = matchMedia('(pointer: fine)').matches ? [5, 8] : [4, 7];
 
 // Ab dieser Breite steht die App als Spalte links (siehe app.css, --spalte);
-// das Auto steht dann in der freien Fläche rechts daneben.
+// der ASCII-Joint steht dann in der freien Fläche rechts daneben.
 const BREIT_AB = 900;
 const SPALTE_RECHTS = 32 + 460 + 24;
 
@@ -539,7 +539,7 @@ export class Hintergrund {
     const gl = this.gl;
     if (!gl || this.stil === 'kueste') return;
     if (this.stil === 'ascii') {
-      this.programme.ascii ??= { auto: this.programmBauen(ASCII_PORSCHE), zeichen: this.programmBauen(ASCII_ZEICHEN) };
+      this.programme.ascii ??= { joint: this.programmBauen(ASCII_JOINT), zeichen: this.programmBauen(ASCII_ZEICHEN) };
       return;
     }
     this.programme[this.stil] ??= this.programmBauen(STILE[this.stil]);
@@ -751,7 +751,7 @@ export class Hintergrund {
       this.groesse();
     }
     const a = this.asciiVorbereiten();
-    const { auto, zeichen } = this.programme.ascii;
+    const { joint, zeichen } = this.programme.ascii;
     const dunkel = this.dunkel.matches ? 1 : 0;
 
     // Bildfenster in der freien Fläche, eher breit; auf dem Handy höher.
@@ -761,11 +761,11 @@ export class Hintergrund {
     const hoehe = Math.min(0.86, breite / seiten);
     const mitteX = ((frei + innerWidth) / 2 - innerWidth / 2) / innerHeight;
 
-    // 1. Auto in das Zellbild, ein Pixel pro Zeichen.
+    // 1. Joint in das Zellbild, ein Pixel pro Zeichen.
     gl.bindFramebuffer(gl.FRAMEBUFFER, a.fbo);
     gl.viewport(0, 0, a.spalten, a.zeilen);
-    this.programmBinden(auto);
-    let u = auto.u;
+    this.programmBinden(joint);
+    let u = joint.u;
     gl.uniform2f(u.uRes, canvas.width, canvas.height);
     gl.uniform2f(u.uZelle, a.zb, a.zh);
     gl.uniform4f(u.uRahmen, mitteX, 0, hoehe, seiten);
