@@ -54,7 +54,14 @@ float glied(vec2 p, vec2 a, vec2 b, float wa, float wb) {
   vec2 d = ba / l;
   vec2 q = vec2(dot(p - a, d), dot(p - a, vec2(-d.y, d.x)));
   float w = mix(wa, wb, clamp(q.x / l, 0.0, 1.0));
-  return max(abs(q.y) - w, max(-q.x, q.x - l));
+  vec2 e = vec2(abs(q.y) - w, max(-q.x, q.x - l));
+  return length(max(e, 0.0)) + min(max(e.x, e.y), 0.0);
+}
+
+// Glied mit weich gerundeten Ecken, etwas schlanker.
+float gliedRund(vec2 p, vec2 a, vec2 b, float wa, float wb) {
+  float r = min(wa, wb) * 0.45;
+  return glied(p, a, b, wa * 0.9 - r, wb * 0.9 - r) - r;
 }
 
 float dreieck(vec2 p, vec2 p0, vec2 p1, vec2 p2) {
@@ -278,9 +285,9 @@ float kopf(vec2 r) {
 // bis unter das Kinn, Gesicht und Hals bleiben frei.
 float haare(vec2 r, float wind, out float locke) {
   float a = atan(r.y, r.x);
-  locke = abs(sin(a * 8.0 + wind));
+  locke = abs(sin(a * 11.0 + wind));
   vec2 rr = r * vec2(1.0, r.x < 0.0 && r.y < 0.0 ? 0.72 : 1.0);
-  float d = length(rr) - (0.09 + 0.02 * locke);
+  float d = length(rr) - (0.092 + 0.014 * locke);
   d = max(d, -max(0.014 - r.x, r.y - 0.03));
   d = max(d, -max(r.y + 0.045, -0.022 - r.x));
   return d;
@@ -291,19 +298,19 @@ void figur(vec2 p, Pose P, vec2 ort, float s, float wind) {
   float kante = gKante;
   gKante /= s;
   // Ferne Seite, dunkler
-  teil(min(glied(q, P.h, P.k2, 0.06, 0.048), glied(q, P.k2, P.f2, 0.046, 0.036)), 0.32, JEANS, 0.45);
+  teil(min(gliedRund(q, P.h, P.k2, 0.06, 0.048), gliedRund(q, P.k2, P.f2, 0.046, 0.036)), 0.32, JEANS, 0.45);
   teil(viereck(q, P.f2 + vec2(-0.035, 0.02), P.f2 + vec2(-0.04, -0.04), P.f2 + vec2(0.1, -0.04), P.f2 + vec2(0.075, 0.0)), 0.5, HEMD, 0.0);
   vec2 d2 = normalize(P.w2 - P.e2);
-  teil(min(glied(q, P.s, P.e2, 0.036, 0.031), min(glied(q, P.e2, P.w2, 0.03, 0.024), glied(q, P.w2, P.w2 + d2 * 0.05, 0.024, 0.014))), 0.5, HAUT, 0.5);
+  teil(min(gliedRund(q, P.s, P.e2, 0.036, 0.031), min(gliedRund(q, P.e2, P.w2, 0.03, 0.024), gliedRund(q, P.w2, P.w2 + d2 * 0.05, 0.024, 0.014))), 0.5, HAUT, 0.5);
   // Beine in Jeans, weiße Schuhe
-  teil(min(glied(q, P.h, P.k, 0.066, 0.052), glied(q, P.k, P.f, 0.049, 0.038)), 0.5, JEANS, 0.65);
+  teil(min(gliedRund(q, P.h, P.k, 0.066, 0.052), gliedRund(q, P.k, P.f, 0.049, 0.038)), 0.5, JEANS, 0.65);
   teil(viereck(q, P.f + vec2(-0.035, 0.02), P.f + vec2(-0.04, -0.04), P.f + vec2(0.11, -0.04), P.f + vec2(0.08, 0.0)), 0.85, HEMD, 0.0);
   // Oberkörper im hellen Shirt, Hals
-  teil(glied(q, P.c + vec2(-0.01, -0.06), P.s + vec2(0.012, 0.0), 0.022, 0.024), 0.75, HAUT, 0.55);
-  teil(glied(q, P.h, P.s, 0.072, 0.088), 0.62, HEMD, 0.3);
+  teil(gliedRund(q, P.c + vec2(-0.01, -0.06), P.s + vec2(0.012, 0.0), 0.022, 0.024), 0.75, HAUT, 0.55);
+  teil(gliedRund(q, P.h, P.s, 0.072, 0.088), 0.62, HEMD, 0.3);
   // Kopf: helles Gesicht mit Auge, darüber die Locken
   vec2 r = drehung(-P.kipp) * (q - P.c);
-  teil(kopf(r), 0.8, HAUT, 0.55);
+  teil(kopf(r * 1.04) - 0.006, 0.8, HAUT, 0.55);
   grau(voll(glied(r, vec2(0.038, 0.016), vec2(0.062, 0.013), 0.007, 0.006)), 0.1);
   float locke;
   float dH = haare(r, wind, locke);
@@ -311,8 +318,8 @@ void figur(vec2 p, Pose P, vec2 ort, float s, float wind) {
   teil(dH, 0.22 + 0.3 * max(kringel, 0.5 * locke), HAAR, 0.85);
   // Naher Arm mit Ärmel zuletzt, er liegt vor allem
   vec2 d1 = normalize(P.w - P.e);
-  teil(min(glied(q, P.e, P.w, 0.031, 0.024), glied(q, P.w, P.w + d1 * 0.052, 0.026, 0.015)), 0.8, HAUT, 0.55);
-  teil(glied(q, P.s, P.e, 0.04, 0.033), 0.66, HEMD, 0.3);
+  teil(min(gliedRund(q, P.e, P.w, 0.031, 0.024), gliedRund(q, P.w, P.w + d1 * 0.052, 0.026, 0.015)), 0.8, HAUT, 0.55);
+  teil(gliedRund(q, P.s, P.e, 0.04, 0.033), 0.66, HEMD, 0.3);
   gKante = kante;
 }
 
@@ -327,7 +334,7 @@ void mofa(vec2 p, vec2 ort, float s, float weg, float richtung) {
   float dK = viereck(q, vec2(-0.42, 0.15), vec2(-0.08, 0.15), vec2(-0.08, 0.36), vec2(-0.34, 0.33));
   dK = min(dK, viereck(q, vec2(-0.08, 0.1), vec2(0.21, 0.1), vec2(0.21, 0.15), vec2(-0.08, 0.15)));
   dK = min(dK, viereck(q, vec2(0.17, 0.1), vec2(0.25, 0.1), vec2(0.29, 0.52), vec2(0.23, 0.52)));
-  dK = min(dK, dreieck(q, vec2(0.2, 0.17), vec2(0.41, 0.17), vec2(0.3, 0.23)));
+  dK = min(dK, dreieck(q, vec2(0.2, 0.17), vec2(0.41, 0.17), vec2(0.3, 0.23))) - 0.012;
   malen(voll(dK), 0.5 + 0.3 * smoothstep(0.1, 0.35, q.y), MINZE, 0.75);
   malen(linie(dK), 0.85, MINZE, 0.9);
   grau(voll(min(glied(q, vec2(0.27, 0.5), vec2(0.26, 0.67), 0.016, 0.014), glied(q, vec2(0.15, 0.68), vec2(0.31, 0.7), 0.015, 0.015))), 0.6);
@@ -345,7 +352,7 @@ void bank(vec2 p, vec2 ort, float s) {
   d = min(d, min(glied(q, vec2(-0.16, 0.0), vec2(-0.16, 0.26), 0.016, 0.016), glied(q, vec2(0.17, 0.0), vec2(0.17, 0.26), 0.016, 0.016)));
   d = min(d, glied(q, vec2(-0.19, 0.27), vec2(-0.27, 0.64), 0.016, 0.014));
   d = min(d, min(glied(q, vec2(-0.235, 0.44), vec2(-0.25, 0.51), 0.024, 0.024), glied(q, vec2(-0.255, 0.55), vec2(-0.27, 0.62), 0.024, 0.024)));
-  malen(voll(d), 0.55, HOLZ, 0.75);
+  malen(voll(d - 0.006), 0.55, HOLZ, 0.75);
   gKante = kante;
 }
 
@@ -745,6 +752,16 @@ void rauchSamen(vec2 p, float t) {
   gErschein = e;
 }
 
+// Grundfarbe jeder Szene, für das Zeichenfeld rund um den Zeiger.
+vec3 stimmung(float welche, float t) {
+  if (welche < 0.5) return mix(ERDE, GRUEN, sanft((t - 3.0) / 6.0));
+  if (welche < 1.5) return mix(SONNE, GLUT, sanft((t - 4.0) / 6.0));
+  if (welche < 2.5) return mix(SONNE, MEER, sanft(t / 4.0));
+  if (welche < 3.5) return mix(BERG, GLUT, 0.45);
+  if (welche < 4.5) return mix(GLUT, ABEND, sanft(t / 30.0));
+  return mix(VIOLETT, SAMEN, sanft((t - 5.0) / 5.0));
+}
+
 void szene(float welche, vec2 p, float t) {
   gD = 0.0;
   gAk = vec4(0.0);
@@ -804,14 +821,16 @@ void main() {
   float d = s.a;
   vec3 tinte = s.a > 0.0 ? s.rgb / s.a : mix(vec3(0.2), vec3(0.78), uDunkel);
 
-  // Rund um den Zeiger zeigt sich ein ruhiges Zeichenfeld, dort blau.
-  float abstand = length((mitte - uZeiger.xy) / uZelle.y);
-  float hof = uZeiger.z * smoothstep(9.0, 1.5, abstand);
+  // Rund um den Zeiger zeigt sich ein ruhiges Zeichenfeld in der Farbe der Szene.
+  float abstand = length(mitte - uZeiger.xy) / uRes.y;
+  float hof = uZeiger.z * smoothstep(0.1, 0.015, abstand);
   float atmen = 0.5 + 0.5 * sin(uZeit * 0.7);
   float feld = mix(gradRauschen(zelle * vec2(0.13, 0.22)), gradRauschen(zelle * vec2(0.13, 0.22) + 17.0), atmen);
   d = max(d, (0.08 + 0.16 * smoothstep(-0.3, 0.4, feld)) * hof);
-  vec3 blau = mix(vec3(0.11, 0.36, 0.96), vec3(0.36, 0.55, 1.0), uDunkel);
-  tinte = mix(tinte, blau, hof * 0.9);
+  vec3 ton = mix(stimmung(uSzeneA.x, uSzeneA.y), stimmung(uSzeneB.x, uSzeneB.y), uMischung);
+  ton = mix(ton * 0.82, mix(ton, vec3(1.0), 0.12), uDunkel);
+  // Was der Film dort schon zeigt, behält seine Farbe; nur das Feld nimmt die der Szene.
+  tinte = mix(tinte, ton, hof * (1.0 - smoothstep(0.1, 0.35, s.a)));
   gl_FragColor = vec4(tinte, d);
 }
 `;
