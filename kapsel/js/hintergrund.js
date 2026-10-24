@@ -3,12 +3,12 @@
 //   Umgebung spiegelt. Arbeitet Claude, wellt sie sich stärker.
 // - lava: eine Lava-Lampe, weiche Blasen, die verschmelzen und sich trennen,
 //   in der Farbe des Gesamtstatus.
-// - ascii: ein kurzer Film aus Terminal-Zeichen, „Ein Tag in Italien“
-//   (siehe ascii-film.js); ein Zeichenfeld zeigt sich nur rund um den Zeiger.
+// - ascii: ein Porsche 911 GT3 RS als 3D-Modell in Terminal-Zeichen, die
+//   Kamera kreist darum (siehe ascii-porsche.js); der Lack hat die Statusfarbe.
 // Alle folgen der Neigung des iPhones, sind auf 60 fps begrenzt und rechnen
 // auf dem Mac in voller Retina-Auflösung, die bei Bedarf sinkt.
 
-import { ASCII_FILM, ASCII_ZEICHEN, DAUERN, SZENEN, atlasZeichnen } from './ascii-film.js';
+import { ASCII_PORSCHE, ASCII_ZEICHEN, atlasZeichnen } from './ascii-porsche.js';
 
 const VERTEX = `
 attribute vec2 p;
@@ -186,7 +186,7 @@ void main() {
 }
 `;
 
-export const STILE = { metall: METALL, lava: LAVA, ascii: ASCII_FILM };
+export const STILE = { metall: METALL, lava: LAVA, ascii: ASCII_PORSCHE };
 
 // Ton (RGB), Tempo, Welle und Puls je Gesamtstatus.
 const STIMMUNG = {
@@ -196,17 +196,15 @@ const STIMMUNG = {
   ruhig: { ton: [0.55, 0.45, 0.95], tempo: 0.25, welle: 0, puls: 0 },
 };
 
-const UNIFORMS = ['uRes', 'uPhase', 'uPuls', 'uWelle', 'uNeigung', 'uTon', 'uDunkel', 'uZelle', 'uZeiger', 'uMischung', 'uZeit',
-  'uRahmen', 'uSzeneA', 'uSzeneB', 'uGitter', 'uGlyphen', 'uZellen', 'uAtlas'];
+const UNIFORMS = ['uRes', 'uPhase', 'uPuls', 'uWelle', 'uNeigung', 'uTon', 'uDunkel', 'uZelle', 'uZeiger', 'uZeit',
+  'uRahmen', 'uGitter', 'uGlyphen', 'uZellen', 'uAtlas'];
 
-// ASCII-Film: in den letzten 2 s jeder Szene taucht die nächste Zelle für Zelle auf.
-const UEBERGANG = 2;
-const FILM_DAUER = DAUERN.reduce((a, b) => a + b, 0);
-// Zeichenzelle in CSS-Pixeln, schmal und hoch wie im Terminal.
-const ZELLE = [5, 8];
+// Zeichenzelle in CSS-Pixeln, schmal und hoch wie im Terminal; auf dem
+// Handy etwas feiner, damit das Auto genug Zeichen bekommt.
+const ZELLE = matchMedia('(pointer: fine)').matches ? [5, 8] : [4, 7];
 
 // Ab dieser Breite steht die App als Spalte links (siehe app.css, --spalte);
-// der Film läuft dann in der freien Fläche rechts daneben.
+// das Auto steht dann in der freien Fläche rechts daneben.
 const BREIT_AB = 900;
 const SPALTE_RECHTS = 32 + 460 + 24;
 
@@ -232,8 +230,9 @@ export class Hintergrund {
     this.zeigerZuletzt = -10;
     this.zeigerStaerke = 0;
     this.zeit = 0;
-    // Der Film beginnt bei einer zufälligen Szene.
-    this.filmZeit = DAUERN.slice(0, Math.floor(Math.random() * SZENEN)).reduce((a, b) => a + b, 0);
+    // Die Kamera beginnt an einer zufälligen Stelle der Runde.
+    this.asciiZeit = Math.random() * 100;
+    this.zelle = ZELLE;
     this.letztes = 0;
     this.mittel = 16.7;
     this.guteFrames = 0;
@@ -286,7 +285,7 @@ export class Hintergrund {
     const gl = this.gl;
     if (!gl) return;
     if (this.stil === 'ascii') {
-      this.programme.ascii ??= { film: this.programmBauen(ASCII_FILM), zeichen: this.programmBauen(ASCII_ZEICHEN) };
+      this.programme.ascii ??= { auto: this.programmBauen(ASCII_PORSCHE), zeichen: this.programmBauen(ASCII_ZEICHEN) };
       return;
     }
     this.programme[this.stil] ??= this.programmBauen(STILE[this.stil]);
@@ -397,7 +396,7 @@ export class Hintergrund {
     const zeigerZiel = this.zeit - this.zeigerZuletzt < 1.2 ? 1 : 0;
     this.zeigerStaerke += (zeigerZiel - this.zeigerStaerke) * (1 - Math.exp(-s * (zeigerZiel ? 12 : 2.5)));
     if (this.stil === 'ascii') {
-      this.filmZeit += s * (this.ruhe.matches ? 0.5 : 1);
+      this.asciiZeit += s * (this.ruhe.matches ? 0.4 : 1);
       this.asciiZeichnen();
       return;
     }
@@ -416,8 +415,8 @@ export class Hintergrund {
   // Zellgitter, Zellbild und Zeichen-Atlas passend zur Auflösung anlegen.
   asciiVorbereiten() {
     const { gl, canvas } = this;
-    const zb = Math.max(3, Math.round(ZELLE[0] * this.skala));
-    const zh = Math.max(5, Math.round(ZELLE[1] * this.skala));
+    const zb = Math.max(3, Math.round(this.zelle[0] * this.skala));
+    const zh = Math.max(5, Math.round(this.zelle[1] * this.skala));
     const spalten = Math.ceil(canvas.width / zb);
     const zeilen = Math.ceil(canvas.height / zh);
     const a = this.ascii;
@@ -467,34 +466,26 @@ export class Hintergrund {
       this.groesse();
     }
     const a = this.asciiVorbereiten();
-    const { film, zeichen } = this.programme.ascii;
+    const { auto, zeichen } = this.programme.ascii;
     const dunkel = this.dunkel.matches ? 1 : 0;
 
-    // Kino-Fenster in der freien Fläche, eher breit; auf dem Handy höher.
+    // Bildfenster in der freien Fläche, eher breit; auf dem Handy höher.
     const frei = innerWidth >= BREIT_AB ? SPALTE_RECHTS : 0;
-    const breite = ((innerWidth - frei) / innerHeight) * 0.9;
-    const seiten = Math.min(1.9, Math.max(0.8, breite / 0.62));
-    const hoehe = Math.min(0.8, breite / seiten);
+    const breite = ((innerWidth - frei) / innerHeight) * 0.96;
+    const seiten = Math.min(1.9, Math.max(0.8, breite / 0.72));
+    const hoehe = Math.min(0.86, breite / seiten);
     const mitteX = ((frei + innerWidth) / 2 - innerWidth / 2) / innerHeight;
 
-    let lokal = this.filmZeit % FILM_DAUER;
-    let szene = 0;
-    while (lokal >= DAUERN[szene]) lokal -= DAUERN[szene++];
-    const ab = DAUERN[szene] - UEBERGANG;
-    const x = Math.max(0, (lokal - ab) / UEBERGANG);
-
-    // 1. Szene in das Zellbild, ein Pixel pro Zeichen.
+    // 1. Auto in das Zellbild, ein Pixel pro Zeichen.
     gl.bindFramebuffer(gl.FRAMEBUFFER, a.fbo);
     gl.viewport(0, 0, a.spalten, a.zeilen);
-    this.programmBinden(film);
-    let u = film.u;
+    this.programmBinden(auto);
+    let u = auto.u;
     gl.uniform2f(u.uRes, canvas.width, canvas.height);
     gl.uniform2f(u.uZelle, a.zb, a.zh);
     gl.uniform4f(u.uRahmen, mitteX, 0, hoehe, seiten);
-    gl.uniform2f(u.uSzeneA, szene, lokal + UEBERGANG);
-    gl.uniform2f(u.uSzeneB, (szene + 1) % SZENEN, Math.max(0, lokal - ab));
-    gl.uniform1f(u.uMischung, x);
-    gl.uniform1f(u.uZeit, this.zeit);
+    gl.uniform1f(u.uZeit, this.asciiZeit);
+    gl.uniform3f(u.uTon, this.ton[0], this.ton[1], this.ton[2]);
     gl.uniform1f(u.uDunkel, dunkel);
     gl.uniform3f(u.uZeiger, this.zeiger[0] * this.skala, (innerHeight - this.zeiger[1]) * this.skala, this.zeigerStaerke);
     gl.uniform2f(u.uNeigung, this.neigung[0], this.neigung[1]);
