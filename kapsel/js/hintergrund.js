@@ -3,10 +3,12 @@
 //   Umgebung spiegelt. Arbeitet Claude, wellt sie sich stärker.
 // - lava: eine Lava-Lampe, weiche Blasen, die verschmelzen und sich trennen,
 //   in der Farbe des Gesamtstatus.
-// - ascii: Weed-Animationen aus Terminal-Zeichen, die ineinander übergehen;
-//   das Zeichenfeld zeigt sich nur rund um den Zeiger, dort blau.
+// - ascii: ein kurzer Film aus Terminal-Zeichen, „Ein Tag in Italien“
+//   (siehe ascii-film.js); ein Zeichenfeld zeigt sich nur rund um den Zeiger.
 // Alle folgen der Neigung des iPhones, sind auf 60 fps begrenzt und rechnen
 // auf dem Mac in voller Retina-Auflösung, die bei Bedarf sinkt.
+
+import { ASCII_FILM, ASCII_ZEICHEN, DAUERN, SZENEN, atlasZeichnen } from './ascii-film.js';
 
 const VERTEX = `
 attribute vec2 p;
@@ -22,7 +24,6 @@ uniform float uWelle;
 uniform vec2 uNeigung;
 uniform vec3 uTon;
 uniform float uDunkel;
-uniform float uZelle;
 float rauschen(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 vec2 zufall2(vec2 p) {
   p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
@@ -185,219 +186,7 @@ void main() {
 }
 `;
 
-const ASCII = KOPF + `
-// Ein fließendes Feld, gezeichnet als Terminal-Zeichen. Jede Zelle fragt das
-// Feld einmal in ihrer Mitte ab und wählt nach Helligkeit ein Zeichen aus
-// Zeichen und Ziffern (5x5-Bitmuster, als Zahl kodiert). Alles bleibt einfarbig;
-// nur rund um den Mauszeiger (oder Finger) färben sich die Zeichen blau.
-// Das Feld zeigt sich nur rund um den Zeiger. Sonst laufen ohne Pause
-// nacheinander ein drehendes Hanfblatt, aufsteigende Rauchschwaden und
-// fallende Blätter, die ineinander überblenden.
-
-uniform vec3 uZeiger;  // x, y in Canvas-Pixeln, Stärke 0 … 1
-uniform vec2 uFormA;   // laufende Animation (0 Blatt, 1 Rauch, 2 Blätterregen), ihre Zeit
-uniform vec2 uFormB;   // nächste Animation, ihre Zeit
-uniform float uMischung; // Überblendung von A nach B, 0 … 1
-uniform vec3 uFormOrt; // Mitte der freien Fläche (uv), deren Seitenverhältnis
-uniform float uZeit;   // Sekunden, unabhängig vom Status-Tempo
-
-float zeichen(float n, vec2 p) {
-  p = floor(p * vec2(4.0, -4.0) + 2.5);
-  if (clamp(p.x, 0.0, 4.0) == p.x && clamp(p.y, 0.0, 4.0) == p.y) {
-    if (int(mod(n / exp2(p.x + 5.0 * p.y), 2.0)) == 1) return 1.0;
-  }
-  return 0.0;
-}
-
-mat2 drehung(float w) { float c = cos(w), s = sin(w); return mat2(c, -s, s, c); }
-
-float strecke(vec2 p, vec2 a, vec2 b, float ra, float rb) {
-  vec2 pa = p - a, ba = b - a;
-  float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
-  return length(pa - ba * h) - mix(ra, rb, h);
-}
-
-float ellipse(vec2 p, vec2 r) { return (length(p / r) - 1.0) * min(r.x, r.y); }
-
-// Drei ruhige Weed-Animationen, die ohne Pause ineinander überblenden. Die
-// Formen sind ohne Rauschen gefüllt und nur aus ihrer eigenen Geometrie
-// schattiert, damit sie sauber wirken.
-
-// Hanfblatt mit sieben Fiederblättern um den Ursprung, Höhe etwa 1,0 * s.
-// ader: wie nah der Punkt an der Mittelrippe eines Fiederblatts liegt (0 = drauf).
-float blatt(vec2 p, float s, out float ader) {
-  vec2 basis = vec2(0.0, -0.3 * s);
-  ader = 1.0;
-  float d = strecke(p, basis, basis + vec2(0.0, -0.2 * s), 0.014 * s, 0.009 * s);
-  for (int i = 0; i < 7; i++) {
-    float fi = float(i) - 3.0;
-    float a = abs(fi);
-    float winkel = sign(fi) * (a < 0.5 ? 0.0 : a < 1.5 ? 0.46 : a < 2.5 ? 0.98 : 1.62);
-    float laenge = (a < 0.5 ? 0.72 : a < 1.5 ? 0.62 : a < 2.5 ? 0.46 : 0.26) * s;
-    vec2 q = drehung(winkel) * (p - basis);
-    float t = clamp(q.y / laenge, 0.0, 1.0);
-    float breite = laenge * 0.12 * pow(sin(3.1416 * t), 0.8) * (1.0 + 0.1 * sin(t * 44.0));
-    float fieder = max(abs(q.x) - breite, max(-q.y, q.y - laenge));
-    d = min(d, fieder);
-    if (fieder < 0.0) ader = min(ader, abs(q.x) / max(breite, 1e-3));
-  }
-  return d;
-}
-
-// 1: großes Blatt, das sich langsam um die senkrechte Achse dreht und schwebt.
-float drehblatt(vec2 p, float tau, out float wert) {
-  float w = tau * 0.42;
-  float c = cos(w);
-  vec2 q = vec2(p.x / max(abs(c), 0.07), p.y - 0.025 * sin(tau * 1.1));
-  float ader;
-  float d = blatt(q, 1.0, ader) * max(abs(c), 0.07);
-  float licht = c > 0.0 ? 0.62 + 0.33 * c : 0.42 + 0.2 * abs(c);
-  wert = licht * (1.0 - 0.55 * (1.0 - smoothstep(0.0, 0.2, ader)));
-  return d;
-}
-
-// 2: Rauch: zwei verschlungene Bänder steigen von einer Glut auf, dazu alle
-// vier Sekunden ein Rauchring.
-float rauchschwaden(vec2 p, float tau, out float wert) {
-  vec2 glut = vec2(0.0, -0.48);
-  vec2 s = p - glut;
-  float dichte = 0.0;
-  if (s.y > 0.0) {
-    for (int j = 0; j < 2; j++) {
-      float phase = float(j) * 3.1416;
-      float breite = 0.012 + s.y * 0.05;
-      float x = s.x - (0.04 + s.y * 0.16) * sin(s.y * 7.0 - tau * 1.6 + phase);
-      float band = 1.0 - smoothstep(breite * 0.5, breite, abs(x));
-      dichte = max(dichte, band * (1.0 - smoothstep(0.35, 1.05, s.y)) * (0.75 - 0.15 * float(j)));
-    }
-  }
-  for (int k = 0; k < 3; k++) {
-    float alter = mod(tau - float(k) * 4.0, 12.0);
-    if (alter > 6.0) continue;
-    vec2 mitte = glut + vec2(0.05 * sin(alter * 0.8 + float(k)), 0.15 + alter * 0.15);
-    float radius = 0.05 + alter * 0.035;
-    float ring = abs(length((p - mitte) * vec2(1.0, 1.9)) - radius);
-    dichte = max(dichte, (1.0 - smoothstep(0.008, 0.018, ring)) * (1.0 - alter / 6.0) * 0.8);
-  }
-  float funke = 1.0 - smoothstep(0.012, 0.03, length(s));
-  wert = max(dichte, funke * (0.85 + 0.15 * sin(uZeit * 9.0)));
-  return wert > 0.05 ? -0.01 : 0.01;
-}
-
-// 3: fünf Blätter fallen langsam und drehen sich; kleinere liegen weiter
-// hinten und sind blasser.
-float blaetterregen(vec2 p, float tau, out float wert) {
-  float d = 1e3;
-  wert = 0.0;
-  for (int i = 0; i < 5; i++) {
-    float fi = float(i);
-    float zufall = fract(sin(fi * 91.7) * 4375.85);
-    float groesse = 0.26 + 0.16 * zufall;
-    float x = -0.44 + fi * 0.22 + 0.05 * sin(tau * 0.7 + fi * 2.0);
-    float y = 0.75 - mod(tau * (0.07 + 0.05 * zufall) + fi * 0.27, 1.5);
-    vec2 q = drehung(0.6 * sin(tau * 0.8 + fi * 1.3)) * (p - vec2(x, y));
-    // Nur leicht kippen, damit die Blattform immer lesbar bleibt.
-    float c = 0.72 + 0.28 * cos(tau * (0.4 + 0.3 * zufall) + fi);
-    q.x /= c;
-    float ader;
-    float di = blatt(q, groesse, ader) * c;
-    if (di < d) {
-      d = di;
-      wert = (0.45 + 0.4 * zufall) * (0.75 + 0.25 * abs(c)) * (1.0 - 0.5 * (1.0 - smoothstep(0.0, 0.25, ader)));
-    }
-  }
-  return d;
-}
-
-float feld(vec2 p, float t) {
-  vec2 w = vec2(gradRauschen(p * 0.8 + vec2(0.0, t * 0.2)), gradRauschen(p * 0.8 + vec2(4.1, -t * 0.17)));
-  vec2 q = p + 1.4 * w;
-  float v = 0.42 + 0.6 * gradRauschen(q * 1.1 + t * 0.08);
-  v += (0.15 + 0.2 * uWelle) * gradRauschen(q * 2.6 - t * (0.15 + 0.35 * uWelle));
-  float d = length(p);
-  v += 0.3 * uPuls * sin(d * 9.0 - t * 6.0) * exp(-d * 1.2);
-  return v;
-}
-
-// Eine Animation an der Stelle sp; gibt die Deckung zurück, wert die Helligkeit.
-float animation(float welche, vec2 sp, float tau, out float wert) {
-  wert = 0.0;
-  float d = welche < 0.5 ? drehblatt(sp, tau, wert) : welche < 1.5 ? rauchschwaden(sp, tau, wert) : blaetterregen(sp, tau, wert);
-  float innen = smoothstep(0.004, -0.004, d);
-  float kante = smoothstep(0.02, 0.0, abs(d)) * innen;
-  wert = clamp(wert + kante * 0.15, 0.0, 1.0);
-  return innen;
-}
-
-void main() {
-  vec2 zelle = floor(gl_FragCoord.xy / uZelle);
-  vec2 mitte = (zelle + 0.5) * uZelle;
-  vec2 uv = (mitte - 0.5 * uRes) / uRes.y;
-  float t = uPhase;
-
-  // Feld als Höhe lesen und beleuchten, damit es plastisch wirkt.
-  vec2 fp = uv * 2.6 + uNeigung * 0.25;
-  float v = feld(fp, t);
-  float e = 0.04;
-  vec3 normale = normalize(vec3(v - feld(fp + vec2(e, 0.0), t), v - feld(fp + vec2(0.0, e), t), e * 0.6));
-  vec3 licht = normalize(vec3(-0.5 + uNeigung.x * 0.4, 0.6 - uNeigung.y * 0.3, 0.6));
-  float diffus = max(dot(normale, licht), 0.0);
-  float glanz = pow(max(dot(reflect(-licht, normale), vec3(0.0, 0.0, 1.0)), 0.0), 12.0);
-  float g = smoothstep(0.15, 0.85, v) * 0.45 + diffus * 0.55 + glanz * 0.35;
-  float zeile = fract(-uv.y * 0.35 - t * 0.12);
-  g += 0.35 * smoothstep(0.96, 1.0, zeile);
-
-  // Das Feld erscheint nur rund um den Zeiger (dort dichter und blau).
-  float abstand = length(mitte - uZeiger.xy) / uZelle;
-  float zeiger = uZeiger.z * smoothstep(12.0, 2.0, abstand);
-  g = (g + 0.25) * zeiger;
-
-  // Animationen: kleiner als der Bildschirm, A blendet in B über.
-  float k = 0.7 * min(1.0, uFormOrt.z * 1.25);
-  vec2 sp = (uv - uFormOrt.xy) / k;
-  float wertA, wertB = 0.0;
-  float innenA = animation(uFormA.x, sp, uFormA.y, wertA);
-  float innenB = 0.0;
-  if (uMischung > 0.001) innenB = animation(uFormB.x, sp, uFormB.y, wertB);
-  float inForm = mix(innenA, innenB, uMischung);
-  g = max(g, mix(innenA * wertA, innenB * wertB, uMischung));
-  g = clamp(g, 0.0, 1.0);
-
-  // Zwölf Dichtestufen mit je zwei Zeichen, darunter Ziffern; welches von
-  // beiden, wechselt pro Zelle alle paar Sekunden zufällig.
-  float zufall = rauschen(zelle + 0.37);
-  // In einer Form stehen die Zeichen still, im Feld wechseln sie langsam.
-  float variante = rauschen(zelle + (inForm > 0.5 ? 0.0 : floor(uZeit * 0.2 + zufall * 7.0)));
-  // In Formen immer dieselbe Zeichenfamilie, damit sie ruhig und klar wirken.
-  bool b = inForm < 0.5 && variante > 0.5;
-  float n = 0.0;
-  if (g > 0.16) n = b ? 2228224.0 : 4194304.0;    // , .
-  if (g > 0.24) n = b ? 131200.0 : 14336.0;       // : -
-  if (g > 0.32) n = b ? 459200.0 : 145536.0;      // = +
-  if (g > 0.4) n = b ? 14815428.0 : 332096.0;     // 1 *
-  if (g > 0.48) n = b ? 8665418.0 : 2167055.0;    // 4 7
-  if (g > 0.56) n = b ? 7608583.0 : 469440.0;     // 3 o
-  if (g > 0.63) n = b ? 15798566.0 : 7609391.0;   // 2 5
-  if (g > 0.7) n = b ? 6568230.0 : 23763238.0;    // 9 &
-  if (g > 0.77) n = b ? 6593574.0 : 6592806.0;    // 6 8
-  if (g > 0.84) n = b ? 9507090.0 : 6598054.0;    // % 0
-  if (g > 0.9) n = b ? 15349934.0 : 15136302.0;   // $ @
-  if (g > 0.95) n = 11512810.0;                   // #
-
-  vec2 lokal = (gl_FragCoord.xy - zelle * uZelle) / uZelle;
-  float an = zeichen(n, lokal * 2.0 - 1.0);
-
-  vec3 grund = mix(vec3(1.0), vec3(0.0), uDunkel);
-  vec3 tinte = mix(vec3(0.26), vec3(0.64), uDunkel);
-  vec3 blau = mix(vec3(0.11, 0.36, 0.96), vec3(0.36, 0.55, 1.0), uDunkel);
-  tinte = mix(tinte, blau, zeiger);
-  float deckung = mix(0.6, 0.82, uDunkel) * (0.45 + 0.55 * g);
-  vec3 farbe = mix(grund, tinte, an * deckung);
-  gl_FragColor = vec4(farbe, 1.0);
-}
-`;
-
-export const STILE = { metall: METALL, lava: LAVA, ascii: ASCII };
+export const STILE = { metall: METALL, lava: LAVA, ascii: ASCII_FILM };
 
 // Ton (RGB), Tempo, Welle und Puls je Gesamtstatus.
 const STIMMUNG = {
@@ -407,14 +196,17 @@ const STIMMUNG = {
   ruhig: { ton: [0.55, 0.45, 0.95], tempo: 0.25, welle: 0, puls: 0 },
 };
 
-const UNIFORMS = ['uRes', 'uPhase', 'uPuls', 'uWelle', 'uNeigung', 'uTon', 'uDunkel', 'uZelle', 'uZeiger', 'uFormA', 'uFormB', 'uMischung', 'uZeit', 'uFormOrt'];
+const UNIFORMS = ['uRes', 'uPhase', 'uPuls', 'uWelle', 'uNeigung', 'uTon', 'uDunkel', 'uZelle', 'uZeiger', 'uMischung', 'uZeit',
+  'uRahmen', 'uSzeneA', 'uSzeneB', 'uGitter', 'uGlyphen', 'uZellen', 'uAtlas'];
 
-// ASCII-Animationen: jede läuft 14 s, die letzten 3 s blenden in die nächste.
-const ANIMATION_DAUER = 14;
-const UEBERGANG = 3;
+// ASCII-Film: in den letzten 2 s jeder Szene taucht die nächste Zelle für Zelle auf.
+const UEBERGANG = 2;
+const FILM_DAUER = DAUERN.reduce((a, b) => a + b, 0);
+// Zeichenzelle in CSS-Pixeln, schmal und hoch wie im Terminal.
+const ZELLE = [6, 10];
 
 // Ab dieser Breite steht die App als Spalte links (siehe app.css, --spalte);
-// die Formen erscheinen dann in der freien Fläche rechts daneben.
+// der Film läuft dann in der freien Fläche rechts daneben.
 const BREIT_AB = 900;
 const SPALTE_RECHTS = 32 + 460 + 24;
 
@@ -440,6 +232,8 @@ export class Hintergrund {
     this.zeigerZuletzt = -10;
     this.zeigerStaerke = 0;
     this.zeit = 0;
+    // Der Film beginnt bei einer zufälligen Szene.
+    this.filmZeit = DAUERN.slice(0, Math.floor(Math.random() * SZENEN)).reduce((a, b) => a + b, 0);
     this.letztes = 0;
     this.mittel = 16.7;
     this.guteFrames = 0;
@@ -462,6 +256,7 @@ export class Hintergrund {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
     this.gl = gl;
     this.programme = {};
+    this.ascii = null;
     this.programmWaehlen();
     this.groesse();
     return true;
@@ -490,6 +285,10 @@ export class Hintergrund {
   programmWaehlen() {
     const gl = this.gl;
     if (!gl) return;
+    if (this.stil === 'ascii') {
+      this.programme.ascii ??= { film: this.programmBauen(ASCII_FILM), zeichen: this.programmBauen(ASCII_ZEICHEN) };
+      return;
+    }
     this.programme[this.stil] ??= this.programmBauen(STILE[this.stil]);
     const { prog, u, ort } = this.programme[this.stil];
     gl.useProgram(prog);
@@ -579,7 +378,9 @@ export class Hintergrund {
     if (dt < 1000 / 60 - 2) return; // auf 60 fps begrenzen
     this.letztes = jetzt;
     if (document.hidden || !this.gl) return;
-    if (dt < 100) this.anpassen(dt);
+    // Der ASCII-Film rechnet pro Zeichenzelle; eine kleinere Auflösung spart
+    // dort nichts und machte nur die Schrift unscharf.
+    if (dt < 100 && this.stil !== 'ascii') this.anpassen(dt);
     const s = Math.min(dt, 50) / 1000;
     const ziel = STIMMUNG[this.status];
     const weich = 1 - Math.exp(-s * 2.5);
@@ -593,6 +394,14 @@ export class Hintergrund {
     this.neigung[0] += (this.neigungZiel[0] - this.neigung[0]) * n;
     this.neigung[1] += (this.neigungZiel[1] - this.neigung[1]) * n;
 
+    const zeigerZiel = this.zeit - this.zeigerZuletzt < 1.2 ? 1 : 0;
+    this.zeigerStaerke += (zeigerZiel - this.zeigerStaerke) * (1 - Math.exp(-s * (zeigerZiel ? 12 : 2.5)));
+    if (this.stil === 'ascii') {
+      this.filmZeit += s * (this.ruhe.matches ? 0.5 : 1);
+      this.asciiZeichnen();
+      return;
+    }
+
     const { gl, u } = this;
     gl.uniform2f(u.uRes, this.canvas.width, this.canvas.height);
     gl.uniform1f(u.uPhase, this.phase);
@@ -601,22 +410,111 @@ export class Hintergrund {
     gl.uniform2f(u.uNeigung, this.neigung[0], this.neigung[1]);
     gl.uniform3f(u.uTon, this.ton[0], this.ton[1], this.ton[2]);
     gl.uniform1f(u.uDunkel, this.dunkel.matches ? 1 : 0);
-    // ASCII-Zellen etwa 11 CSS-Pixel groß, egal wie fein gerechnet wird.
-    gl.uniform1f(u.uZelle, Math.max(5, Math.round(11 * this.skala)));
-    const zeigerZiel = this.zeit - this.zeigerZuletzt < 1.2 ? 1 : 0;
-    this.zeigerStaerke += (zeigerZiel - this.zeigerStaerke) * (1 - Math.exp(-s * (zeigerZiel ? 12 : 2.5)));
-    gl.uniform3f(u.uZeiger, this.zeiger[0] * this.skala, (innerHeight - this.zeiger[1]) * this.skala, this.zeigerStaerke);
-    const runde = Math.floor(this.zeit / ANIMATION_DAUER);
-    const lokal = this.zeit - runde * ANIMATION_DAUER;
-    const ab = ANIMATION_DAUER - UEBERGANG;
-    const x = Math.max(0, (lokal - ab) / UEBERGANG);
-    gl.uniform2f(u.uFormA, runde % 3, lokal + UEBERGANG);
-    gl.uniform2f(u.uFormB, (runde + 1) % 3, Math.max(0, lokal - ab));
-    gl.uniform1f(u.uMischung, x * x * (3 - 2 * x));
-    gl.uniform1f(u.uZeit, this.zeit);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  // Zellgitter, Zellbild und Zeichen-Atlas passend zur Auflösung anlegen.
+  asciiVorbereiten() {
+    const { gl, canvas } = this;
+    const zb = Math.max(3, Math.round(ZELLE[0] * this.skala));
+    const zh = Math.max(5, Math.round(ZELLE[1] * this.skala));
+    const spalten = Math.ceil(canvas.width / zb);
+    const zeilen = Math.ceil(canvas.height / zh);
+    const a = this.ascii;
+    if (a && a.zb === zb && a.zh === zh && a.spalten === spalten && a.zeilen === zeilen) return a;
+    const textur = (alt) => {
+      if (alt) gl.deleteTexture(alt);
+      const t = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      return t;
+    };
+    const neu = { zb, zh, spalten, zeilen, fbo: a?.fbo ?? gl.createFramebuffer() };
+    neu.zellen = textur(a?.zellen);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, spalten, zeilen, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, neu.fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, neu.zellen, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    if (a && a.zb === zb && a.zh === zh) {
+      neu.atlas = a.atlas;
+      neu.glyphen = a.glyphen;
+    } else {
+      const { canvas: bild, anzahl } = atlasZeichnen(zb, zh);
+      neu.atlas = textur(a?.atlas);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bild);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      neu.glyphen = anzahl;
+    }
+    this.ascii = neu;
+    return neu;
+  }
+
+  programmBinden({ prog, ort }) {
+    const gl = this.gl;
+    gl.useProgram(prog);
+    gl.enableVertexAttribArray(ort);
+    gl.vertexAttribPointer(ort, 2, gl.FLOAT, false, 0, 0);
+  }
+
+  asciiZeichnen() {
+    const { gl, canvas } = this;
+    if (this.skala !== this.maxSkala) {
+      this.skala = this.maxSkala;
+      this.groesse();
+    }
+    const a = this.asciiVorbereiten();
+    const { film, zeichen } = this.programme.ascii;
+    const dunkel = this.dunkel.matches ? 1 : 0;
+
+    // Kino-Fenster in der freien Fläche, eher breit; auf dem Handy höher.
     const frei = innerWidth >= BREIT_AB ? SPALTE_RECHTS : 0;
-    const mitteX = (frei + innerWidth) / 2;
-    gl.uniform3f(u.uFormOrt, (mitteX - innerWidth / 2) / innerHeight, 0, (innerWidth - frei) / innerHeight);
+    const breite = ((innerWidth - frei) / innerHeight) * 0.9;
+    const seiten = Math.min(1.9, Math.max(0.8, breite / 0.62));
+    const hoehe = Math.min(0.8, breite / seiten);
+    const mitteX = ((frei + innerWidth) / 2 - innerWidth / 2) / innerHeight;
+
+    let lokal = this.filmZeit % FILM_DAUER;
+    let szene = 0;
+    while (lokal >= DAUERN[szene]) lokal -= DAUERN[szene++];
+    const ab = DAUERN[szene] - UEBERGANG;
+    const x = Math.max(0, (lokal - ab) / UEBERGANG);
+
+    // 1. Szene in das Zellbild, ein Pixel pro Zeichen.
+    gl.bindFramebuffer(gl.FRAMEBUFFER, a.fbo);
+    gl.viewport(0, 0, a.spalten, a.zeilen);
+    this.programmBinden(film);
+    let u = film.u;
+    gl.uniform2f(u.uRes, canvas.width, canvas.height);
+    gl.uniform2f(u.uZelle, a.zb, a.zh);
+    gl.uniform4f(u.uRahmen, mitteX, 0, hoehe, seiten);
+    gl.uniform2f(u.uSzeneA, szene, lokal + UEBERGANG);
+    gl.uniform2f(u.uSzeneB, (szene + 1) % SZENEN, Math.max(0, lokal - ab));
+    gl.uniform1f(u.uMischung, x);
+    gl.uniform1f(u.uZeit, this.zeit);
+    gl.uniform1f(u.uDunkel, dunkel);
+    gl.uniform3f(u.uZeiger, this.zeiger[0] * this.skala, (innerHeight - this.zeiger[1]) * this.skala, this.zeigerStaerke);
+    gl.uniform2f(u.uNeigung, this.neigung[0], this.neigung[1]);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    // 2. Zeichen aus dem Atlas setzen.
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    this.programmBinden(zeichen);
+    u = zeichen.u;
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, a.zellen);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, a.atlas);
+    gl.uniform1i(u.uZellen, 0);
+    gl.uniform1i(u.uAtlas, 1);
+    gl.uniform2f(u.uZelle, a.zb, a.zh);
+    gl.uniform2f(u.uGitter, a.spalten, a.zeilen);
+    gl.uniform1f(u.uGlyphen, a.glyphen);
+    gl.uniform1f(u.uDunkel, dunkel);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 }
