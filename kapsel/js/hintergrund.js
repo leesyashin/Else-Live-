@@ -5,8 +5,9 @@
 //   in der Farbe des Gesamtstatus.
 // - ascii: ein Porsche 911 GT3 RS als 3D-Modell in Terminal-Zeichen, die
 //   Kamera kreist darum (siehe ascii-porsche.js); der Lack hat die Statusfarbe.
-// - kueste: ein Porsche 911 in Navy fährt eine Küstenstraße entlang, gefilmt
-//   von der Seite mit Blick aufs Meer (three.js, siehe kueste.js). Er läuft
+// - kueste: ein Porsche 911 in Navy fährt eine Klippenstraße an der Küste
+//   entlang, gefilmt von schräg oben mit Blick hinunter aufs Meer (three.js,
+//   siehe kueste.js). Er läuft
 //   auf einer eigenen WebGL-2-Fläche und wird erst bei Bedarf geladen.
 // Alle folgen der Neigung des iPhones, sind auf 60 fps begrenzt und rechnen
 // auf dem Mac in voller Retina-Auflösung, die bei Bedarf sinkt.
