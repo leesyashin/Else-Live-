@@ -1,8 +1,11 @@
 // Bewegter Hintergrund in WebGL, zwei Stile:
 // - metall: flüssiges Chrom, eine fließende Oberfläche, die eine Studio-
 //   Umgebung spiegelt. Arbeitet Claude, wellt sie sich stärker.
-// - lava: eine Lava-Lampe, weiche Blasen, die verschmelzen und sich trennen,
-//   in der Farbe des Gesamtstatus.
+// - lava: eine echte Lava-Lampe. Rot-oranges Wachs, von unten durchleuchtet,
+//   steigt zäh aus dem Klumpen am Boden auf, zieht sich dabei lang, kühlt oben
+//   ab und sinkt; Blasen verschmelzen und drücken sich an die Glaswand
+//   (Bewegung in LavaFluss). Der Status bestimmt das Tempo, bei einer Frage
+//   pulsiert die Birne.
 // - ascii: ein brennender Joint als 3D-Modell in Terminal-Zeichen, mit Glut
 //   und aufsteigendem Rauch; die Kamera schwenkt um ihn (siehe ascii-joint.js).
 // - kueste: ein Porsche 911 in Navy fährt eine Klippenstraße an der Küste
@@ -152,43 +155,251 @@ void main() {
 `;
 
 const LAVA = KOPF + `
-float feld(vec2 p, float t) {
-  float k = uRes.x / uRes.y;
+// Echte Lava-Lampe: rot-oranges Wachs, von der Glühbirne im Sockel von unten
+// durchleuchtet, in warmer Flüssigkeit in einem Glasgefäß, das nach oben
+// schmaler wird.
+// Blase 0 ist der Klumpen am Boden; xy Mitte, zw Halbachsen.
+uniform vec4 uBlasen[12];
+
+float pixel;
+float breite;
+
+// Farbiges Licht: im Dunkeln addiert, im Hellen eingefärbt.
+vec3 leuchten(vec3 c, vec3 farbe, float a) {
+  return mix(mix(c, farbe, clamp(a, 0.0, 1.0)), c + farbe * a, uDunkel);
+}
+
+// Gleiche Form wie gefaess() in JS.
+float gefaess(float y) {
+  return breite * (1.0 - 0.14 * smoothstep(-0.1, 1.05, y) - 0.05 * smoothstep(-0.55, -1.05, y));
+}
+
+// Metaball-Feld und sein Gradient.
+float feld(vec2 p, out vec2 g) {
   float f = 0.0;
-  for (int i = 0; i < 7; i++) {
-    float fi = float(i);
-    vec2 c = vec2(sin(fi * 1.7 + t * 0.21 * (1.0 + fi * 0.13)) * 0.8 * k,
-                  sin(t * (0.16 + fi * 0.035) + fi * 2.1) * 0.95);
-    c += uNeigung * (0.05 + 0.035 * fi);
-    float r = 0.13 + 0.05 * sin(fi * 3.3) + 0.025 * uPuls;
-    vec2 d = p - c;
-    f += r * r / max(dot(d, d), 1e-4);
+  g = vec2(0.0);
+  for (int i = 0; i < 12; i++) {
+    vec4 b = uBlasen[i];
+    vec2 d = (p - b.xy) / b.zw;
+    float q = dot(d, d) + 1e-3;
+    float t = 1.0 / (q * q);
+    f += t;
+    g -= 4.0 * t / q * d / b.zw;
   }
   return f;
+}
+
+const vec3 BIRNE = vec3(1.0, 0.56, 0.2);
+
+// Die Flüssigkeit, beleuchtet von unten.
+vec3 fluessigkeit(vec2 p, float licht) {
+  float d = uDunkel;
+  vec3 c = mix(vec3(0.995, 0.955, 0.885), vec3(0.045, 0.016, 0.012), d);
+  float unten = exp(-(p.y + 1.0) * 1.7);
+  float kegel = exp(-abs(p.x) / (0.28 + 0.5 * (p.y + 1.0))) * exp(-(p.y + 1.0) * 0.75);
+  c = leuchten(c, BIRNE, (unten * mix(0.22, 0.5, d) + kegel * mix(0.12, 0.3, d)) * licht);
+  c *= mix(1.0, mix(0.96, 0.55, d), smoothstep(-0.2, 1.0, p.y));
+  return c;
 }
 
 void main() {
   vec2 uv = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
   vec2 p = uv * 2.0;
-  float f = feld(p, uPhase);
+  pixel = 2.0 / uRes.y;
+  breite = uRes.x / uRes.y;
+  float d = uDunkel;
+  // Bei einer Frage pulsiert die Birne.
+  float licht = 1.0 + 0.25 * uPuls;
 
-  // Weicher Rand, im Inneren heller wie eine beleuchtete Lampe.
-  float innen = smoothstep(0.94, 1.06, f);
-  float tiefe = smoothstep(1.0, 2.6, f);
-  float schein = smoothstep(0.35, 1.0, f) * (1.0 - innen);
-  vec3 zweit = vec3(0.98, 0.36, 0.62);
-  vec3 ton = mix(uTon, zweit, 0.35 * smoothstep(-1.0, 1.0, p.y));
+  vec2 g;
+  float f = feld(p, g);
+  float lg = max(length(g), 1e-4);
+  float sd = (f - 1.0) / lg;
+  float innen = smoothstep(-pixel, pixel, sd);
 
-  vec3 grund = mix(vec3(1.0), vec3(0.0), uDunkel);
-  vec3 blaseHell = mix(mix(ton, vec3(1.0), 0.15), mix(ton, vec3(1.0), 0.6), tiefe);
-  vec3 blaseDunkel = mix(ton * 0.55, ton * 1.05 + 0.12, tiefe);
-  vec3 blase = mix(blaseHell, blaseDunkel, uDunkel);
-  vec3 farbe = mix(grund, ton, schein * mix(0.18, 0.35, uDunkel));
-  farbe = mix(farbe, blase, innen);
-  farbe += (rauschen(gl_FragCoord.xy) - 0.5) / 255.0;
+  vec3 farbe = fluessigkeit(p, licht);
+  // Etwas Licht streut vom Wachs in die Flüssigkeit.
+  farbe = leuchten(farbe, vec3(1.0, 0.3, 0.06), smoothstep(0.1, 1.0, f) * (1.0 - innen) * mix(0.07, 0.16, d));
+
+  if (innen > 0.0) {
+    float rho = sqrt(sqrt(clamp(1.0 / f, 0.0, 1.0)));
+    vec2 nxy = -g / lg * rho;
+    vec3 n = vec3(nxy, sqrt(max(1.0 - rho * rho, 0.0)));
+    // Durchleuchtung: am dünnen Rand, an der Unterseite und nah an der Birne
+    // scheint das Licht durchs Wachs, dicke Stellen oben bleiben tiefrot.
+    float vonUnten = smoothstep(0.5, -0.9, n.y);
+    float naehe = smoothstep(0.9, -1.0, p.y);
+    float durch = ((1.0 - n.z) * 0.85 + vonUnten * 0.55 + naehe * 0.45) * licht;
+    vec3 wachs = mix(vec3(0.55, 0.05, 0.025), vec3(0.95, 0.19, 0.03), smoothstep(0.05, 0.75, durch));
+    wachs = mix(wachs, vec3(1.0, 0.58, 0.12), smoothstep(0.8, 1.65, durch));
+    wachs *= mix(1.12, 1.0, d);
+    // Heller Saum, wo das Wachs am dünnsten ist.
+    wachs += vec3(1.0, 0.5, 0.1) * 0.3 * exp(-max(sd, 0.0) / (pixel * 3.0)) * (0.4 + 0.6 * vonUnten);
+    // Oberseite im Schatten.
+    wachs *= 1.0 - 0.2 * smoothstep(0.0, 0.9, n.y) * (1.0 - naehe);
+    // Wachs glänzt matt: breiter, schwacher Schimmer, kleiner Lichtpunkt.
+    float glanz = max(dot(n, normalize(vec3(-0.3, 0.45, 1.0))), 0.0);
+    wachs += vec3(1.0, 0.85, 0.7) * (pow(glanz, 14.0) * 0.1 + pow(glanz, 110.0) * 0.22);
+    farbe = mix(farbe, wachs, innen);
+  }
+
+  // Das Glasgefäß: außen der Raum, am Rand gewölbtes Glas mit Lichtstreifen.
+  float hw = gefaess(p.y);
+  float x = p.x / hw;
+  farbe *= 1.0 - mix(0.12, 0.4, d) * pow(min(abs(x), 1.0), 6.0);
+  float fenster = exp(-pow((x + 0.74) / 0.05, 2.0)) * smoothstep(1.0, 0.2, p.y) * smoothstep(-1.0, -0.5, p.y);
+  float streif = exp(-pow((x - 0.84) / 0.012, 2.0)) * smoothstep(0.95, 0.0, abs(p.y));
+  farbe += vec3(1.0, 0.95, 0.9) * (fenster * mix(0.05, 0.1, d) + streif * mix(0.08, 0.16, d));
+  float aussen = smoothstep(-pixel, pixel, abs(p.x) - hw);
+  vec3 raum = mix(vec3(0.93, 0.925, 0.93), vec3(0.012, 0.01, 0.012), d);
+  raum = leuchten(raum, BIRNE, exp(-(p.y + 1.0) * 3.0) * mix(0.15, 0.12, d) * licht);
+  farbe = mix(farbe, raum, aussen);
+  float kante = exp(-abs(abs(p.x) - hw) / (pixel * 1.3));
+  farbe = mix(farbe, mix(farbe * 0.55, farbe + vec3(0.35, 0.3, 0.28), d), kante * 0.8);
+
+  farbe *= 1.0 - d * 0.2 * dot(uv, uv);
+  farbe += (rauschen(gl_FragCoord.xy + fract(uPhase) * 91.0) - 0.5) / 160.0;
   gl_FragColor = vec4(farbe, 1.0);
 }
 `;
+
+const LAVA_ANZAHL = 12; // Blase 0 ist der Klumpen am Boden
+
+const glatt = (a, b, x) => {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
+// Halbe Innenbreite des Glasgefäßes auf Höhe y (-1 unten … 1 oben): nach
+// oben schmaler, am Sockel leicht eingezogen wie bei einer Lava-Lampe.
+// Gleiche Formel wie gefaess() im Shader.
+const gefaess = (y, k) => k * (1 - 0.14 * glatt(-0.1, 1.05, y) - 0.05 * glatt(-0.55, -1.05, y));
+
+// Die Blasen der Lava-Lampe: unten heizt die Lampe, oben kühlt das Wachs ab,
+// alles stark gedämpft. Ab und zu treibt eine Blase an eine Glaswand, drückt
+// sich dort platt und löst sich wieder.
+class LavaFluss {
+  constructor() {
+    this.blasen = [];
+    this.daten = new Float32Array(LAVA_ANZAHL * 4);
+    this.zeit = Math.random() * 100;
+    this.k = 0;
+    for (let i = 1; i < LAVA_ANZAHL; i++) {
+      this.blasen.push({
+        x: Math.random() * 1.6 - 0.8,
+        y: Math.random() * 1.7 - 0.85,
+        vx: 0,
+        vy: 0,
+        r: 0.08 + 0.13 * Math.random() ** 1.5,
+        waerme: Math.random(),
+        heiz: 0.7 + Math.random() * 0.6,
+        ziel: 0,
+        wand: 0,
+        zielBis: 0,
+        sx: 1,
+        sy: 1,
+        vsx: 0,
+        vsy: 0,
+      });
+    }
+  }
+
+  // s in Sekunden, k = Breite / Höhe, neigung -1 … 1
+  schritt(s, k, neigung, puls) {
+    if (!this.k) {
+      for (const b of this.blasen) b.x *= k;
+      this.k = k;
+      // Einmal vorspulen, damit die Lampe nicht im Startzustand beginnt.
+      for (let i = 0; i < 900; i++) this.schritt(1 / 30, k, [0, 0], 0);
+    } else if (k !== this.k) {
+      for (const b of this.blasen) b.x *= k / this.k;
+      this.k = k;
+    }
+    this.zeit += s;
+    const t = this.zeit;
+    // Auf schmalen Handys etwas kleinere Blasen.
+    const skala = Math.min(1, 0.62 + 0.38 * k) * (1 + 0.06 * puls);
+    for (const b of this.blasen) {
+      const r = b.r * skala;
+      const rand = gefaess(b.y, k) - 0.015;
+      // Ab und zu ein neues Ziel: oft eine Wand, sonst irgendwo dazwischen.
+      if (t > b.zielBis) {
+        b.wand = Math.random() < 0.4 ? Math.sign(Math.random() - 0.5) : 0;
+        b.ziel = (Math.random() * 1.1 - 0.55) * k;
+        b.zielBis = t + (b.wand ? 9 : 5) + Math.random() * 10;
+      }
+      // Unten heizt die Lampe, oben kühlt das Wachs ab.
+      const unten = Math.max(0, Math.min(1, (-0.5 - b.y) / 0.4));
+      const oben = Math.max(0, Math.min(1, (b.y - 0.3) / 0.6));
+      b.waerme = Math.max(0, Math.min(1, b.waerme + s * (0.26 * unten * b.heiz - 0.12 * oben - 0.012)));
+
+      let ax = (b.wand ? b.wand * 0.1 : Math.max(-0.08, Math.min(0.08, (b.ziel - b.x) * 0.25))) + neigung[0] * 0.14;
+      let ay = (b.waerme - 0.48) * 0.3 + neigung[1] * 0.04;
+      // Weiche Wände: das Wachs drückt sich platt und kommt zurück.
+      const ueL = -rand - (b.x - r);
+      const ueR = b.x + r - rand;
+      const ueU = -0.985 - (b.y - r);
+      const ueO = b.y + r - 0.985;
+      if (ueL > 0) ax += ueL * 3.2;
+      if (ueR > 0) ax -= ueR * 3.2;
+      if (ueU > 0) ay += ueU * 3.2;
+      if (ueO > 0) ay -= ueO * 3.2;
+      // Am Glas klebt das Wachs: entlang der Wand stärker gebremst.
+      const anWand = Math.min(1, Math.max(ueL, ueR, 0) / r);
+      const anDecke = Math.min(1, Math.max(ueU, ueO, 0) / r);
+      b.vx += (ax - b.vx * (1.5 + 2.5 * anDecke)) * s;
+      b.vy += (ay - b.vy * (1.5 + 3.0 * anWand)) * s;
+      b.x += b.vx * s;
+      b.y += b.vy * s;
+
+      // Plattdrücken an Wand und Decke, beim Steigen lang gezogen wie Wachs;
+      // das Volumen bleibt.
+      const px = 1 - 1.2 * Math.min(0.4, Math.max(ueL, ueR, 0) / r);
+      const py = 1 - 1.2 * Math.min(0.4, Math.max(ueU, ueO, 0) / r);
+      const zug = 1 + Math.min(0.6, Math.abs(b.vy) * 4.5);
+      const sx = Math.sqrt(px / py / zug);
+      const sy = Math.sqrt((py / px) * zug);
+      // Zäh nachfedern, ein leichtes Wabbeln.
+      b.vsx += ((sx - b.sx) * 7 - b.vsx * 3.2) * s;
+      b.vsy += ((sy - b.sy) * 7 - b.vsy * 3.2) * s;
+      b.sx += b.vsx * s;
+      b.sy += b.vsy * s;
+    }
+    // Blasen schieben sich sanft auseinander, damit nie zwei ganz aufeinander liegen.
+    for (let i = 0; i < this.blasen.length; i++) {
+      for (let j = i + 1; j < this.blasen.length; j++) {
+        const a = this.blasen[i];
+        const c = this.blasen[j];
+        const dx = c.x - a.x;
+        const dy = c.y - a.y;
+        const nah = (a.r + c.r) * skala * 0.55;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < nah * nah && d2 > 1e-8) {
+          const d = Math.sqrt(d2);
+          const kraft = ((nah - d) / d) * 0.25 * s;
+          a.vx -= dx * kraft;
+          a.vy -= dy * kraft;
+          c.vx += dx * kraft;
+          c.vy += dy * kraft;
+        }
+      }
+    }
+    const f = this.daten;
+    // Der Klumpen am Boden atmet langsam.
+    f[0] = 0.12 * Math.sin(t * 0.05) * k;
+    f[1] = -1.2 + 0.025 * Math.sin(t * 0.17);
+    f[2] = k * (1.2 + 0.05 * Math.sin(t * 0.11));
+    f[3] = 0.3 + 0.02 * Math.sin(t * 0.13 + 1);
+    this.blasen.forEach((b, i) => {
+      const r = b.r * skala;
+      f[i * 4 + 4] = b.x;
+      f[i * 4 + 5] = b.y;
+      f[i * 4 + 6] = r * b.sx;
+      f[i * 4 + 7] = r * b.sy;
+    });
+    return f;
+  }
+}
 
 // Die Küste ist kein einzelner Shader, sondern eine three.js-Szene.
 export const STILE = { metall: METALL, lava: LAVA, ascii: ASCII_JOINT, kueste: null };
@@ -202,7 +413,7 @@ const STIMMUNG = {
 };
 
 const UNIFORMS = ['uRes', 'uPhase', 'uPuls', 'uWelle', 'uNeigung', 'uTon', 'uDunkel', 'uZelle', 'uZeiger', 'uZeit',
-  'uRahmen', 'uGitter', 'uGlyphen', 'uZellen', 'uAtlas'];
+  'uRahmen', 'uGitter', 'uGlyphen', 'uZellen', 'uAtlas', 'uBlasen'];
 
 // Zeichenzelle in CSS-Pixeln, schmal und hoch wie im Terminal; auf dem
 // Handy etwas feiner, damit der Joint genug Zeichen bekommt.
@@ -256,6 +467,7 @@ export class Hintergrund {
     canvas.addEventListener('webglcontextrestored', () => this.einrichten());
     this.kueste = null;
     this.kuesteFlaeche = null;
+    this.lava = new LavaFluss();
   }
 
   get maxSkala() {
@@ -469,9 +681,15 @@ export class Hintergrund {
     }
 
     const { gl, u } = this;
+    const puls = this.pulsStaerke * (0.5 + 0.5 * Math.sin(this.zeit * 3.2));
+    if (this.stil === 'lava') {
+      // Auch in Ruhe zieht die Lampe weiter, nur langsamer.
+      const lava = this.lava.schritt(s * (0.4 + 0.6 * this.tempo) * (this.ruhe.matches ? 0.4 : 1), this.canvas.width / this.canvas.height, this.neigung, puls);
+      gl.uniform4fv(u.uBlasen, lava);
+    }
     gl.uniform2f(u.uRes, this.canvas.width, this.canvas.height);
     gl.uniform1f(u.uPhase, this.phase);
-    gl.uniform1f(u.uPuls, this.pulsStaerke * (0.5 + 0.5 * Math.sin(this.zeit * 3.2)));
+    gl.uniform1f(u.uPuls, puls);
     gl.uniform1f(u.uWelle, this.welle);
     gl.uniform2f(u.uNeigung, this.neigung[0], this.neigung[1]);
     gl.uniform3f(u.uTon, this.ton[0], this.ton[1], this.ton[2]);
