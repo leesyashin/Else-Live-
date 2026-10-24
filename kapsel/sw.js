@@ -1,7 +1,13 @@
 // Offline-Fähigkeit: Die App-Hülle kommt zuerst frisch aus dem Netz und nur
 // ohne Verbindung aus dem Cache, damit Updates sofort ankommen. Anfragen an
 // GitHub gehen immer ins Netz.
-const VERSION = 'kapsel-16';
+// three.js und das Auto-Modell (vendor/, modelle/) sind groß und tragen ihre
+// Version im Namen; sie kommen aus einem eigenen Cache, der Updates der Hülle
+// übersteht, und werden erst geladen, wenn jemand die Küste wählt. Ändert
+// sich eine davon, bekommt sie einen neuen Namen und DAUER zählt hoch.
+const VERSION = 'kapsel-17';
+const DAUER = 'kapsel-dauer-1';
+const GROSS = /\/(vendor|modelle)\//;
 const HUELLE = [
   './',
   'index.html',
@@ -11,6 +17,7 @@ const HUELLE = [
   'js/github.js',
   'js/hintergrund.js',
   'js/ascii-porsche.js',
+  'js/kueste.js',
   'js/haptik.js',
   'js/speicher.js',
   'manifest.webmanifest',
@@ -30,7 +37,7 @@ self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches
       .keys()
-      .then((namen) => Promise.all(namen.filter((n) => n !== VERSION).map((n) => caches.delete(n))))
+      .then((namen) => Promise.all(namen.filter((n) => n !== VERSION && n !== DAUER).map((n) => caches.delete(n))))
       .then(() => self.clients.claim()),
   );
 });
@@ -38,6 +45,18 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+  if (GROSS.test(url.pathname)) {
+    e.respondWith(
+      caches.open(DAUER).then(async (cache) => {
+        const da = await cache.match(e.request, { ignoreSearch: true });
+        if (da) return da;
+        const antwort = await fetch(e.request);
+        if (antwort.ok) cache.put(e.request, antwort.clone());
+        return antwort;
+      }),
+    );
+    return;
+  }
   e.respondWith(
     caches.open(VERSION).then(async (cache) => {
       try {

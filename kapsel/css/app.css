@@ -86,7 +86,7 @@ svg { flex: none; }
 
 :focus-visible { outline: 2px solid var(--akzent); outline-offset: 2px; }
 
-#glas {
+#glas, #glas3d {
   position: fixed;
   inset: 0;
   width: 100vw;
@@ -94,7 +94,11 @@ svg { flex: none; }
   z-index: -1;
   display: block;
 }
-#glas[hidden] { display: none; }
+#glas[hidden], #glas3d[hidden] { display: none; }
+/* Die Küste blendet ein, sobald das erste Bild steht. */
+#glas3d { opacity: 0; transition: opacity 0.9s ease; }
+#glas3d.bereit { opacity: 1; }
+.fussnote a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 
 .ansicht {
   max-width: 640px;

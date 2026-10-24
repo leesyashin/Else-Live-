@@ -544,6 +544,7 @@ function seiteEinstellungen() {
           ['metall', 'Metall'],
           ['lava', 'Lava'],
           ['ascii', 'ASCII'],
+          ['kueste', 'Küste'],
           ['aus', 'Aus'],
         ]
           .map(([wert, name]) => {
@@ -554,7 +555,8 @@ function seiteEinstellungen() {
       </div>
       ${schalter('neigung', einst.neigung, 'Auf Neigung reagieren', neigungMoeglich ? 'Nutzt den Bewegungssensor des iPhones.' : 'Dieses Gerät meldet keine Neigung.', !neigungMoeglich || !einst.glas)}
       ${schalter('haptik', einst.haptik, 'Haptik', 'Bei Statuswechseln und beim Mergen.')}
-    </div><p class="fussnote">Hell und Dunkel folgen dem System.</p></section>
+    </div><p class="fussnote">Hell und Dunkel folgen dem System.</p>
+    <p class="fussnote">Küste: Modell <a href="https://sketchfab.com/3d-models/free-porsche-911-carrera-4s-d01b254483794de3819786d93e0e1ebf" target="_blank" rel="noopener">„(FREE) Porsche 911 Carrera 4S“</a> von Karol Miklas, <a href="https://creativecommons.org/licenses/by-sa/4.0/deed.de" target="_blank" rel="noopener">CC BY-SA 4.0</a>, verändert (Lack, Logos entfernt, verkleinert). Kein offizielles Projekt der Porsche AG.</p></section>
     <section class="gruppe"><h2>GitHub</h2><div class="liste">
       <label class="feld"><b>Token</b><input type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…" data-feld="token" value="${h(einst.token)}"></label>
       <label class="feld"><b>Repos</b><input type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="besitzer/repo, besitzer/repo2" data-feld="repos" value="${h(einst.repos)}"></label>
