@@ -8,7 +8,7 @@
 // Alle folgen der Neigung des iPhones, sind auf 60 fps begrenzt und rechnen
 // auf dem Mac in voller Retina-Auflösung, die bei Bedarf sinkt.
 
-import { ASCII_FILM, ASCII_ZEICHEN, SZENEN, atlasZeichnen } from './ascii-film.js';
+import { ASCII_FILM, ASCII_ZEICHEN, DAUERN, SZENEN, atlasZeichnen } from './ascii-film.js';
 
 const VERTEX = `
 attribute vec2 p;
@@ -199,11 +199,11 @@ const STIMMUNG = {
 const UNIFORMS = ['uRes', 'uPhase', 'uPuls', 'uWelle', 'uNeigung', 'uTon', 'uDunkel', 'uZelle', 'uZeiger', 'uMischung', 'uZeit',
   'uRahmen', 'uSzeneA', 'uSzeneB', 'uGitter', 'uGlyphen', 'uZellen', 'uAtlas'];
 
-// ASCII-Film: jede Szene läuft 11 s, die letzten 2,5 s blenden in die nächste.
-const SZENE_DAUER = 11;
-const UEBERGANG = 2.5;
+// ASCII-Film: in den letzten 2 s jeder Szene taucht die nächste Zelle für Zelle auf.
+const UEBERGANG = 2;
+const FILM_DAUER = DAUERN.reduce((a, b) => a + b, 0);
 // Zeichenzelle in CSS-Pixeln, schmal und hoch wie im Terminal.
-const ZELLE = [7, 12];
+const ZELLE = [6, 10];
 
 // Ab dieser Breite steht die App als Spalte links (siehe app.css, --spalte);
 // der Film läuft dann in der freien Fläche rechts daneben.
@@ -233,7 +233,7 @@ export class Hintergrund {
     this.zeigerStaerke = 0;
     this.zeit = 0;
     // Der Film beginnt bei einer zufälligen Szene.
-    this.filmZeit = Math.floor(Math.random() * SZENEN) * SZENE_DAUER;
+    this.filmZeit = DAUERN.slice(0, Math.floor(Math.random() * SZENEN)).reduce((a, b) => a + b, 0);
     this.letztes = 0;
     this.mittel = 16.7;
     this.guteFrames = 0;
@@ -477,9 +477,10 @@ export class Hintergrund {
     const hoehe = Math.min(0.8, breite / seiten);
     const mitteX = ((frei + innerWidth) / 2 - innerWidth / 2) / innerHeight;
 
-    const runde = Math.floor(this.filmZeit / SZENE_DAUER);
-    const lokal = this.filmZeit - runde * SZENE_DAUER;
-    const ab = SZENE_DAUER - UEBERGANG;
+    let lokal = this.filmZeit % FILM_DAUER;
+    let szene = 0;
+    while (lokal >= DAUERN[szene]) lokal -= DAUERN[szene++];
+    const ab = DAUERN[szene] - UEBERGANG;
     const x = Math.max(0, (lokal - ab) / UEBERGANG);
 
     // 1. Szene in das Zellbild, ein Pixel pro Zeichen.
@@ -490,9 +491,9 @@ export class Hintergrund {
     gl.uniform2f(u.uRes, canvas.width, canvas.height);
     gl.uniform2f(u.uZelle, a.zb, a.zh);
     gl.uniform4f(u.uRahmen, mitteX, 0, hoehe, seiten);
-    gl.uniform2f(u.uSzeneA, runde % SZENEN, lokal + UEBERGANG);
-    gl.uniform2f(u.uSzeneB, (runde + 1) % SZENEN, Math.max(0, lokal - ab));
-    gl.uniform1f(u.uMischung, x * x * (3 - 2 * x));
+    gl.uniform2f(u.uSzeneA, szene, lokal + UEBERGANG);
+    gl.uniform2f(u.uSzeneB, (szene + 1) % SZENEN, Math.max(0, lokal - ab));
+    gl.uniform1f(u.uMischung, x);
     gl.uniform1f(u.uZeit, this.zeit);
     gl.uniform1f(u.uDunkel, dunkel);
     gl.uniform3f(u.uZeiger, this.zeiger[0] * this.skala, (innerHeight - this.zeiger[1]) * this.skala, this.zeigerStaerke);
