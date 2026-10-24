@@ -1,7 +1,7 @@
 # Auftrag: Kapsel, neuer Hintergrund für die Küste
 
 Repo: leesyashin/Else-Live- · Branch: claude/auftrag-<nr>-kueste-neu (Nummer vergibt der CvD) · Prio: normal · Größe: L (mehrere PRs, darf lange dauern)
-Eltern: keiner · Angelegt von: Session am 24.10.2026 · Zustand: offen
+Eltern: keiner · Angelegt von: Session am 24.10.2026 · Zustand: in Arbeit (Phase 0); Stil fotografisch bestätigt am 24.10.2026
 
 ## Ziel
 
@@ -187,7 +187,7 @@ Mit der Sonne vorn links fallen die Schatten von Mauer, Zypressen und Galeriebö
 **Bild-Durchgang (eigener Shader, kein Zusatz im Bündel):**
 - Die Szene rendert linear in ein HalfFloat-Ziel mit 4× MSAA.
 - Bloom in 1/2 bis 1/16 Auflösung für Glitzer, Sonne und Chrom.
-- Danach in einem Durchgang: Tonemapping AgX, Farbgebung wie ein Foto (Lichter leicht warm, Schatten leicht kühl, sanfte S-Kurve), leichte Vignette, feines Korn und Ausgabe in sRGB.
+- Danach in einem Durchgang: Tonemapping (AgX oder Neutral; im Rohbau von Phase 0 nahm AgX dem Himmel zu viel Farbe, darum vorerst Neutral), Farbgebung wie ein Foto (Lichter leicht warm, Schatten leicht kühl, sanfte S-Kurve), leichte Vignette, feines Korn und Ausgabe in sRGB.
 - **Belichtung:** folgt dem Abschnitt (aus der Streckentabelle bekannt). Im Tunnel wird um +1,3 Blenden aufgeblendet, bei der Ausfahrt ist es kurz überstrahlt und regelt dann zurück, wie eine Kamera. Im Ruhe-Modus ohne Sprünge.
 
 **Dunst:** Luftperspektive nach Weite und Höhe (dichter knapp über dem Meer), Farbe aus dem Himmelswürfel (heutiges `mitDunst`), dazu ein Mie-Schein in Richtung Sonne.
@@ -210,8 +210,8 @@ Budget für Grafikspeicher: unter 150 MB auf dem iPhone, sonst droht iOS den Kon
 
 ### 13. Technik und Dateien
 
-- `kapsel/js/kueste.js` bleibt der Einstieg: Klasse `Kueste`, Auto (unverändert übernommen), Kamera, Schleife.
-- Neu unter `kapsel/js/kueste/`:
+- Die neue Szene steht in `kapsel/js/kueste/szene.js` (Klasse `Kueste`, Kamera, Schleife). Das Auto liegt seit Phase 0 in `kueste/auto.js`, die kleinen Helfer in `kueste/helfer.js`; alte und neue Küste nutzen beide. In Phase 9 fällt `kueste.js` weg, und der Stil `kueste` lädt `kueste/szene.js`.
+- Weitere Dateien unter `kapsel/js/kueste/`:
 
 | Datei | Inhalt |
 | --- | --- |
@@ -250,7 +250,7 @@ Jede Phase ist ein eigener PR (Draft gegen `main`) mit Screenshots aus dem Stand
 
 | Phase | Inhalt | Abnahme im PR |
 | --- | --- | --- |
-| 0 | Gerüst: Stil `kueste-neu`, Ordner, Standbild-Modus, Bilder-Skript, CI-Schleife | alte und neue Küste per Parameter umschaltbar, Bilder entstehen |
+| 0 | Gerüst: Stil `kueste-neu`, Ordner, Auto als eigenes Modul, Standbild-Modus, Bilder-Skript, CI-Schleife | alte und neue Küste per Parameter umschaltbar, Bilder entstehen |
 | 1 | Strecke, Kacheln, Worker, Kamera; Wand, Straße und Mauer als graue Rohformen | Bildaufbau stimmt hochkant und quer; keine Fugen, kein Ruckeln beim Kachelwechsel |
 | 2 | Licht: Wechsel auf PBR, Himmel, Sonne mit der Welt gedreht, Schattenkarte jedes Bild, eingebackene Schatten, Bild-Durchgang, Dunst | Schon die graue Rohform sieht nach Foto aus |
 | 3 | Felswand vollständig: Form, GPU-Textur, Sinter, Verdeckung, Bewuchs, Netz | Nahaufnahme der Wand hält dem Vergleich mit Bild 1 stand |
@@ -260,6 +260,8 @@ Jede Phase ist ein eigener PR (Draft gegen `main`) mit Screenshots aus dem Stand
 | 7 | Sonderabschnitte: Galerie, Tunnel mit Belichtung, Parkbucht, Nische, Turm | Tunnel-Ein- und Ausfahrt wirken wie gefilmt |
 | 8 | Abend vollständig: Sonnenuntergang, Lichter im Dorf, Laternen, Scheinwerfer | hell und dunkel gleich gut |
 | 9 | Leistung und Abschluss: auf Geräten messen, Budget einhalten; `kueste-neu` wird `kueste`, alte Dateien raus; README, `sw.js`, Einstellungen-Fußnote | alle Kriterien unten erfüllt |
+
+**Prüfpunkt nach Phase 2:** Screenshots auf deinem iPhone (Safari, `?stil=kueste-neu`), hell und dunkel. Wirkt die graue Rohform mit Licht, Schatten und Dunst schon nach Foto, geht es fotografisch weiter. Wenn nicht, wechselt die Umgebung auf den gemalten Stil; Strecke, Kamera, Bildaufbau, Abschnitte und Schatten bleiben, nur die Materialien ändern sich.
 
 Phasen 3 bis 6 hängen nur von 1 und 2 ab und können parallel laufen (bis zu 3 Sessions nach den Regeln des Repos), wenn jede in ihren eigenen Dateien bleibt.
 

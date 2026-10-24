@@ -1,5 +1,5 @@
 import { Demo, skills, skillGenutzt } from './daten.js';
-import { Hintergrund } from './hintergrund.js';
+import { Hintergrund, STILE } from './hintergrund.js';
 import { haptik, haptikAktiv } from './haptik.js';
 import { GitHub, titelAusBranch } from './github.js';
 import { lesen, schreiben } from './speicher.js';
@@ -17,6 +17,11 @@ const einst = {
   ...lesen('kapsel.einstellungen', {}),
 };
 const speichereEinst = () => schreiben('kapsel.einstellungen', einst);
+// Ein Hintergrund aus der Adresse (?stil=kueste-neu) gilt nur für diesen
+// Besuch und wird nicht gespeichert; so lässt sich ein Stil im Bau ansehen.
+// Wer in den Einstellungen einen Stil wählt, beendet ihn.
+let stilAusAdresse = new URLSearchParams(location.search).get('stil');
+if (!Object.hasOwn(STILE, stilAusAdresse)) stilAusAdresse = null;
 
 const demo = new Demo();
 const glas = new Hintergrund(document.getElementById('glas'));
@@ -639,6 +644,7 @@ ansicht.addEventListener('click', async (e) => {
   } else if (aktion === 'stil') {
     haptik('leicht');
     const wert = el.dataset.stil;
+    stilAusAdresse = null;
     einst.glas = wert !== 'aus';
     if (einst.glas) einst.stil = wert;
     speichereEinst();
@@ -979,8 +985,8 @@ function beiZeiger(e) {
 
 function einstellungenAnwenden() {
   haptikAktiv(einst.haptik);
-  glas.setzeStil(einst.stil);
-  if (einst.glas) {
+  glas.setzeStil(stilAusAdresse ?? einst.stil);
+  if (einst.glas || stilAusAdresse) {
     if (!glas.starten()) document.documentElement.classList.remove('mit-glas');
   } else glas.stoppen();
   const neigung = einst.glas && einst.neigung;
