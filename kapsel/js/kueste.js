@@ -1,18 +1,20 @@
 // Hintergrund „Küste“: ein Porsche 911 Carrera 4S in Navy fährt eine
-// Klippenstraße entlang. Das Auto ist fotografisch, die Welt drumherum
-// gezeichnet wie ein Zeichentrickfilm: Licht in Stufen, satte Farben,
-// dunkle Umrisse, gemalter Himmel mit Wolken, Fahrtwind-Striche. Die Kamera schwebt seitlich über dem Hang, fährt mit
-// und schaut mit langer Brennweite über Auto und Leitplanke hinunter aufs
-// Meer; draußen stehen Felsnadeln in der Brandung, dahinter Steilküsten und
-// Inseln im Dunst, Möwen segeln mit. Hell ist Nachmittag, im Dunkeln geht die
-// Sonne unter und am Auto brennt Licht.
+// kurvige Küstenstraße hoch über dem Meer entlang, wie an der Amalfiküste:
+// Bruchsteinmauer, Zypressen, Felsnadeln in der Brandung, gegenüber
+// Steilküsten mit bunten Dörfern und Serpentinen, Boote, Möwen. Das Auto ist
+// fotografisch, die Welt drumherum gezeichnet wie ein Zeichentrickfilm: Licht
+// in Stufen, satte Farben, dunkle Umrisse, gemalter Himmel mit Wolken,
+// Fahrtwind-Striche. Hell ist Nachmittag, im Dunkeln geht die Sonne unter und
+// am Auto brennt Licht. Die Kamera schwebt schräg hinter dem Auto und schaut
+// die Straße entlang aufs Meer.
 //
-// Das Auto steht, die Welt läuft: Straße, Leitplanke, Klippenkante, Büsche
-// und Pinien liegen in einer Gruppe, die sich um die gefahrene Strecke
-// verschiebt und sich alle PERIODE Meter wiederholt; die Felsnadeln ebenso
-// alle MITTEL Meter. Das Meer verschiebt seine Wellen im Shader, ferne Küsten
-// wandern langsam durchs Bild. Wie schnell gefahren wird, hängt am
-// Session-Status.
+// Das Auto steht, die Welt läuft: Straße, Mauer, Klippe, Berg und Pflanzen
+// liegen in einer Gruppe, die sich um die gefahrene Strecke verschiebt und
+// sich alle PERIODE Meter wiederholt; die Felsnadeln ebenso alle MITTEL Meter.
+// Die Straße schlängelt sich (kurve), und die ganze Welt dreht sich so um das
+// Auto, dass es immer der Straße folgt. Das Meer verschiebt seine Wellen im
+// Shader, ferne Küsten wandern langsam durchs Bild. Wie schnell gefahren
+// wird, hängt am Session-Status.
 //
 // three.js liegt gebündelt in vendor/ (scripts/kapsel-three.mjs), das Modell
 // in modelle/ (scripts/kapsel-modell.mjs, Lizenz in modelle/LIZENZ.md).
@@ -25,15 +27,20 @@ const MODELL = 'modelle/porsche-911-navy-1.glb';
 // das Meer liegt bei -z, tief unter der Straße.
 const SPUR = 1.75; // Mitte der Fahrspur, auf der das Auto fährt
 const STRASSE = 4.5; // halbe Breite von Rand zu Rand
-const PLANKE = -STRASSE - 2.3; // Leitplanke hinter dem Schotterstreifen
-const PLANKE_UNTEN = 0.47; // Unterkante und Oberkante des Plankenprofils
-const PLANKE_OBEN = 0.78;
+const MAUER = -STRASSE - 3.2; // Straßenseite der Brüstung hinter dem Schotter
+const MAUER_HOCH = 0.72;
 const DACH = 1.32; // höchster Punkt des Autos
-const KANTE = -STRASSE - 6; // Abbruchkante der Klippe (wandert um ±2 m)
-const MEER = -42; // Meeresspiegel unter der Straße
+const KANTE = -STRASSE - 7.5; // Abbruchkante der Klippe (wandert um ±2,5 m)
+const MEER = -75; // Meeresspiegel tief unter der Straße
+const BLICK = -50; // Kamera schräg hinter dem Auto, Grad (0 = genau von der Seite)
 const AUTO_Y = 0.66; // wo Auto und Horizont im Bild stehen (Anteil der Höhe)
-const HORIZONT_Y = 0.19;
-const PERIODE = 144; // Wiederholung der nahen Welt; Vielfaches aller Muster
+const HORIZONT_Y = 0.16;
+const PERIODE = 288; // Wiederholung der nahen Welt; Vielfaches aller Muster
+// Die Straße schlängelt sich: Versatz zur Seite über die Strecke, periodisch.
+const KURVE = [12, 4];
+const kurve = (x) => KURVE[0] * Math.sin((2 * Math.PI * x) / PERIODE) + KURVE[1] * Math.sin((4 * Math.PI * x) / PERIODE + 1.3);
+const kurveSteigung = (x) =>
+  ((2 * Math.PI) / PERIODE) * (KURVE[0] * Math.cos((2 * Math.PI * x) / PERIODE) + 2 * KURVE[1] * Math.cos((4 * Math.PI * x) / PERIODE + 1.3));
 const MITTEL = 2400; // Wiederholung der Felsnadeln
 const WELLEN_L = 4096; // Wiederholung des Wellenmusters in x
 
@@ -143,6 +150,38 @@ function strassenTextur(renderer) {
   g.fillStyle = 'rgba(236, 234, 226, 0.92)';
   for (const z of [3.65, -3.65]) g.fillRect(0, quer(z) - 0.08 * proM, w, 0.16 * proM);
   g.fillRect(0, quer(0) - 0.06 * proM, (w * 6) / 18, 0.12 * proM);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = THREE.RepeatWrapping;
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return t;
+}
+
+// Bruchsteinmauer wie an der Amalfiküste: warme Steine, helle Fugen.
+// 3 m × 0,72 m, in Fahrtrichtung kachelbar.
+function mauerTextur(renderer) {
+  const w = 512, h = 128;
+  const c = leinwand(w, h);
+  const g = c.getContext('2d');
+  g.fillStyle = '#efe4cf';
+  g.fillRect(0, 0, w, h);
+  const r = zufall(31);
+  const farben = ['#d8b98c', '#cfa977', '#e2c79c', '#c49a6c', '#dcc09a', '#b98f63'];
+  for (let y = 0, reihe = 0; y < h; reihe++) {
+    const hoehe = 22 + r() * 16;
+    for (let x = -r() * 40; x < w; ) {
+      const breite = 34 + r() * 46;
+      g.fillStyle = farben[Math.floor(r() * farben.length)];
+      const rx = Math.max(0, x + 3), rw = Math.min(w, x + breite - 3) - rx;
+      if (rw > 4) {
+        g.beginPath();
+        g.roundRect(rx, y + 3, rw, hoehe - 6, 7);
+        g.fill();
+      }
+      x += breite;
+    }
+    y += hoehe;
+  }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = THREE.RepeatWrapping;
@@ -582,12 +621,18 @@ export class Kueste {
     this.einfahrt = 1;
     this.bildgroesse = [1, 1];
     this.korn = kornTextur(r);
+    // Alles, was zur Landschaft gehört, liegt in der Welt-Gruppe. Sie dreht
+    // und verschiebt sich so, dass die kurvige Straße unter dem Auto immer
+    // geradeaus zeigt: Das Auto steht, die Welt schwenkt um es herum.
+    this.welt = new THREE.Group();
+    this.szene.add(this.welt);
 
     this.himmelBauen();
     this.meerBauen();
     this.fernBauen();
     this.nadelnBauen();
     this.nahBauen();
+    this.booteBauen();
     this.moewenBauen();
     this.fahrtwindBauen();
     this.lichtBauen();
@@ -698,9 +743,9 @@ void main() {
   #include <colorspace_fragment>
 }`,
     });
-    const meer = new THREE.Mesh(new THREE.PlaneGeometry(60000, 25000), material);
+    const meer = new THREE.Mesh(new THREE.PlaneGeometry(60000, 30000), material);
     meer.rotation.x = -Math.PI / 2;
-    meer.position.set(0, MEER, -12500 + 60);
+    meer.position.set(0, MEER, -15000 + 3000);
     this.szene.add(meer);
   }
 
@@ -726,8 +771,8 @@ void main() {
         wolke.add(ball);
       }
       const z = -3500 - r() * 7000;
-      wolke.position.set(0, MEER + 30 + r() * 0.035 * -z, z);
-      this.szene.add(wolke);
+      wolke.position.set(0, MEER + 60 + r() * 0.035 * -z, z);
+      this.welt.add(wolke);
       this.wolken.push({ wolke, x: (r() - 0.5) * 16000, tempo: 2 + r() * 4 });
     }
   }
@@ -771,21 +816,73 @@ void main() {
       farben.push(c.r, c.g, c.b);
     }
     geo.setAttribute('color', new THREE.Float32BufferAttribute(farben, 3));
-    return new THREE.Mesh(geo, this.landMaterial);
+    return new THREE.Mesh(geo, this.kuestenMaterial);
+  }
+
+  // Ein Dorf wie Positano: bunte Würfelhäuser, die am Hang übereinander
+  // kleben, zur Bucht hin.
+  dorf(land, anzahl, seed, mitte, radius) {
+    const pos = land.geometry.attributes.position, nrm = land.geometry.attributes.normal;
+    const kandidaten = [];
+    for (let i = 0; i < pos.count; i++) {
+      const dx = pos.getX(i) - mitte[0], dz = pos.getZ(i) - mitte[1];
+      if (Math.hypot(dx, dz * 1.6) > radius) continue;
+      const y = pos.getY(i);
+      if (y < 6 || nrm.getY(i) < 0.35 || nrm.getZ(i) < 0.15) continue;
+      kandidaten.push(i);
+    }
+    if (!kandidaten.length) return;
+    const haus = new THREE.BoxGeometry(1, 1, 1);
+    haus.translate(0, 0.5, 0);
+    const haeuser = new THREE.InstancedMesh(haus, mitDunst(toon({}), { name: 'dorf' }), anzahl);
+    const r = zufall(seed);
+    const farben = [0xfbf6ec, 0xf6e6c4, 0xf3c48f, 0xeea7a0, 0xe08a5e, 0xf7e27e, 0xc7e0ea, 0xfbf6ec];
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), c = new THREE.Color();
+    for (let n = 0; n < anzahl; n++) {
+      const i = kandidaten[Math.floor(r() * kandidaten.length)];
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (r() - 0.5) * 0.5);
+      const b = 9 + r() * 9;
+      m.compose(new THREE.Vector3(pos.getX(i) + (r() - 0.5) * 8, pos.getY(i) - 4, pos.getZ(i) + (r() - 0.5) * 8), q, new THREE.Vector3(b, 9 + r() * 9, 8 + r() * 6));
+      haeuser.setMatrixAt(n, m);
+      haeuser.setColorAt(n, c.set(farben[Math.floor(r() * farben.length)]));
+    }
+    land.add(haeuser);
   }
 
   fernBauen() {
     this.landMaterial = mitDunst(toon({ vertexColors: true }), { name: 'land' });
+    // Die Küsten gegenüber tragen eine Straße, die den Höhenlinien folgt
+    // und sich mit weißer Brüstung um jede Bucht schlängelt.
+    this.kuestenMaterial = mitDunst(toon({ vertexColors: true }), {
+      name: 'kueste',
+      kopf: `uniform float uStrassenHoehe;`,
+      uniforms: { uStrassenHoehe: { value: MEER + 70 } },
+      ersetzen: [['#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+{
+  vec3 nWelt = normalize((vec4(normal, 0.0) * viewMatrix).xyz);
+  float hang = smoothstep(0.25, 0.4, nWelt.y) * (1.0 - smoothstep(0.93, 0.98, nWelt.y));
+  float h = vWelt.y - uStrassenHoehe - 6.0 * sin(vWelt.x * 0.004) - 3.0 * sin(vWelt.z * 0.011);
+  float h2 = h - 85.0;
+  float b = fwidth(h) + 0.01;
+  float strasse = max(1.0 - smoothstep(2.2, 2.2 + b, abs(h)), 1.0 - smoothstep(2.0, 2.0 + b, abs(h2)));
+  float mauer = max(1.0 - smoothstep(0.7, 0.7 + b, abs(h + 3.0)), 1.0 - smoothstep(0.6, 0.6 + b, abs(h2 + 2.8)));
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.32, 0.33, 0.38), strasse * hang);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.93, 0.88), mauer * hang);
+}`]],
+    });
     // x wandert mit der Fahrt und läuft nach `periode` Metern um.
     this.ferne = [];
     const setze = (mesh, x, z, periode) => {
       mesh.position.set(x, MEER, z);
-      this.szene.add(mesh);
+      this.welt.add(mesh);
       this.ferne.push({ mesh, x, periode });
+      return mesh;
     };
-    // Nahe Landzungen, gegenüber über die Bucht, und ferne Inseln.
-    setze(this.landmasse(1800, 900, 170, 3), 900, -2300, 8400);
-    setze(this.landmasse(2400, 1100, 240, 8), -3300, -3300, 8400);
+    // Hohe Landzungen gegenüber über die Bucht, mit Dörfern; dahinter Inseln.
+    const a = setze(this.landmasse(2200, 1000, 330, 3), 900, -2100, 8400);
+    this.dorf(a, 170, 7, [-150, 230], 380);
+    const b = setze(this.landmasse(2600, 1200, 400, 8), -3300, -3000, 8400);
+    this.dorf(b, 140, 9, [250, 280], 420);
     setze(this.landmasse(4800, 2000, 360, 13, 0.8), 5200, -6800, 16000);
     setze(this.landmasse(2600, 1200, 240, 21), -3800, -9500, 16000);
     setze(this.landmasse(1500, 800, 150, 34), 1200, -12500, 16000);
@@ -830,15 +927,15 @@ void main() {
 
   nadelnBauen() {
     const mittel = (this.mittel = new THREE.Group());
-    this.szene.add(mittel);
+    this.welt.add(mittel);
     this.schaumFarbe = { value: new THREE.Color(1, 1, 1) };
     const nadeln = [
       // x, z, Höhe, Radius
-      [-260, -330, 34, 11], [-232, -362, 14, 5.5], [-300, -300, 7, 3.5],
-      [520, -620, 58, 19], [575, -585, 22, 8],
-      [1180, -420, 26, 9],
-      [1720, -880, 76, 26], [1790, -820, 30, 10], [1660, -830, 11, 4.5],
-      [2150, -360, 9, 4],
+      [-260, -820, 60, 18], [-215, -870, 24, 8], [-310, -780, 12, 5],
+      [520, -1150, 95, 28], [600, -1100, 36, 12],
+      [1180, -700, 40, 13],
+      [1720, -1400, 120, 36], [1820, -1320, 46, 15], [1640, -1340, 18, 7],
+      [2150, -620, 16, 6],
     ];
     const r = zufall(41);
     for (const [x, z, hoehe, radius] of nadeln) {
@@ -870,11 +967,14 @@ void main() {
   }
 
   // Alles, was nah an der Straße liegt, in einer Gruppe, die sich mit der
-  // Fahrt verschiebt und nach PERIODE Metern wiederholt.
+  // Fahrt verschiebt und nach PERIODE Metern wiederholt. Gebaut wird gerade
+  // entlang x; am Ende biegt `biegen` alles auf die kurvige Straße.
   nahBauen() {
     const nah = (this.nah = new THREE.Group());
-    const laenge = PERIODE * 3;
-    this.szene.add(nah);
+    // Fünf Perioden: Die Kamera schaut die Straße entlang, weit voraus.
+    const laenge = PERIODE * 5;
+    const teile = laenge / 2;
+    this.welt.add(nah);
     const korn = (rx, rz) => {
       const t = this.korn.clone();
       t.repeat.set(rx, rz);
@@ -885,29 +985,34 @@ void main() {
     // Straße
     const strTex = strassenTextur(this.renderer);
     strTex.repeat.set(laenge / 18, 1);
-    const strasse = new THREE.Mesh(new THREE.PlaneGeometry(laenge, STRASSE * 2), toon({ map: strTex, color: 0xa3acc8 }));
+    const strasse = new THREE.Mesh(new THREE.PlaneGeometry(laenge, STRASSE * 2, teile, 1), toon({ map: strTex, color: 0xa3acc8 }));
     strasse.rotation.x = -Math.PI / 2;
     strasse.receiveShadow = true;
     nah.add(strasse);
 
     // Schotterstreifen zu beiden Seiten.
     const schotter = (breite, z, farbe) => {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(laenge, breite), toon({ color: farbe, map: korn(laenge / 8, breite / 8) }));
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(laenge, breite, teile, 1), toon({ color: farbe, map: korn(laenge / 8, breite / 8) }));
       m.rotation.x = -Math.PI / 2;
       m.position.set(0, -0.01, z);
       m.receiveShadow = true;
       nah.add(m);
     };
-    schotter(-STRASSE - PLANKE + 0.6, (PLANKE - 0.6 - STRASSE) / 2, 0xd8c8a4);
+    schotter(-STRASSE - MAUER + 0.6, (MAUER - 0.6 - STRASSE) / 2, 0xd8c8a4);
     schotter(1.6, STRASSE + 0.7, 0xc2ae88);
 
     // Gelände als Höhenfeld mit Eckfarben.
-    const gelaende = (tiefe, z0, nx, nz, hoeheBei, farbeBei, name) => {
+    // Von zNah (an der Straße) bis zFern; `dichte` > 1 legt die Gitterlinien
+    // an der Straße dichter, wo genau hingesehen wird.
+    const gelaende = (zNah, zFern, nz, hoeheBei, farbeBei, name, dichte = 1, nx = teile) => {
+      const tiefe = Math.abs(zFern - zNah);
       const geo = new THREE.PlaneGeometry(laenge, tiefe, nx, nz);
       geo.rotateX(-Math.PI / 2);
       const pos = geo.attributes.position;
       for (let i = 0; i < pos.count; i++) {
-        const z = pos.getZ(i) + z0;
+        // Die Reihenfolge der Zeilen bleibt erhalten, sonst kippten die Flächen.
+        const v = zFern > zNah ? pos.getZ(i) / tiefe + 0.5 : 0.5 - pos.getZ(i) / tiefe;
+        const z = zNah + (zFern - zNah) * v ** dichte;
         pos.setZ(i, z);
         pos.setY(i, hoeheBei(pos.getX(i), z));
       }
@@ -928,95 +1033,122 @@ void main() {
 
     // Wo die Klippe abbricht: wandert mit dem Gelände um ein paar Meter.
     const kante = (x) => KANTE + (fbm(x / 24, 0.5, PERIODE / 24, 31, 3) - 0.5) * 5;
-    this.kanteBei = kante;
-    const felsFarbe = (c, x, y) => c.set(0xc48a5c).lerp(new THREE.Color(0xecbd88), rauschen(y / 2.5, x / 9, PERIODE / 9, 17));
+    const felsFarbe = (c, x, y) => c.set(0xc48a5c).lerp(new THREE.Color(0xecbd88), rauschen(y / 4, x / 9, PERIODE / 9, 17));
     const macchia = (c, x, z) => c.set(0x4f9a3a).lerp(new THREE.Color(0xb4ab55), glatt(0.35, 0.65, fbm(x / 6, z / 6, PERIODE / 6, 12, 4)));
 
-    // Meerseite: Kuppe hinter der Leitplanke, dann die Wand hinunter ins Meer.
-    gelaende(70, PLANKE - 35 + 0.3, 288, 70, (x, z) => {
+    // Meerseite: ein schmaler Streifen hinter der Mauer, dann die Wand
+    // senkrecht hinunter ins Meer, mit Bändern und Vorsprüngen.
+    const klippe = (x, z) => {
       const k = kante(x);
       const buckel = (fbm(x / 6, z / 6, PERIODE / 6, 4, 3) - 0.5) * 0.6;
-      if (z > k) return -0.05 + buckel * glatt(PLANKE, PLANKE - 1.5, z) + 0.4 * glatt(PLANKE - 0.5, k + 1, z) * glatt(k - 0.5, k + 2, z);
-      // Wand: steil, mit Absätzen und Vorsprüngen.
-      const t = (k - z) / 9;
-      const absatz = Math.floor(t * 5) / 5 * 0.4 + t * 0.6;
-      const fels = (fbm(x / 8, z / 8, PERIODE / 8, 6, 4) - 0.5) * 4;
-      return Math.min(0.3, -Math.min(1, absatz) * (-MEER + 6) + fels * Math.min(1, t * 3));
-    }, (c, x, y, z, steil) => {
+      if (z > k) return -0.05 + buckel * glatt(MAUER, MAUER - 1.5, z) + 0.4 * glatt(MAUER - 0.8, k + 1, z) * glatt(k - 0.5, k + 2, z);
+      const t = (k - z) / 26;
+      const absatz = (Math.floor(t * 6) / 6) * 0.45 + t * 0.55;
+      const fels = (fbm(x / 8, z / 8, PERIODE / 8, 6, 4) - 0.5) * 7;
+      return Math.min(0.3, -Math.min(1, absatz) * (-MEER + 8) + fels * Math.min(1, t * 3));
+    };
+    gelaende(MAUER - 0.3, MAUER - 130, 72, klippe, (c, x, y, z, steil) => {
       macchia(c, x, z);
       const fels = new THREE.Color();
       felsFarbe(fels, x, y);
       c.lerp(fels, glatt(0.2, 0.45, steil));
-      if (z > PLANKE - 1.2) c.set(0xd8c8a4);
+      if (z > MAUER - 1.2) c.set(0xd8c8a4);
     }, 'klippe');
 
-    // Bergseite: Graben, dann der Hang hinauf zur Kamera.
-    gelaende(44, STRASSE + 0.6 + 22, 288, 44, (x, z) => {
-      const graben = -0.14 * Math.exp(-(((z - STRASSE - 1.9) / 0.35) ** 2));
-      const hang = Math.max(0, z - STRASSE - 2.3);
-      const fels = fbm(x / 9, z / 9, PERIODE / 9, 22, 4);
-      return graben + hang * 0.16 + (fels - 0.5) * 0.9 * glatt(0, 6, hang);
-    }, (c, x, y, z, steil) => {
-      macchia(c, x, z);
-      const fels = new THREE.Color();
-      felsFarbe(fels, x, y);
-      c.lerp(fels, glatt(0.15, 0.35, steil) * 0.8);
-      if (z < STRASSE + 2.2) c.set(0xb39d78);
-    }, 'hang');
-
-    // Leitplanke: Stahlprofil mit zwei Sicken (W-Profil) auf Pfosten alle 4 m.
-    const stahl = toon({ color: 0xe6ebf2, side: THREE.DoubleSide });
-    const profil = [];
-    const stufen = 16;
-    for (let i = 0; i <= stufen; i++) {
-      const v = i / stufen;
-      const y = PLANKE_UNTEN + v * (PLANKE_OBEN - PLANKE_UNTEN);
-      // Zur Straße hin gewölbt; oben und unten ein kleiner Bördelrand.
-      const z = 0.045 * (0.5 - 0.5 * Math.cos(v * Math.PI * 4)) - (v < 0.04 || v > 0.96 ? 0.015 : 0);
-      profil.push([y, z]);
+    // Brandung am Fuß der Wand: Uferlinie suchen, Schaumband darauf legen.
+    const ufer = [];
+    for (let i = 0; i <= teile; i++) {
+      const x = -laenge / 2 + (i * laenge) / teile;
+      let z = kante(x);
+      while (klippe(x, z) > MEER && z > kante(x) - 60) z -= 0.25;
+      ufer.push([x, z]);
     }
-    const plankeGeo = new THREE.BufferGeometry();
-    const ecken = [];
-    const flaechen = [];
-    for (let i = 0; i < profil.length; i++) {
-      const [y, z] = profil[i];
-      ecken.push(-laenge / 2, y, PLANKE + z, laenge / 2, y, PLANKE + z);
+    const uferGeo = new THREE.BufferGeometry();
+    const ecken = [], uv = [], flaechen = [];
+    for (let i = 0; i < ufer.length; i++) {
+      const [x, z] = ufer[i];
+      ecken.push(x, MEER + 0.3, z + 1.5, x, MEER + 0.3, z - 12);
+      uv.push(0, 0, 0, 1);
       if (i > 0) {
         const a = (i - 1) * 2;
         flaechen.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
       }
     }
-    plankeGeo.setAttribute('position', new THREE.Float32BufferAttribute(ecken, 3));
-    plankeGeo.setIndex(flaechen);
-    plankeGeo.computeVertexNormals();
-    const planke = new THREE.Mesh(plankeGeo, stahl);
-    nah.add(planke);
-    // Dunkle Unterkante als Strich, wie gezeichnet.
-    const kanteUnten = new THREE.Mesh(new THREE.BoxGeometry(laenge, 0.035, 0.07), new THREE.MeshBasicMaterial({ color: 0x3a4660 }));
-    kanteUnten.position.set(0, PLANKE_UNTEN, PLANKE + 0.005);
-    this.plankenStrich = kanteUnten.material;
-    nah.add(kanteUnten);
-    const pfostenZahl = laenge / 4;
-    const pfosten = new THREE.InstancedMesh(new THREE.BoxGeometry(0.1, PLANKE_OBEN + 0.25, 0.12), toon({ color: 0x9aa4b6 }), pfostenZahl);
-    // Rückstrahler auf jedem zweiten Pfosten, nachts im Scheinwerferlicht hell.
-    const strahler = new THREE.InstancedMesh(new THREE.BoxGeometry(0.06, 0.1, 0.01), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0 }), pfostenZahl / 2);
-    this.strahler = strahler.material;
-    const m = new THREE.Matrix4();
-    for (let i = 0; i < pfostenZahl; i++) {
-      m.makeTranslation(-laenge / 2 + i * 4, (PLANKE_OBEN + 0.25) / 2 - 0.25, PLANKE - 0.14);
-      pfosten.setMatrixAt(i, m);
-      if (i % 2 === 0) {
-        m.makeTranslation(-laenge / 2 + i * 4, PLANKE_OBEN - 0.1, PLANKE + 0.052);
-        strahler.setMatrixAt(i / 2, m);
-      }
-    }
-    nah.add(pfosten, strahler);
+    uferGeo.setAttribute('position', new THREE.Float32BufferAttribute(ecken, 3));
+    uferGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    uferGeo.setIndex(flaechen);
+    uferGeo.computeVertexNormals();
+    nah.add(new THREE.Mesh(uferGeo, new THREE.ShaderMaterial({
+      uniforms: { uZeit: this.meerZeit, uFarbe: this.schaumFarbe },
+      transparent: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -8,
+      polygonOffsetUnits: -8,
+      vertexShader: `
+varying vec2 vP;
+void main() {
+  vP = vec2(position.x, uv.y);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`,
+      fragmentShader: `
+uniform float uZeit;
+uniform vec3 uFarbe;
+varying vec2 vP;
+float uferHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float uferRauschen(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(uferHash(i), uferHash(i + vec2(1, 0)), u.x), mix(uferHash(i + vec2(0, 1)), uferHash(i + vec2(1, 1)), u.x), u.y);
+}
+void main() {
+  // Wellen laufen an und ziehen sich als Schaumfront zurück.
+  float zyklus = fract(uZeit * 0.12 + uferRauschen(vec2(vP.x * 0.03, 0.0)) * 0.6);
+  float front = 0.1 + zyklus * 0.7;
+  float spitze = uferRauschen(vec2(vP.x * 0.4, vP.y * 9.0 + uZeit * 0.3)) * 0.6 + uferRauschen(vec2(vP.x * 1.3, vP.y * 25.0 - uZeit * 0.2)) * 0.4;
+  float a = exp(-pow((vP.y - front) / (0.03 + zyklus * 0.08), 2.0)) * (1.0 - zyklus) * (0.6 + 0.7 * spitze);
+  a += smoothstep(0.42, 0.72, spitze) * smoothstep(front + 0.05, front - 0.3, vP.y) * 0.5;
+  a += smoothstep(0.2, 0.05, vP.y) * (0.5 + 0.5 * spitze);
+  gl_FragColor = vec4(uFarbe, clamp(a, 0.0, 0.9));
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`,
+    })));
+
+    // Bergseite: Graben, ein flacher Hang unter der Kamera, dahinter steigt
+    // der Berg steil an, mit Terrassen, Rinnen und Graten.
+    const berg = (x, z) => {
+      const graben = -0.14 * Math.exp(-(((z - STRASSE - 1.9) / 0.35) ** 2));
+      const hang = Math.max(0, z - STRASSE - 2.3);
+      const fels = fbm(x / 9, z / 9, PERIODE / 9, 22, 4);
+      const rinne = fbm(x / 48, 0.5, PERIODE / 48, 41, 3);
+      const steil = Math.max(0, z - 26) ** 1.25 * (0.55 + 0.7 * rinne) + Math.max(0, z - 90) * 0.6;
+      return graben + hang * 0.16 + (fels - 0.5) * 0.9 * glatt(0, 6, hang) + steil + (fbm(x / 24, z / 24, PERIODE / 24, 43, 4) - 0.5) * 30 * glatt(30, 90, z);
+    };
+    gelaende(STRASSE + 0.6, STRASSE + 360, 90, berg, (c, x, y, z, steil) => {
+      macchia(c, x, z);
+      // Zitronenterrassen: Höhenstreifen mit dunkleren Mäuerchen.
+      if (z > 30 && steil < 0.55) c.lerp(new THREE.Color(0x3f8f2f), 0.5).multiplyScalar(0.8 + 0.25 * glatt(0.75, 0.9, (((y / 4) % 1) + 1) % 1));
+      const fels = new THREE.Color();
+      felsFarbe(fels, x, y);
+      c.lerp(fels, glatt(0.35, 0.6, steil));
+      if (z < STRASSE + 2.2) c.set(0xb39d78);
+    }, 'hang', 2.2, teile / 2);
+
+    // Brüstung: niedrige Bruchsteinmauer mit weiß verputzter Abdeckung.
+    const mauerTex = mauerTextur(this.renderer);
+    mauerTex.repeat.set(laenge / 3, 1);
+    const mauer = new THREE.Mesh(new THREE.BoxGeometry(laenge, MAUER_HOCH, 0.42, teile, 1, 1), toon({ map: mauerTex }));
+    mauer.position.set(0, MAUER_HOCH / 2 - 0.05, MAUER - 0.21);
+    const deckel = new THREE.Mesh(new THREE.BoxGeometry(laenge, 0.09, 0.52, teile, 1, 1), toon({ color: 0xfbf7ee }));
+    deckel.position.set(0, MAUER_HOCH, MAUER - 0.21);
+    nah.add(mauer, deckel);
 
     // Pflanzen und Steine: für eine Periode zufällig verteilt, dreimal gesetzt.
     const r = zufall(5);
     // Büsche: eine verbeulte Kugel. Die Normalen bleiben die der Kugel, so
     // wirkt sie weich wie Laub statt kantig.
-    const busch = new THREE.IcosahedronGeometry(1, 2);
+    const busch = new THREE.IcosahedronGeometry(1, 1);
     const bp = busch.attributes.position;
     const bn = busch.attributes.normal;
     const buschFarben = [];
@@ -1031,7 +1163,7 @@ void main() {
     }
     busch.normalizeNormals();
     busch.setAttribute('color', new THREE.Float32BufferAttribute(buschFarben, 3));
-    const stein = new THREE.DodecahedronGeometry(1, 1);
+    const stein = new THREE.DodecahedronGeometry(1, 0);
     const sp = stein.attributes.position;
     for (let i = 0; i < sp.count; i++) {
       const x = sp.getX(i), y = sp.getY(i), z = sp.getZ(i);
@@ -1039,40 +1171,58 @@ void main() {
       sp.setXYZ(i, x * k, Math.max(-0.3, y * k * 0.7), z * k);
     }
     stein.computeVertexNormals();
+    // Zypresse: schlanke Flamme.
+    const zypresse = new THREE.LatheGeometry(
+      Array.from({ length: 12 }, (_, i) => {
+        const v = i / 11;
+        return new THREE.Vector2(Math.max(0.001, Math.sin(Math.PI * Math.min(1, v * 1.15)) ** 0.8 * (1 - 0.45 * v)), v);
+      }),
+      10,
+    );
+    zypresse.computeVertexNormals();
 
-    const buesche = [], steine = [];
-    // Hinter der Leitplanke auf der Kuppe und an der Kante; ein paar
-    // hängen in der Wand.
-    for (let i = 0; i < 34; i++) {
+    const buesche = [], steine = [], zypressen = [];
+    // Hinter der Mauer auf dem Streifen bis zur Kante; ein paar hängen in der Wand.
+    for (let i = 0; i < 64; i++) {
       const x0 = (r() - 0.5) * PERIODE;
-      const z0 = PLANKE - 1 - r() * (PLANKE - 1 - kante(x0) + 1);
-      // Büschel aus ein paar Kugeln.
+      const z0 = MAUER - 1.8 - r() * (MAUER - 1.8 - kante(x0) + 1);
       for (let j = 0, n = 1 + Math.floor(r() * 3); j < n; j++) {
         const x = x0 + (r() - 0.5) * 1.6, z = z0 + (r() - 0.5) * 1.2;
         const s = 0.35 + r() * 0.5;
-        buesche.push([x, z > kante(x) ? 0.05 : -1.2 - r() * 2, z, s * (1.1 + r() * 0.5), s * (0.75 + r() * 0.4), s * (1 + r() * 0.4)]);
+        buesche.push([x, z > kante(x) ? 0.05 : klippe(x, z) - 0.2, z, s * (1.1 + r() * 0.5), s * (0.75 + r() * 0.4), s * (1 + r() * 0.4)]);
       }
     }
     // Am Hang auf der Bergseite: nur niedrige, damit sie das Auto nicht verdecken.
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 80; i++) {
       const x = (r() - 0.5) * PERIODE;
       const z = STRASSE + 3 + r() * 16;
       const s = 0.3 + r() * 0.35;
       buesche.push([x, (z - STRASSE - 2.3) * 0.16 - 0.05, z, s * 1.5, s * 0.7, s * 1.2]);
     }
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 60; i++) {
       const x = (r() - 0.5) * PERIODE;
       const auf = r() < 0.5;
-      const z = auf ? STRASSE + 2.4 + r() * 6 : PLANKE - 0.6 - r() * 2.5;
+      const z = auf ? STRASSE + 2.4 + r() * 6 : MAUER - 0.8 - r() * 2.5;
       const s = 0.12 + r() ** 2 * 0.5;
       const y = auf ? Math.max(0, z - STRASSE - 2.3) * 0.16 : 0;
       steine.push([x, y, z, s * (1 + r()), s, s * (1 + r() * 0.6)]);
     }
+    // Zypressen in Gruppen an der Kante.
+    for (const x0 of [-120, -40, 35, 110]) {
+      // (eine Periode)
+      for (let j = 0, n = 1 + Math.floor(r() * 3); j < n; j++) {
+        const x = x0 + j * (2.2 + r() * 1.5);
+        const hoehe = 5 + r() * 3.5;
+        const breite = 0.6 + r() * 0.25;
+        zypressen.push([x, -0.2, kante(x) + 1.3 + r(), breite, hoehe, breite]);
+      }
+    }
+    const m = new THREE.Matrix4();
     const setzen = (geo, material, liste, farbe, schief = 0.3) => {
-      const im = new THREE.InstancedMesh(geo, material, liste.length * 3);
+      const im = new THREE.InstancedMesh(geo, material, liste.length * 5);
       const q = new THREE.Quaternion(), e = new THREE.Euler(), c = new THREE.Color();
       let n = 0;
-      for (const versatz of [-PERIODE, 0, PERIODE]) {
+      for (const versatz of [-2 * PERIODE, -PERIODE, 0, PERIODE, 2 * PERIODE]) {
         const rr = zufall(9);
         for (const [x, y, z, sx, sy, sz] of liste) {
           q.setFromEuler(e.set((rr() - 0.5) * schief, rr() * 6.28, (rr() - 0.5) * schief));
@@ -1089,19 +1239,91 @@ void main() {
       c.set(0x2f8a34).lerp(new THREE.Color(0x8fbf3e), rr() ** 2)), 1.5, 0.06);
     umreissen(setzen(stein, toon({}), steine, (c, rr) =>
       c.set(0xc9b49a).multiplyScalar(0.8 + rr() * 0.3)), 1.3);
-    // Trockene Grasbüschel am Hang.
-    const halm = new THREE.ConeGeometry(0.018, 1, 3, 1, true);
-    halm.translate(0, 0.5, 0);
-    const gras = [];
-    for (let i = 0; i < 420; i++) {
-      const x0 = (r() - 0.5) * PERIODE, z0 = STRASSE + 2.6 + r() ** 1.5 * 4;
-      for (let j = 0; j < 7; j++) {
-        const z = z0 + (r() - 0.5) * 0.25;
-        gras.push([x0 + (r() - 0.5) * 0.25, Math.max(0, z - STRASSE - 2.3) * 0.16 - 0.03, z, 1, 0.1 + r() * 0.16, 1]);
+    umreissen(setzen(zypresse, mitWind(toon({}), 0.012), zypressen, (c, rr) =>
+      c.set(0x24582c).lerp(new THREE.Color(0x3a7a35), rr()), 0.04), 1.5, 0.012);
+    this.biegen(nah);
+  }
+
+  // Legt alles in der Gruppe auf die kurvige Straße: jeder Punkt rückt um
+  // kurve(x) zur Seite, Pflanzen und Steine drehen sich mit.
+  biegen(gruppe) {
+    gruppe.updateMatrixWorld(true);
+    const erledigt = new Set();
+    const p = new THREE.Vector3(), q = new THREE.Quaternion(), sk = new THREE.Vector3(), m = new THREE.Matrix4();
+    const hoch = new THREE.Vector3(0, 1, 0);
+    for (const o of [...gruppe.children]) {
+      if (o.isInstancedMesh) {
+        // Umrisse teilen sich die Lage mit ihrem Mesh: nur einmal biegen.
+        if (erledigt.has(o.instanceMatrix)) continue;
+        erledigt.add(o.instanceMatrix);
+        for (let i = 0; i < o.count; i++) {
+          o.getMatrixAt(i, m);
+          m.decompose(p, q, sk);
+          q.premultiply(new THREE.Quaternion().setFromAxisAngle(hoch, -Math.atan(kurveSteigung(p.x))));
+          p.z += kurve(p.x);
+          o.setMatrixAt(i, m.compose(p, q, sk));
+        }
+        o.instanceMatrix.needsUpdate = true;
+      } else if (o.isMesh) {
+        const geo = o.geometry;
+        geo.applyMatrix4(o.matrix);
+        o.position.set(0, 0, 0);
+        o.rotation.set(0, 0, 0);
+        o.scale.set(1, 1, 1);
+        o.updateMatrix();
+        const pos = geo.attributes.position;
+        for (let i = 0; i < pos.count; i++) pos.setZ(i, pos.getZ(i) + kurve(pos.getX(i)));
+        if (geo.index) geo.computeVertexNormals();
+        geo.computeBoundingSphere();
+        geo.computeBoundingBox();
       }
     }
-    setzen(halm, mitWind(toon({}), 0.35), gras, (c, rr) =>
-      c.set(0xd2bd5e).lerp(new THREE.Color(0x6fa33c), rr()), 0.9);
+  }
+
+  // Boote ziehen weit unten ihre weiße Bugwelle durchs Wasser.
+  booteBauen() {
+    const c = leinwand(64, 256);
+    const g = c.getContext('2d');
+    const v = g.createLinearGradient(0, 0, 0, 256);
+    v.addColorStop(0, 'rgba(255,255,255,0.95)');
+    v.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = v;
+    // Kielwasser als V, das sich nach hinten öffnet und ausfranst.
+    g.beginPath();
+    g.moveTo(32, 0);
+    g.lineTo(0, 256);
+    g.lineTo(12, 256);
+    g.lineTo(32, 40);
+    g.lineTo(52, 256);
+    g.lineTo(64, 256);
+    g.closePath();
+    g.fill();
+    const tex = new THREE.CanvasTexture(c);
+    const spurGeo = new THREE.PlaneGeometry(1, 1);
+    spurGeo.rotateX(-Math.PI / 2);
+    spurGeo.rotateY(Math.PI / 2);
+    spurGeo.translate(-0.5, 0, 0);
+    const rumpf = new THREE.BoxGeometry(1, 0.35, 0.36);
+    rumpf.translate(0, 0.15, 0);
+    const kajuete = new THREE.BoxGeometry(0.35, 0.25, 0.26);
+    kajuete.translate(-0.05, 0.45, 0);
+    const weiss = toon({ color: 0xffffff });
+    const blau = toon({ color: 0x2c64b8 });
+    this.boote = [];
+    const r = zufall(17);
+    for (let i = 0; i < 5; i++) {
+      const boot = new THREE.Group();
+      const laenge = 9 + r() * 8;
+      const koerper = new THREE.Group();
+      koerper.add(new THREE.Mesh(rumpf, r() < 0.5 ? weiss : blau), new THREE.Mesh(kajuete, weiss));
+      koerper.scale.setScalar(laenge);
+      const spur = new THREE.Mesh(spurGeo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, color: 0xffffff }));
+      spur.scale.set(laenge * 9, 1, laenge * 2.4);
+      spur.position.set(laenge * 0.5, 0.2, 0);
+      boot.add(koerper, spur);
+      this.welt.add(boot);
+      this.boote.push({ boot, x: r() * MITTEL, z: -800 - r() * 1600, tempo: (r() < 0.5 ? 1 : -1) * (5 + r() * 6) });
+    }
   }
 
   // Fahrtwind: helle Striche, die am Auto vorbei nach hinten fliegen, wie in
@@ -1262,7 +1484,6 @@ void main() {
     this.sonne.intensity = s.lichtStaerke;
     this.aufheller.intensity = s.aufheller;
     this.schaumFarbe.value.setRGB(...s.schaum);
-    this.strahler.emissiveIntensity = dunkel ? 0.8 : 0;
     this.sonne.position.copy(richtungSonne).multiplyScalar(60).add(this.sonne.target.position);
     this.szene.environmentIntensity = s.umgebung;
     DUNST.uDunst.value = s.dunst;
@@ -1341,6 +1562,17 @@ void main() {
           if (m.name === 'lights') {
             m.emissive = new THREE.Color(1, 0.97, 0.92);
             this.lampen.push(m);
+          }
+          break;
+        case 'license':
+          // Das hintere Schild steht im Modell auf dem Kopf.
+          if (o.name === 'Plane005_0') {
+            o.material = m.clone();
+            o.material.map = m.map.clone();
+            o.material.map.wrapS = o.material.map.wrapT = THREE.RepeatWrapping;
+            o.material.map.repeat.set(-1, -1);
+            o.material.map.offset.set(1, 1);
+            o.material.map.needsUpdate = true;
           }
           break;
         case 'tex_shiny':
@@ -1447,9 +1679,9 @@ void main() {
     const breite = Math.max(1, W - frei);
     const format = breite / H;
     // Hochkant etwas weiter, quer eher Tele.
-    const fov = 24 + 12 * glatt(1.0, 0.45, format);
+    const fov = 32 + 10 * glatt(1.0, 0.45, format);
     const tanHalb = Math.tan(THREE.MathUtils.degToRad(fov / 2));
-    const anteil = Math.min(0.84, Math.max(0.48, 0.96 - 0.32 * format));
+    const anteil = Math.min(0.7, Math.max(0.36, 0.86 - 0.32 * format));
     const brennweitePx = H / 2 / tanHalb;
     const abstand = (4.6 * brennweitePx) / (anteil * breite);
 
@@ -1457,17 +1689,19 @@ void main() {
     // nicht ganz das Tempo. Das Auto selbst bleibt stehen, so passt sein
     // Schatten, ohne ihn jedes Bild neu zu rechnen.
     // Wie weit, hängt am Rand, den das Bild neben dem Auto lässt.
-    const spiel = Math.max(0, 4.6 / anteil - 4.6) * 0.25;
-    const ziel = new THREE.Vector3(0.15 - schwanken[2] * spiel, 0.62, SPUR);
-    const drehung = THREE.MathUtils.degToRad(neigung[0] * 5 + schwanken[0]);
+    const spiel = Math.max(0, 4.6 / anteil - 4.6) * 0.12;
+    // Etwas vor das Auto zielen: die Straße voraus gehört ins Bild.
+    // Hochkant ist dafür kein Platz.
+    const ziel = new THREE.Vector3(2.2 * glatt(0.55, 1.1, format) - 0.8 - schwanken[2] * spiel, 0.62, SPUR);
+    const drehung = THREE.MathUtils.degToRad(BLICK + neigung[0] * 5 + schwanken[0]);
     const quer = abstand * Math.cos(drehung);
 
-    // Höhe: so hoch, dass die Leitplanke im Bild ganz über dem Dach
-    // durchläuft und nicht durch Dach oder Scheiben schneidet (Unterkante der
-    // Planke mindestens `luft` über dem Dach).
-    const tiefe = SPUR - PLANKE;
-    const luft = 0.014;
-    const mindest = (DACH * (quer + tiefe) - PLANKE_UNTEN * quer + luft * quer * (quer + tiefe)) / tiefe;
+    // Höhe: so hoch, dass die Brüstung im Bild ganz über dem Dach
+    // durchläuft und nicht durch Dach oder Scheiben schneidet (ihr Fuß
+    // mindestens `luft` über dem Dach).
+    const tiefe = SPUR - MAUER;
+    const luft = 0.01;
+    const mindest = (DACH * (quer + tiefe) + luft * quer * (quer + tiefe)) / tiefe;
     // Gewünscht: Auto bei AUTO_Y, Horizont bei HORIZONT_Y der Bildhöhe.
     const wunsch = ziel.y + quer * ((AUTO_Y - HORIZONT_Y) * 2 * tanHalb + neigung[1] * 0.045);
     const hoehe = Math.max(mindest, wunsch) + Math.max(0, schwanken[1]);
@@ -1499,8 +1733,19 @@ void main() {
     this.tempo += (zielTempo - this.tempo) * (1 - Math.exp(-s * 0.6));
     this.fahrt += this.tempo * s;
 
-    this.nah.position.x = -(this.fahrt % PERIODE);
+    const u = this.fahrt % PERIODE;
+    this.nah.position.x = -u;
     this.mittel.position.x = -(this.fahrt % MITTEL);
+    // Die Welt so drehen und schieben, dass die Straße unter dem Auto
+    // geradeaus läuft und die Fahrspur unter den Rädern liegt.
+    const winkel = Math.atan(kurveSteigung(u));
+    this.welt.rotation.y = winkel;
+    this.welt.position.set(0, 0, SPUR).sub(new THREE.Vector3(0, 0, kurve(u) + SPUR).applyAxisAngle(new THREE.Vector3(0, 1, 0), winkel));
+    for (const b of this.boote) {
+      const x = ((((b.x + this.zeit * b.tempo - this.fahrt) % MITTEL) + MITTEL * 1.5) % MITTEL) - MITTEL / 2;
+      b.boot.position.set(x, MEER + 0.05, b.z);
+      b.boot.rotation.y = b.tempo > 0 ? 0 : Math.PI;
+    }
     for (const f of this.ferne) {
       const x = ((((f.x - this.fahrt) % f.periode) + f.periode * 1.5) % f.periode) - f.periode / 2;
       f.mesh.position.x = x;
