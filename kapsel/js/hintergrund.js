@@ -203,7 +203,7 @@ const UNIFORMS = ['uRes', 'uPhase', 'uPuls', 'uWelle', 'uNeigung', 'uTon', 'uDun
 const UEBERGANG = 2;
 const FILM_DAUER = DAUERN.reduce((a, b) => a + b, 0);
 // Zeichenzelle in CSS-Pixeln, schmal und hoch wie im Terminal.
-const ZELLE = [6, 10];
+const ZELLE = [5, 8];
 
 // Ab dieser Breite steht die App als Spalte links (siehe app.css, --spalte);
 // der Film läuft dann in der freien Fläche rechts daneben.
@@ -335,7 +335,7 @@ export class Hintergrund {
     this.status = STIMMUNG[status] ? status : 'ruhig';
   }
 
-  // Position in CSS-Pixeln; die Zeichen dort färben sich blau.
+  // Position in CSS-Pixeln; dort zeigt der ASCII-Stil ein Zeichenfeld.
   setzeZeiger(x, y) {
     this.zeiger = [x, y];
     this.zeigerZuletzt = this.zeit;
