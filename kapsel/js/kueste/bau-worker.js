@@ -13,15 +13,21 @@
 // Himmel (Verdeckung durch Überhänge, Pfeiler, Wandfuß, Brüstung). Die Sonne
 // steht fest zur Landschaft (sonne in der Anfrage, Koordinaten der Strecke);
 // nah am Auto übernimmt die Schattenkarte.
+//
+// Für das Material der Wand (material.js) bekommt jede Ecke ihre Lage auf der
+// Strecke (`ort`, für die Textur) und zwei Werte in `fels`: wie viel Wasser
+// hier herabläuft (Sinterstreifen) und wie sehr die Stelle vorsteht (frischer,
+// hellerer Bruch). Dazu Bewuchs als Liste (x, y, z, Größe, Drehung, Farbe) und
+// im Abschnitt „netz“ das Steinschlagnetz.
 
-import { glatt } from './helfer.js';
+import { fbm, glatt, zufall } from './helfer.js';
 import {
-  BANKETT, BRUESTUNG, KACHEL, MEER, STRASSE, UMLAUF, VORSPRUNG,
-  abschnittBei, klippenTiefe, normale, quer, wandHoehe, wandTiefe, wandWerte,
+  BRUESTUNG, KACHEL, MEER, STRASSE, UMLAUF, VORSPRUNG,
+  ABSCHNITTE, abschnittBei, klippenTiefe, normale, quer, wandHoehe, wandTiefe, wandWerte,
 } from './strecke.js';
 
 const SCHRITT = [1, 2, 4];
-const WAND_ZEILEN = 40; // Fuß bis Krone
+const WAND_ZEILEN = 56; // Fuß bis Krone
 const KRONE_ZEILEN = 6; // über die Kante nach hinten
 const HANG_ZEILEN = 8; // Hang dahinter
 const KLIPPE_ZEILEN = 18;
@@ -90,15 +96,24 @@ function bodenLicht(s, q) {
   return licht;
 }
 
-// Himmelslicht an der Wand: Fels, der darüber oder daneben weiter zur Straße
-// vorragt, verdeckt den Himmel; am Fuß wird es dunkler.
-function wandVerdeckung(s, h, d) {
-  let oben = 0;
-  for (const dh of [1, 3, 7]) oben = Math.max(oben, (d - wandTiefe(s, h + dh)) / dh);
-  let seite = 0;
-  for (const ds of [-2, 2]) seite += Math.atan(Math.max(0, (d - wandTiefe(s + ds, h)) / 2));
-  const ao = (1 - 0.55 * Math.sin(Math.atan(oben))) * (1 - 0.2 * seite) * (0.55 + 0.45 * glatt(-0.5, 2.5, h));
-  return Math.min(1, Math.max(0.2, ao));
+// Fläche der Wand bei (s, h, d): Himmelslicht (Fels, der darüber oder daneben
+// weiter zur Straße vorragt, verdeckt den Himmel; am Fuß dunkler), Sinter
+// (Wasser läuft von Vorsprüngen und der Krone herab) und Kante (die Nachbarn
+// liegen tiefer im Berg: Vorsprung, frischer Bruch).
+function wandFlaeche(s, h, d, hoehe) {
+  let oben = 0, darueber = d;
+  for (const dh of [1, 3, 7]) {
+    const t = wandTiefe(s, h + dh);
+    if (dh === 1) darueber = t;
+    oben = Math.max(oben, (d - t) / dh);
+  }
+  const links = wandTiefe(s - 2, h), rechts = wandTiefe(s + 2, h), darunter = wandTiefe(s, h - 1);
+  const seite = Math.atan(Math.max(0, (d - links) / 2)) + Math.atan(Math.max(0, (d - rechts) / 2));
+  const himmel = (1 - 0.55 * Math.sin(Math.atan(oben))) * (1 - 0.2 * seite) * (0.55 + 0.45 * glatt(-0.5, 2.5, h));
+  const kante = ((links + rechts + darueber + darunter) / 4 - d) * 3;
+  const sinter = (oben * 2 + 0.8 * glatt(0.35, 0.9, h / hoehe)) * glatt(0.2, 0.55, fbm(s / 8, 0.5, UMLAUF / 8, 61, 3));
+  const k = (v, a, b) => Math.min(b, Math.max(a, v));
+  return [k(himmel, 0.2, 1), k(sinter, 0, 1), k(kante, 0, 1)];
 }
 
 // Ein Gitter aus Spalten (entlang der Straße) und Zeilen. punkt(s, r) liefert
@@ -109,10 +124,13 @@ function gitter(spalten, zeilen, punkt, anfang, umdrehen = false, beleuchten = n
   const position = new Float32Array(n * 3);
   const normal = new Float32Array(n * 3);
   const licht = new Float32Array(n * 2).fill(1);
+  const fels = new Float32Array(n * 2);
+  const ort = new Float32Array(n * 3);
   let i = 0;
   for (const s of spalten) {
     for (let r = 0; r <= zeilen; r++) {
       const p = punkt(s, r);
+      ort.set(p, i * 3);
       const ds0 = punkt(s - 0.5, r), ds1 = punkt(s + 0.5, r);
       const dr0 = punkt(s, Math.max(0, r - 0.5)), dr1 = punkt(s, Math.min(zeilen, r + 0.5));
       const a = [ds1[0] - ds0[0], ds1[1] - ds0[1], ds1[2] - ds0[2]];
@@ -122,7 +140,11 @@ function gitter(spalten, zeilen, punkt, anfang, umdrehen = false, beleuchten = n
       const l = Math.hypot(nx, ny, nz) || 1;
       position.set([p[0] - anfang, p[1], p[2]], i * 3);
       normal.set([nx / l, ny / l, nz / l], i * 3);
-      if (beleuchten) licht.set(beleuchten(s, r), i * 2);
+      if (beleuchten) {
+        const b = beleuchten(s, r);
+        licht.set([b[0], b[1]], i * 2);
+        if (b.length > 2) fels.set([b[2], b[3]], i * 2);
+      }
       i++;
     }
   }
@@ -136,7 +158,7 @@ function gitter(spalten, zeilen, punkt, anfang, umdrehen = false, beleuchten = n
       k += 6;
     }
   }
-  return { position, normal, licht, index };
+  return { position, normal, licht, fels, ort, index };
 }
 
 // Felswand: Zeilen vom Fuß bis zur Krone, dann über die Kante zurück und den
@@ -176,14 +198,84 @@ function wand(spalten, anfang) {
     const [x, z] = quer(s, STRASSE + d);
     return [x, h, z];
   };
-  // Licht nur für die Wand selbst; Krone und Hang liegen frei.
+  // Licht und Fläche nur für die Wand selbst; Krone und Hang liegen frei.
   const beleuchten = (s, r) => {
-    if (r > WAND_ZEILEN) return [1, 1];
+    if (r > WAND_ZEILEN) return [1, 1, 0, 0];
     const [h, d] = lage(s, r);
-    return [wandSchatten(s, h + 0.05, d - 0.25), wandVerdeckung(s, h, d)];
+    const [himmel, sinter, kante] = wandFlaeche(s, h, d, werte(s).hoehe);
+    return [wandSchatten(s, h + 0.05, d - 0.25), himmel, sinter, kante];
   };
-  return gitter(spalten, zeilen, punkt, anfang, false, beleuchten);
+  return { ...gitter(spalten, zeilen, punkt, anfang, false, beleuchten), werte };
 }
+
+// Bewuchs einer Kachel, unabhängig von der Stufe (sonst spränge er beim
+// Wechsel): Macchia an der Krone, Bäume und Büsche am Hang, kleine Büsche auf
+// Absätzen der Wand, Polster am Wandfuß. Grobe Stufen lassen die kleinen weg.
+// Je Eintrag x (relativ zur Kachel), y, z, Größe, Drehung, Farbe (0..1).
+function bewuchs(kachel, stufe, werte) {
+  const anfang = kachel * KACHEL;
+  const r = zufall(kachel * 7919 + 13);
+  const liste = [];
+  const setze = (s, d, h, groesse, farbe) => {
+    const [x, z] = quer(s, STRASSE + d);
+    liste.push(x - anfang, h, z, groesse, r() * 6.283, farbe);
+  };
+  const imNetz = (s) => abschnittBei(s).abschnitt.name === 'netz';
+  for (let k = 0; k < 26; k++) {
+    const s = anfang + r() * KACHEL;
+    const { hoehe, oben } = werte(s);
+    setze(s, oben + 0.6 + r() * 7, hoehe + 0.6 + r() * 1.2, 0.9 + r() * 1.6, r());
+  }
+  for (let k = 0; k < 22; k++) {
+    const s = anfang + r() * KACHEL, t = r();
+    const { hoehe, oben } = werte(s);
+    setze(s, oben + 9 + 30 * t, hoehe + 1.5 + 30 * t ** 1.2, 1.8 + r() * 2.8, r());
+  }
+  for (let k = 0; k < 40; k++) {
+    const s = anfang + r() * KACHEL;
+    const { hoehe } = werte(s);
+    const h = 2 + r() * Math.max(0, hoehe - 4);
+    const g = 0.35 + r() * 0.6, f = r(), ja = r();
+    if (stufe === 2 || imNetz(s)) continue;
+    // Absatz: darüber tritt der Fels deutlich zurück.
+    const d = wandTiefe(s, h);
+    if (wandTiefe(s, h + 1) - d > 0.5 && ja < 0.7) setze(s, d + 0.2, h, g, f);
+  }
+  for (let k = 0; k < 10; k++) {
+    const s = anfang + r() * KACHEL;
+    const g = 0.25 + r() * 0.35, f = r() * 0.6;
+    if (stufe === 0) setze(s, wandTiefe(s, 0.3) - 0.15, 0, g, f);
+  }
+  return new Float32Array(liste);
+}
+
+// Steinschlagnetz im Abschnitt „netz“: liegt auf den Vorsprüngen der Wand
+// (Minimum der Tiefe ringsum), von 1,2 m bis 24 m Höhe. uv in Metern.
+const NETZ_ZEILEN = 23;
+function netz(spalten, anfang) {
+  const i = ABSCHNITTE.findIndex((a) => a.name === 'netz');
+  const von = ABSCHNITTE.slice(0, i).reduce((x, a) => x + a.laenge, 0) + 4;
+  const bis = von + ABSCHNITTE[i].laenge - 8;
+  if (spalten.at(-1) <= von || spalten[0] >= bis) return null;
+  const innen = spalten.filter((s) => s > von && s < bis);
+  const teil = [...new Set([Math.max(von, spalten[0]), ...innen, Math.min(bis, spalten.at(-1))])].sort((a, b) => a - b);
+  if (teil.length < 2) return null;
+  const hoehe = (r) => 1.2 + (22.8 * r) / NETZ_ZEILEN;
+  const punkt = (s, r) => {
+    const h = hoehe(r);
+    let d = Infinity;
+    for (const ds of [-1.5, 0, 1.5]) for (const dh of [-1, 0, 1]) d = Math.min(d, wandTiefe(s + ds, h + dh));
+    const [x, z] = quer(s, STRASSE + d - 0.3);
+    return [x, h, z];
+  };
+  const g = gitter(teil, NETZ_ZEILEN, punkt, anfang);
+  const netzUv = new Float32Array(teil.length * (NETZ_ZEILEN + 1) * 2);
+  let k = 0;
+  for (const s of teil) for (let r = 0; r <= NETZ_ZEILEN; r++, k++) netzUv.set([s - von, hoehe(r) - 1.2], k * 2);
+  g.licht.fill(1);
+  return { ...g, netzUv };
+}
+
 
 // Klippe von der Abbruchkante bis unter den Meeresspiegel.
 function klippe(spalten, anfang) {
@@ -281,27 +373,33 @@ function kachelBauen(kachel, stufe) {
   const schritt = SCHRITT[stufe];
   const spalten = [];
   for (let s = anfang; s <= anfang + KACHEL + 1e-6; s += schritt) spalten.push(s);
-  return {
+  const { werte, ...fels } = wand(spalten, anfang);
+  const teile = {
     // Neben der Brüstung etwas dunkler.
     strasse: streifen(spalten, zeilenVon(-STRASSE, STRASSE), 0, anfang, true, (s, q) => 0.7 + 0.3 * glatt(0, 0.8, q - INNEN)),
     // Am Fuß der Wand dunkler.
-    rand: streifen(spalten, zeilenVon(STRASSE, STRASSE + BANKETT + 0.6), -0.03, anfang, false,
+    // Bis unter den Wandfuß, auch wo die Wand weit zurücktritt (sonst sähe
+    // man durch die Lücke ins Leere).
+    rand: streifen(spalten, Array.from({ length: 9 }, (_, k) => (s) => STRASSE + (k / 8) * (wandTiefe(s, -0.3) + 0.5)), -0.03, anfang, false,
       (s, q) => 0.45 + 0.55 * glatt(0, 2, STRASSE + wandTiefe(s, 0.3) - q)),
     kante: streifen(spalten, [(s) => -STRASSE - klippenTiefe(s, 0) - 0.05, -STRASSE - 1.4, -STRASSE], -0.03, anfang, false,
       (s, q) => 0.7 + 0.3 * glatt(0, 0.6, INNEN - 0.5 - q)),
-    fels: wand(spalten, anfang),
+    fels,
     klippe: klippe(spalten, anfang),
     bruestung: bruestung(spalten, anfang),
   };
+  const n = netz(spalten, anfang);
+  if (n) teile.netz = n;
+  return { teile, bewuchs: bewuchs(kachel, stufe, werte) };
 }
 
 if (typeof self !== 'undefined') {
   self.onmessage = ({ data: { kachel, stufe, sonne, version } }) => {
     SONNE = sonne;
-    const teile = kachelBauen(kachel, stufe);
-    const puffer = [];
+    const { teile, bewuchs } = kachelBauen(kachel, stufe);
+    const puffer = [bewuchs.buffer];
     for (const teil of Object.values(teile)) for (const a of Object.values(teil)) puffer.push(a.buffer);
-    self.postMessage({ kachel, stufe, version, teile }, puffer);
+    self.postMessage({ kachel, stufe, version, teile, bewuchs }, puffer);
   };
 }
 

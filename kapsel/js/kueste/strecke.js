@@ -135,12 +135,14 @@ export function wandTiefe(x, h, w = wandWerte(x)) {
   // Pfeiler und Nischen, oben gröber als unten.
   const gross = (fbm(x / 32, h / 24 + 3.7, px, 11, 3) - 0.5) * 4.5 * w.rauh;
   const mittel = (fbm(x / 8, h / 6 + 1.3, UMLAUF / 8, 23, 2) - 0.5) * 1.2 * w.rauh;
+  // Kantige Brocken von 3 bis 4 m: Grate aus Rauschen ragen vor.
+  const brocken = (0.5 - Math.abs(2 * fbm(x / 4, h / 3 + 5.9, UMLAUF / 4, 71, 3) - 1)) * 0.9 * w.rauh;
   // Schichtbänke: leichte Absätze alle gut 1,5 m.
   const band = h / 1.6;
   const bank = (band - Math.floor(band)) * 0.18;
   const ueber = w.ueberhang * glatt(KOPFHOEHE, 14, h) * (1 - glatt(24, 40, h));
   const stufen = w.stufen * Math.floor(Math.max(0, h) / 15) * 3;
-  let d = BANKETT + w.rueck + Math.max(0, gross) * glatt(0, 3, h) + mittel + bank - ueber + stufen;
+  let d = BANKETT + w.rueck + Math.max(0, gross) * glatt(0, 3, h) + mittel - brocken + bank - ueber + stufen;
   // Kleiner Fuß aus Schutt: unten etwas vorgezogen.
   d -= 0.4 * (1 - glatt(0, 1.5, h));
   if (h < KOPFHOEHE) d = Math.max(d, BANKETT - 0.4);

@@ -21,10 +21,12 @@ const lage = (kachel, u) => ((((kachel * KACHEL - u) % UMLAUF) + UMLAUF * 1.5) %
 const entfernung = (l) => (l > 0 ? l : Math.max(0, -(l + KACHEL)));
 
 export class Kacheln {
-  // materialien: je Teil (strasse, rand, kante, fels, klippe, bruestung) eines.
-  constructor(welt, materialien) {
+  // materialien: je Teil (strasse, rand, kante, fels, klippe, bruestung,
+  // netz) eines. busch: { geometrie, material, farben } für den Bewuchs.
+  constructor(welt, materialien, busch) {
     this.welt = welt;
     this.materialien = materialien;
+    this.busch = busch;
     this.kacheln = new Map(); // Nummer -> { gruppe, stufe }
     this.auftraege = new Map(); // Nummer -> Stufe
     this.gewuenscht = new Map(); // Nummer -> Stufe
@@ -41,34 +43,59 @@ export class Kacheln {
     this.version++;
   }
 
-  fertig({ kachel, stufe, version, teile }) {
+  fertig({ kachel, stufe, version, teile, bewuchs }) {
     this.auftraege.delete(kachel);
     // Inzwischen nicht mehr gebraucht oder schon in dieser Stufe da.
     if (!this.gewuenscht.has(kachel)) return;
     const gruppe = new THREE.Group();
     for (const [name, t] of Object.entries(teile)) {
       const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(t.position, 3));
-      geo.setAttribute('normal', new THREE.BufferAttribute(t.normal, 3));
-      geo.setAttribute('licht', new THREE.BufferAttribute(t.licht, 2));
-      if (t.uv) geo.setAttribute('uv', new THREE.BufferAttribute(t.uv, 2));
-      geo.setIndex(new THREE.BufferAttribute(t.index, 1));
+      for (const [attribut, werte] of Object.entries(t)) {
+        if (attribut === 'index') geo.setIndex(new THREE.BufferAttribute(werte, 1));
+        else geo.setAttribute(attribut, new THREE.BufferAttribute(werte, ['position', 'normal', 'ort'].includes(attribut) ? 3 : 2));
+      }
       geo.computeBoundingSphere();
       const mesh = new THREE.Mesh(geo, this.materialien[name]);
-      mesh.castShadow = mesh.receiveShadow = true;
+      // Die Schattenkarte kennt keine Maschen: Das Netz würfe eine Fläche.
+      mesh.castShadow = name !== 'netz';
+      mesh.receiveShadow = true;
       gruppe.add(mesh);
     }
+    if (bewuchs.length) gruppe.add(this.bewuchsBauen(bewuchs));
     this.weg(kachel);
     this.kacheln.set(kachel, { gruppe, stufe, version });
     this.welt.add(gruppe);
     if (this.u !== undefined) gruppe.position.x = lage(kachel, this.u);
   }
 
+  // Büsche einer Kachel als ein InstancedMesh (Geometrie und Material
+  // geteilt). liste: je 6 Werte x, y, z, Größe, Drehung, Farbe.
+  bewuchsBauen(liste) {
+    const n = liste.length / 6;
+    const { geometrie, material, farben } = this.busch;
+    const im = new THREE.InstancedMesh(geometrie, material, n);
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), c = new THREE.Color(), oben = new THREE.Vector3(0, 1, 0);
+    for (let i = 0; i < n; i++) {
+      const [x, y, z, g, w, f] = liste.subarray(i * 6, i * 6 + 6);
+      q.setFromAxisAngle(oben, w);
+      m.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(g * (1 + 0.3 * f), g * (0.75 + 0.3 * (1 - f)), g));
+      im.setMatrixAt(i, m);
+      im.setColorAt(i, c.copy(farben[0]).lerp(farben[1], f));
+    }
+    im.computeBoundingSphere();
+    im.castShadow = im.receiveShadow = true;
+    im.userData.geteilt = true;
+    return im;
+  }
+
   weg(kachel) {
     const k = this.kacheln.get(kachel);
     if (!k) return;
     k.gruppe.removeFromParent();
-    for (const m of k.gruppe.children) m.geometry.dispose();
+    for (const m of k.gruppe.children) {
+      if (m.userData.geteilt) m.dispose();
+      else m.geometry.dispose();
+    }
     this.kacheln.delete(kachel);
   }
 
