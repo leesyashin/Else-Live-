@@ -22,7 +22,7 @@
 
 import { fbm, glatt, zufall } from './helfer.js';
 import {
-  BANKETT, BRUESTUNG, KACHEL, MEER, STRASSE, UMLAUF, VORSPRUNG,
+  BRUESTUNG, KACHEL, MEER, STRASSE, UMLAUF, VORSPRUNG,
   ABSCHNITTE, abschnittBei, klippenTiefe, normale, quer, wandHoehe, wandTiefe, wandWerte,
 } from './strecke.js';
 
@@ -378,7 +378,9 @@ function kachelBauen(kachel, stufe) {
     // Neben der Brüstung etwas dunkler.
     strasse: streifen(spalten, zeilenVon(-STRASSE, STRASSE), 0, anfang, true, (s, q) => 0.7 + 0.3 * glatt(0, 0.8, q - INNEN)),
     // Am Fuß der Wand dunkler.
-    rand: streifen(spalten, zeilenVon(STRASSE, STRASSE + BANKETT + 0.6), -0.03, anfang, false,
+    // Bis unter den Wandfuß, auch wo die Wand weit zurücktritt (sonst sähe
+    // man durch die Lücke ins Leere).
+    rand: streifen(spalten, Array.from({ length: 9 }, (_, k) => (s) => STRASSE + (k / 8) * (wandTiefe(s, -0.3) + 0.5)), -0.03, anfang, false,
       (s, q) => 0.45 + 0.55 * glatt(0, 2, STRASSE + wandTiefe(s, 0.3) - q)),
     kante: streifen(spalten, [(s) => -STRASSE - klippenTiefe(s, 0) - 0.05, -STRASSE - 1.4, -STRASSE], -0.03, anfang, false,
       (s, q) => 0.7 + 0.3 * glatt(0, 0.6, INNEN - 0.5 - q)),
