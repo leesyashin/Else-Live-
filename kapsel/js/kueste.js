@@ -17,11 +17,12 @@
 // wird, hängt am Session-Status.
 //
 // three.js liegt gebündelt in vendor/ (scripts/kapsel-three.mjs), das Modell
-// in modelle/ (scripts/kapsel-modell.mjs, Lizenz in modelle/LIZENZ.md).
+// in modelle/ (scripts/kapsel-modell.mjs, Lizenz in modelle/LIZENZ.md); das
+// Auto selbst steht in kueste/auto.js.
 
 import * as THREE from '../vendor/three-r186.min.js';
-
-const MODELL = 'modelle/porsche-911-navy-1.glb';
+import { Auto } from './kueste/auto.js';
+import { fbm, glatt, leinwand, rauschen, zufall } from './kueste/helfer.js';
 
 // Welt in Metern: x Fahrtrichtung, y oben, z zur Kamera (Bergseite);
 // das Meer liegt bei -z, tief unter der Straße.
@@ -65,55 +66,6 @@ const STIMMUNGEN = {
     scheinwerfer: 5.0, rueck: 4.0,
   },
 };
-
-// ---------- kleine Helfer ----------
-
-function zufall(seed) {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-// Wertrauschen, in x periodisch mit `px` Gitterzellen.
-function rauschen(x, z, px = 1 << 20, seed = 1) {
-  const h = (i, j) => {
-    i = ((i % px) + px) % px;
-    let n = Math.imul(i, 374761393) + Math.imul(j, 668265263) + Math.imul(seed, 1442695041);
-    n = Math.imul(n ^ (n >>> 13), 1274126177);
-    return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
-  };
-  const xi = Math.floor(x), zi = Math.floor(z);
-  const fx = x - xi, fz = z - zi;
-  const ux = fx * fx * (3 - 2 * fx), uz = fz * fz * (3 - 2 * fz);
-  const a = h(xi, zi), b = h(xi + 1, zi), c = h(xi, zi + 1), d = h(xi + 1, zi + 1);
-  return a + (b - a) * ux + (c - a) * uz + (a - b - c + d) * ux * uz;
-}
-
-function fbm(x, z, px, seed, oktaven = 4) {
-  let s = 0, amp = 0.5;
-  for (let i = 0; i < oktaven; i++) {
-    s += amp * rauschen(x, z, px, seed + i * 17);
-    x *= 2; z *= 2; px *= 2; amp *= 0.5;
-  }
-  return s;
-}
-
-const glatt = (a, b, x) => {
-  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
-  return t * t * (3 - 2 * t);
-};
-
-function leinwand(w, h) {
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  return c;
-}
 
 // Asphalt mit Randlinien und Mittelleitlinie (6 m Strich, 12 m Lücke). Die
 // Textur deckt 18 m Länge und die ganze Straßenbreite ab; das Korn ist in
@@ -212,28 +164,6 @@ function kornTextur(renderer) {
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  return t;
-}
-
-// Verwischte Felge für schnelle Fahrt: Nabe, Speichen als grauer Schleier,
-// Felgenhorn. Liegt vor den echten Speichen und blendet mit dem Tempo ein.
-function felgenTextur() {
-  const n = 256, m = n / 2;
-  const c = leinwand(n, n);
-  const g = c.getContext('2d');
-  const v = g.createRadialGradient(m, m, 0, m, m, m);
-  v.addColorStop(0, 'rgba(214, 216, 220, 1)');
-  v.addColorStop(0.12, 'rgba(176, 178, 182, 0.95)');
-  v.addColorStop(0.17, 'rgba(96, 98, 102, 0.55)');
-  v.addColorStop(0.45, 'rgba(128, 130, 134, 0.4)');
-  v.addColorStop(0.8, 'rgba(150, 152, 156, 0.38)');
-  v.addColorStop(0.86, 'rgba(214, 216, 220, 0.96)');
-  v.addColorStop(0.95, 'rgba(150, 152, 156, 0.96)');
-  v.addColorStop(1, 'rgba(40, 40, 42, 0)');
-  g.fillStyle = v;
-  g.fillRect(0, 0, n, n);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
 
@@ -371,70 +301,6 @@ void main() {
   kuppel.frustumCulled = false;
   kuppel.renderOrder = -10;
   return kuppel;
-}
-
-// ---------- Rad-Geometrie ----------
-
-// Meshopt speichert Positionen gepackt; zum Umrechnen in Gleitkomma wandeln.
-function alsFloat(geo) {
-  for (const name of Object.keys(geo.attributes)) {
-    const a = geo.attributes[name];
-    const lese = [a.getX, a.getY, a.getZ, a.getW].slice(0, a.itemSize);
-    const neu = new Float32Array(a.count * a.itemSize);
-    for (let i = 0; i < a.count; i++) lese.forEach((f, k) => (neu[i * a.itemSize + k] = f.call(a, i)));
-    geo.setAttribute(name, new THREE.BufferAttribute(neu, a.itemSize));
-  }
-  return geo;
-}
-
-// Im Modell liegen linkes und rechtes Rad einer Achse in einem Mesh. Gibt
-// die Dreiecke einer Seite als eigene Geometrie zurück, in Koordinaten von
-// `bezug`.
-function radSeite(mesh, bezug, seite, mitteZ) {
-  const geo = alsFloat(mesh.geometry.clone());
-  geo.applyMatrix4(bezug.matrixWorld.clone().invert().multiply(mesh.matrixWorld));
-  const pos = geo.attributes.position;
-  const index = geo.index ? geo.index.array : [...Array(pos.count).keys()];
-  const neu = new Map();
-  const behalten = [];
-  for (let i = 0; i < index.length; i += 3) {
-    const z = (pos.getZ(index[i]) + pos.getZ(index[i + 1]) + pos.getZ(index[i + 2])) / 3;
-    if ((z - mitteZ) * seite <= 0) continue;
-    for (let k = 0; k < 3; k++) {
-      if (!neu.has(index[i + k])) neu.set(index[i + k], neu.size);
-      behalten.push(neu.get(index[i + k]));
-    }
-  }
-  // Nur die Ecken dieser Seite behalten.
-  const teil = new THREE.BufferGeometry();
-  for (const [name, a] of Object.entries(geo.attributes)) {
-    const werte = new Float32Array(neu.size * a.itemSize);
-    for (const [alt, n] of neu) for (let k = 0; k < a.itemSize; k++) werte[n * a.itemSize + k] = a.array[alt * a.itemSize + k];
-    teil.setAttribute(name, new THREE.BufferAttribute(werte, a.itemSize));
-  }
-  teil.setIndex(behalten);
-  return teil;
-}
-
-// Mitte und Drehachse eines Reifens: Schwerpunkt der Punkte und die Richtung,
-// in der sie am wenigsten streuen (der Reifen ist eine flache Scheibe).
-function radAchse(geo) {
-  const pos = geo.attributes.position;
-  const m = new THREE.Vector3();
-  const p = new THREE.Vector3();
-  for (let i = 0; i < pos.count; i++) m.add(p.fromBufferAttribute(pos, i));
-  m.divideScalar(pos.count);
-  const c = new Array(9).fill(0);
-  for (let i = 0; i < pos.count; i++) {
-    p.fromBufferAttribute(pos, i).sub(m);
-    const d = [p.x, p.y, p.z];
-    for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) c[a * 3 + b] += d[a] * d[b];
-  }
-  const inv = new THREE.Matrix3().set(...c).invert();
-  const achse = new THREE.Vector3(0, 0, 1);
-  for (let k = 0; k < 40; k++) achse.applyMatrix3(inv).normalize();
-  if (achse.z < 0) achse.negate();
-  return { mitte: m, achse };
 }
 
 // ---------- Shader-Erweiterungen ----------
@@ -616,8 +482,6 @@ export class Kueste {
     // Nach einem Kontextverlust Himmel, Umgebung und Schatten neu rechnen.
     canvas.addEventListener('webglcontextrestored', () => (this.dunkel = null));
     this.auto = null;
-    this.raeder = [];
-    this.schleier = [];
     this.einfahrt = 1;
     this.bildgroesse = [1, 1];
     this.korn = kornTextur(r);
@@ -1506,158 +1370,15 @@ void main() {
 
   autoLichter() {
     if (!this.auto || !this.stimmung) return;
-    for (const m of this.lampen) m.emissiveIntensity = this.stimmung.scheinwerfer;
-    for (const m of this.rueckLichter) m.emissiveIntensity = this.stimmung.rueck;
-    this.kegel.intensity = this.stimmung.scheinwerfer * 5;
+    this.auto.lichter(this.stimmung.scheinwerfer, this.stimmung.rueck);
   }
 
   async autoLaden() {
-    const lader = new THREE.GLTFLoader();
-    lader.setMeshoptDecoder(THREE.MeshoptDecoder);
-    let gltf;
-    try {
-      gltf = await lader.loadAsync(MODELL);
-    } catch (fehler) {
-      console.warn('Küste: Modell nicht geladen', fehler);
-      return;
-    }
-    const modell = gltf.scene;
-    // Das Modell schaut nach +z; hier fährt es nach +x. Reifen unten auf 0.
-    modell.rotation.y = Math.PI / 2;
-    modell.position.y = 0.63;
-    const auto = new THREE.Group();
-    auto.add(modell);
-    auto.position.z = SPUR;
-    auto.updateMatrixWorld(true);
-
-    this.lampen = [];
-    this.rueckLichter = [];
-    const lack = new THREE.Color('#142850');
-    modell.traverse((o) => {
-      if (!o.isMesh) return;
-      o.castShadow = true;
-      const m = o.material;
-      switch (m.name) {
-        case 'paint':
-          // Das Auto bleibt fotografisch, nur die Welt ist gezeichnet.
-          m.color.copy(lack);
-          m.metalness = 0.65;
-          m.roughness = 0.32;
-          m.clearcoat = 1;
-          m.clearcoatRoughness = 0.03;
-          m.envMapIntensity = 1.3;
-          break;
-        case 'window':
-          m.envMapIntensity = 1.4;
-          break;
-        case 'glass':
-        case 'lights':
-          // Ohne Transmission: die bräuchte einen zusätzlichen Durchgang.
-          m.transmission = 0;
-          m.transparent = true;
-          m.opacity = m.name === 'glass' ? 0.35 : 0.5;
-          m.roughness = 0.02;
-          m.metalness = 0;
-          m.depthWrite = false;
-          if (m.name === 'lights') {
-            m.emissive = new THREE.Color(1, 0.97, 0.92);
-            this.lampen.push(m);
-          }
-          break;
-        case 'license':
-          // Das hintere Schild steht im Modell auf dem Kopf.
-          if (o.name === 'Plane005_0') {
-            o.material = m.clone();
-            o.material.map = m.map.clone();
-            o.material.map.wrapS = o.material.map.wrapT = THREE.RepeatWrapping;
-            o.material.map.repeat.set(-1, -1);
-            o.material.map.offset.set(1, 1);
-            o.material.map.needsUpdate = true;
-          }
-          break;
-        case 'tex_shiny':
-          this.rueckLichter.push(m);
-          break;
-        case 'Material':
-          // Eingebackener Kontaktschatten unter dem Auto, unbeleuchtet.
-          o.castShadow = false;
-          o.material = new THREE.MeshBasicMaterial({
-            color: 0x000000, alphaMap: null, map: m.map, transparent: true, opacity: 0.85, depthWrite: false,
-            polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
-          });
-          o.renderOrder = -1;
-          break;
-      }
-    });
-
-    // Räder. Im Modell liegen beide Räder einer Achse in einem Mesh, und die
-    // vorderen sind eingeschlagen: um eine gemeinsame Achse gedreht eierten
-    // sie. Darum jedes Rad für sich: Seite herauslösen, gerade stellen und
-    // um die eigene Nabe drehen. Felge, Reifen und Bremsscheibe drehen sich,
-    // die Bremssättel (Material.001) bleiben stehen.
-    const schleierTex = felgenTextur();
-    for (const name of ['Cylinder000', 'Cylinder001']) {
-      const achse = modell.getObjectByName(name);
-      if (!achse) continue;
-      const teile = achse.children.filter((o) => o.isMesh);
-      const reifen = teile.find((o) => o.material.name === 'rubber');
-      if (!reifen) continue;
-      const mitteZ = new THREE.Box3().setFromObject(reifen).getCenter(new THREE.Vector3()).applyMatrix4(auto.matrixWorld.clone().invert()).z;
-      const paar = [];
-      for (const seite of [1, -1]) {
-        const { mitte, achse: richtung } = radAchse(radSeite(reifen, auto, seite, mitteZ));
-        const gerade = new THREE.Quaternion().setFromUnitVectors(richtung, new THREE.Vector3(0, 0, 1));
-        const nabe = new THREE.Group();
-        const sattel = new THREE.Group();
-        nabe.position.copy(mitte);
-        sattel.position.copy(mitte);
-        auto.add(nabe, sattel);
-        let felgeAussen = 0, felgeRadius = 0, radius = 0;
-        for (const t of teile) {
-          const geo = radSeite(t, auto, seite, mitteZ);
-          geo.translate(-mitte.x, -mitte.y, -mitte.z);
-          geo.applyQuaternion(gerade);
-          geo.computeBoundingBox();
-          const b = geo.boundingBox;
-          if (t.material.name === 'silver') {
-            felgeAussen = seite > 0 ? b.max.z : b.min.z;
-            felgeRadius = (b.max.y - b.min.y) / 2;
-          }
-          if (t === reifen) radius = (b.max.y - b.min.y) / 2;
-          const teil = new THREE.Mesh(geo, t.material);
-          teil.castShadow = true;
-          (t.material.name === 'Material.001' ? sattel : nabe).add(teil);
-        }
-        // Gerade gestellt sitzt der Reifen auf der Straße auf.
-        nabe.position.y = sattel.position.y = radius;
-        paar.push(nabe, sattel);
-        // Auf der Kameraseite: verwischte Felge vor den Speichen.
-        if (seite > 0 && felgeRadius) {
-          const schleier = new THREE.Mesh(
-            new THREE.CircleGeometry(felgeRadius, 48),
-            new THREE.MeshStandardMaterial({ map: schleierTex, transparent: true, metalness: 0.75, roughness: 0.3, depthWrite: false, opacity: 0 }),
-          );
-          schleier.position.z = felgeAussen + 0.004;
-          nabe.add(schleier);
-          this.schleier.push(schleier.material);
-        }
-        this.raeder.push({ nabe, radius, winkel: 0 });
-      }
-      // Eingeschlagen saßen die Naben der Vorderräder ein paar Zentimeter
-      // versetzt; gerade stehen beide auf einer Achse.
-      const x = paar.reduce((s, o) => s + o.position.x, 0) / paar.length;
-      for (const o of paar) o.position.x = x;
-      achse.removeFromParent();
-    }
-
-    // Abblendlicht auf der Straße vor dem Auto (nur im Dunkeln an).
-    const kegel = (this.kegel = new THREE.SpotLight(0xfff1dc, 0, 60, 0.5, 1, 1.2));
-    kegel.position.set(1.9, 0.62, 0);
-    kegel.target.position.set(14, 0, 0.3);
-    auto.add(kegel, kegel.target);
-
+    const auto = await Auto.laden();
+    if (!auto) return;
+    auto.gruppe.position.z = SPUR;
     this.auto = auto;
-    this.szene.add(auto);
+    this.szene.add(auto.gruppe);
     this.einfahrt = 0;
     this.autoLichter();
     this.renderer.shadowMap.needsUpdate = true;
@@ -1732,6 +1453,12 @@ void main() {
     const zielTempo = 9 + 21 * z.tempo;
     this.tempo += (zielTempo - this.tempo) * (1 - Math.exp(-s * 0.6));
     this.fahrt += this.tempo * s;
+    // Standbild für Screenshots: Fahrt und Zeit stehen fest, das Auto ist da.
+    if (z.bild) {
+      this.fahrt = z.bild.weg;
+      this.zeit = z.bild.zeit;
+      this.einfahrt = 1;
+    }
 
     const u = this.fahrt % PERIODE;
     this.nah.position.x = -u;
@@ -1777,27 +1504,14 @@ void main() {
       // Einfahrt: das Auto holt die Kamera von links ein.
       if (this.einfahrt < 1) this.einfahrt = Math.min(1, this.einfahrt + s / 4.5);
       const e = 1 - (1 - this.einfahrt) ** 3;
-      this.auto.position.x = -32 * (1 - e);
+      this.auto.gruppe.position.x = -32 * (1 - e);
       // Solange es einfährt, wandert sein Schatten mit; danach steht er.
       if (this.einfahrt < 1) this.renderer.shadowMap.needsUpdate = true;
-      // Federung: kleine Unebenheiten der Straße.
-      const holper = Math.sin(this.fahrt * 0.9) * 0.004 + Math.sin(this.fahrt * 2.3 + 1) * 0.0025;
-      this.auto.position.y = holper;
-      this.auto.rotation.z = Math.sin(this.fahrt * 0.6 + 0.5) * 0.0018;
-      const v = this.tempo + (1 - this.einfahrt) * 20;
-      for (const rad of this.raeder) {
-        // Echt drehten die Speichen pro Bild weiter als ihr Abstand und
-        // stünden still oder liefen rückwärts. Höchstens 0,17 rad pro Bild
-        // sieht dagegen aus wie ein Rad, das sich schnell vorwärts dreht;
-        // den Rest erzählt die verwischte Felge.
-        rad.winkel = (rad.winkel - Math.min((v / rad.radius) * s, 0.17)) % (Math.PI * 2);
-        rad.nabe.rotation.z = rad.winkel;
-      }
-      const schleier = glatt(6, 22, v) * 0.7;
-      for (const m of this.schleier) m.opacity = schleier;
+      this.auto.fahren(s, this.fahrt, this.tempo + (1 - this.einfahrt) * 20);
     }
 
     this.renderer.render(this.szene, this.kamera);
     if (!this.canvas.classList.contains('bereit')) this.canvas.classList.add('bereit');
+    if (z.bild && this.auto) this.canvas.dataset.bild = 'fertig';
   }
 }
