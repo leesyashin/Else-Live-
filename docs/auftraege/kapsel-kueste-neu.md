@@ -1,7 +1,7 @@
 # Auftrag: Kapsel, neuer Hintergrund für die Küste
 
 Repo: leesyashin/Else-Live- · Branch: claude/auftrag-<nr>-kueste-neu (Nummer vergibt der CvD) · Prio: normal · Größe: L (mehrere PRs, darf lange dauern)
-Eltern: keiner · Angelegt von: Session am 24.10.2026 · Zustand: in Arbeit (Phase 0); Stil fotografisch bestätigt am 24.10.2026
+Eltern: keiner · Angelegt von: Session am 24.10.2026 · Zustand: in Arbeit (Phase 0 fertig, Phase 1 im Review); Stil fotografisch bestätigt am 24.10.2026
 
 ## Ziel
 
@@ -64,7 +64,7 @@ Nicht anfassen: das Auto-Modell und `scripts/kapsel-modell.mjs`, Lack und Glas d
 ### 2. Strecke
 
 - **Umlauf 2048 m**, deterministisch aus Saat und Weg `x`, nahtlos am Umlauf.
-- **Kurve:** `kurve(x)` und `kurveSteigung(x)` bleiben die Schnittstelle, werden aber aus einer periodischen Spline-Tabelle gelesen statt aus zwei Sinuswellen: Radien 60 bis 250 m, Richtungsabweichung bis etwa 35°. `biegen` versetzt künftig entlang der Normalen der Mittellinie statt nur in z; sonst wird die Straße in engen Kurven schmaler.
+- **Kurve:** `kurve(x)` und `kurveSteigung(x)` bleiben die Schnittstelle. Umgesetzt (Phase 1) als Summe von sechs periodischen Wellen statt einer Spline-Tabelle: ebenso nahtlos, aber einfacher. Richtung bis 26°, engster Radius 115 m. Alles quer zur Straße steht entlang der Normalen der Mittellinie (`quer`), so bleibt die Straße auch in Kurven gleich breit.
 - **Abschnitte** (Reihenfolge und Längen als Tabelle in `strecke.js`, Übergänge 20 bis 40 m weich):
 
 | Nr | Abschnitt | Länge | Vorlage | Inhalt |
@@ -215,7 +215,8 @@ Budget für Grafikspeicher: unter 150 MB auf dem iPhone, sonst droht iOS den Kon
 
 | Datei | Inhalt |
 | --- | --- |
-| `strecke.js` | Spline, Abschnittstabelle, `kurve`, `kurveSteigung`, Normale |
+| `strecke.js` | Verlauf, Abschnittstabelle, Form von Wand und Klippe, Umrechnung aus dem Bild des Autos auf die Strecke |
+| `kamera.js` | Bildaufbau quer und hochkant (Werte, die auch das Prüfskript nutzt) |
 | `kacheln.js` | Ring, Detailstufen, Auf- und Abbau, Worker-Anbindung |
 | `bau-worker.js` | Geometrie, Verdeckung und eingebackene Schatten je Kachel |
 | `wand.js`, `fahrbahn.js`, `bruestung.js`, `pflanzen.js`, `bauwerke.js` | Bausteine |
@@ -251,7 +252,7 @@ Jede Phase ist ein eigener PR (Draft gegen `main`) mit Screenshots aus dem Stand
 | Phase | Inhalt | Abnahme im PR |
 | --- | --- | --- |
 | 0 | Gerüst: Stil `kueste-neu`, Ordner, Auto als eigenes Modul, Standbild-Modus, Bilder-Skript, CI-Schleife | alte und neue Küste per Parameter umschaltbar, Bilder entstehen |
-| 1 | Strecke, Kacheln, Worker, Kamera; Wand, Straße und Mauer als graue Rohformen | Bildaufbau stimmt hochkant und quer; keine Fugen, kein Ruckeln beim Kachelwechsel |
+| 1 | Strecke, Kacheln, Worker, Kamera; Wand, Straße und Mauer als graue Rohformen; `scripts/kapsel-kueste-pruefen.mjs` in der CI | Bildaufbau stimmt hochkant und quer; keine Fugen, kein Ruckeln beim Kachelwechsel |
 | 2 | Licht: Wechsel auf PBR, Himmel, Sonne mit der Welt gedreht, Schattenkarte jedes Bild, eingebackene Schatten, Bild-Durchgang, Dunst | Schon die graue Rohform sieht nach Foto aus |
 | 3 | Felswand vollständig: Form, GPU-Textur, Sinter, Verdeckung, Bewuchs, Netz | Nahaufnahme der Wand hält dem Vergleich mit Bild 1 stand |
 | 4 | Fahrbahn und alle drei Brüstungen | lange Schatten quer über die Fahrbahn wie Bild 1 |
@@ -262,6 +263,8 @@ Jede Phase ist ein eigener PR (Draft gegen `main`) mit Screenshots aus dem Stand
 | 9 | Leistung und Abschluss: auf Geräten messen, Budget einhalten; `kueste-neu` wird `kueste`, alte Dateien raus; README, `sw.js`, Einstellungen-Fußnote | alle Kriterien unten erfüllt |
 
 **Prüfpunkt nach Phase 2:** Screenshots auf deinem iPhone (Safari, `?stil=kueste-neu`), hell und dunkel. Wirkt die graue Rohform mit Licht, Schatten und Dunst schon nach Foto, geht es fotografisch weiter. Wenn nicht, wechselt die Umgebung auf den gemalten Stil; Strecke, Kamera, Bildaufbau, Abschnitte und Schatten bleiben, nur die Materialien ändern sich.
+
+**Offen aus Phase 1:** 226 Draw Calls pro Bild (Budget 150): Teile einer Kachel mit gleichem Material zusammenlegen (Phase 9). Das Meer verschwindet von der Straße aus noch fast ganz im Dunst; richtig wird es mit Phase 2 (Licht, Dunst aus dem Himmel) und Phase 6 (Meer).
 
 Phasen 3 bis 6 hängen nur von 1 und 2 ab und können parallel laufen (bis zu 3 Sessions nach den Regeln des Repos), wenn jede in ihren eigenen Dateien bleibt.
 

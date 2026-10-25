@@ -24,6 +24,8 @@ jobs:
           node-version: 22
       - name: Syntax
         run: for f in $(find kapsel/js -name '*.js') kapsel/sw.js scripts/kapsel-*.mjs; do node --check "$f"; done
+      - name: Strecke der neuen Küste
+        run: node scripts/kapsel-kueste-pruefen.mjs
       - name: Manifest
         run: node -e "JSON.parse(require('fs').readFileSync('kapsel/manifest.webmanifest','utf8'))"
 
