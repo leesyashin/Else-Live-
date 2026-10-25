@@ -1,7 +1,7 @@
 # Auftrag: Kapsel, neuer Hintergrund für die Küste
 
 Repo: leesyashin/Else-Live- · Branch: claude/auftrag-<nr>-kueste-neu (Nummer vergibt der CvD) · Prio: normal · Größe: L (mehrere PRs, darf lange dauern)
-Eltern: keiner · Angelegt von: Session am 24.10.2026 · Zustand: in Arbeit (Phase 0 fertig, Phase 1 im Review); Stil fotografisch bestätigt am 24.10.2026
+Eltern: keiner · Angelegt von: Session am 24.10.2026 · Zustand: in Arbeit (Phase 0 und 1 gemergt in #41, Phase 2 im Review); Stil fotografisch bestätigt am 24.10.2026
 
 ## Ziel
 
@@ -187,7 +187,7 @@ Mit der Sonne vorn links fallen die Schatten von Mauer, Zypressen und Galeriebö
 **Bild-Durchgang (eigener Shader, kein Zusatz im Bündel):**
 - Die Szene rendert linear in ein HalfFloat-Ziel mit 4× MSAA.
 - Bloom in 1/2 bis 1/16 Auflösung für Glitzer, Sonne und Chrom.
-- Danach in einem Durchgang: Tonemapping (AgX oder Neutral; im Rohbau von Phase 0 nahm AgX dem Himmel zu viel Farbe, darum vorerst Neutral), Farbgebung wie ein Foto (Lichter leicht warm, Schatten leicht kühl, sanfte S-Kurve), leichte Vignette, feines Korn und Ausgabe in sRGB.
+- Danach in einem Durchgang: Tonemapping (Neutral; AgX nahm dem Himmel zu viel Farbe), Farbgebung wie ein Foto (Lichter leicht warm, Schatten leicht kühl, sanfte S-Kurve), leichte Vignette, feines Korn und Ausgabe in sRGB.
 - **Belichtung:** folgt dem Abschnitt (aus der Streckentabelle bekannt). Im Tunnel wird um +1,3 Blenden aufgeblendet, bei der Ausfahrt ist es kurz überstrahlt und regelt dann zurück, wie eine Kamera. Im Ruhe-Modus ohne Sprünge.
 
 **Dunst:** Luftperspektive nach Weite und Höhe (dichter knapp über dem Meer), Farbe aus dem Himmelswürfel (heutiges `mitDunst`), dazu ein Mie-Schein in Richtung Sonne.
@@ -253,7 +253,7 @@ Jede Phase ist ein eigener PR (Draft gegen `main`) mit Screenshots aus dem Stand
 | --- | --- | --- |
 | 0 | Gerüst: Stil `kueste-neu`, Ordner, Auto als eigenes Modul, Standbild-Modus, Bilder-Skript, CI-Schleife | alte und neue Küste per Parameter umschaltbar, Bilder entstehen |
 | 1 | Strecke, Kacheln, Worker, Kamera; Wand, Straße und Mauer als graue Rohformen; `scripts/kapsel-kueste-pruefen.mjs` in der CI | Bildaufbau stimmt hochkant und quer; keine Fugen, kein Ruckeln beim Kachelwechsel |
-| 2 | Licht: Wechsel auf PBR, Himmel, Sonne mit der Welt gedreht, Schattenkarte jedes Bild, eingebackene Schatten, Bild-Durchgang, Dunst | Schon die graue Rohform sieht nach Foto aus |
+| 2 | Licht: Wechsel auf PBR, Himmel, Sonne mit der Welt gedreht, Schattenkarte jedes Bild, eingebackene Schatten, Bild-Durchgang, Dunst. Umgesetzt: Sonne und Himmelslicht je Ecke im Worker eingebacken (Strahl zur Sonne gegen Wand und Brüstung, Verdeckung durch Überhänge, Pfeiler, Wandfuß), ab 30 bis 45 m vom Auto übergeblendet; Himmel mit Rayleigh 1,3 (mehr Streuung machte den Horizont weißer) | Schon die graue Rohform sieht nach Foto aus |
 | 3 | Felswand vollständig: Form, GPU-Textur, Sinter, Verdeckung, Bewuchs, Netz | Nahaufnahme der Wand hält dem Vergleich mit Bild 1 stand |
 | 4 | Fahrbahn und alle drei Brüstungen | lange Schatten quer über die Fahrbahn wie Bild 1 |
 | 5 | Pflanzen: Zypressen mit Detailstufen, Pinien, Macchia, Agaven, Kakteen | Zypressenreihe wie Bild 1, kein Aufpoppen näher als 150 m |
@@ -264,7 +264,7 @@ Jede Phase ist ein eigener PR (Draft gegen `main`) mit Screenshots aus dem Stand
 
 **Prüfpunkt nach Phase 2:** Screenshots auf deinem iPhone (Safari, `?stil=kueste-neu`), hell und dunkel. Wirkt die graue Rohform mit Licht, Schatten und Dunst schon nach Foto, geht es fotografisch weiter. Wenn nicht, wechselt die Umgebung auf den gemalten Stil; Strecke, Kamera, Bildaufbau, Abschnitte und Schatten bleiben, nur die Materialien ändern sich.
 
-**Offen aus Phase 1:** 226 Draw Calls pro Bild (Budget 150): Teile einer Kachel mit gleichem Material zusammenlegen (Phase 9). Das Meer verschwindet von der Straße aus noch fast ganz im Dunst; richtig wird es mit Phase 2 (Licht, Dunst aus dem Himmel) und Phase 6 (Meer).
+**Offen aus Phase 1 und 2:** 226 Draw Calls pro Bild (Budget 150): Teile einer Kachel mit gleichem Material zusammenlegen (Phase 9). Das Meer ist von der Straße aus blass, weil es im flachen Blick fast nur den hellen Horizont spiegelt; das löst Phase 6 (Wasserfarbe, Wellen, Sonnenpfad). Eine Kachel der feinsten Stufe braucht im Worker gut 80 ms (Desktop) für das eingebackene Licht.
 
 Phasen 3 bis 6 hängen nur von 1 und 2 ab und können parallel laufen (bis zu 3 Sessions nach den Regeln des Repos), wenn jede in ihren eigenen Dateien bleibt.
 

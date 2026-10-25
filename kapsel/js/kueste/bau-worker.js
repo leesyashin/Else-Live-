@@ -7,9 +7,16 @@
 //
 // Normalen kommen aus der Flächenfunktion selbst (Differenzen über die
 // Kachelgrenze hinweg), so gibt es an den Nähten keine Lichtkanten.
+//
+// Licht wird eingebacken, je Ecke zwei Werte im Attribut `licht`: wie viel
+// Sonne ankommt (Strahl zur Sonne gegen Wand und Brüstung) und wie viel
+// Himmel (Verdeckung durch Überhänge, Pfeiler, Wandfuß, Brüstung). Die Sonne
+// steht fest zur Landschaft (sonne in der Anfrage, Koordinaten der Strecke);
+// nah am Auto übernimmt die Schattenkarte.
 
+import { glatt } from './helfer.js';
 import {
-  BANKETT, BRUESTUNG, KACHEL, MEER, STRASSE, UMLAUF,
+  BANKETT, BRUESTUNG, KACHEL, MEER, STRASSE, UMLAUF, VORSPRUNG,
   abschnittBei, klippenTiefe, normale, quer, wandHoehe, wandTiefe, wandWerte,
 } from './strecke.js';
 
@@ -21,14 +28,87 @@ const KLIPPE_ZEILEN = 18;
 // Mittelleitlinie: 114 Striche auf den Umlauf, damit die Markierung nahtlos
 // umläuft (ein Strich alle gut 18 m).
 const MARKEN = 114;
+const QUER = 0.5; // Zeilen quer über Straße und Bankett, für Schattenkanten
+// Schritte des Strahls zur Sonne, in Metern.
+const STRAHL = [0.5, 1, 1.8, 2.8, 4, 5.5, 7.5, 10, 13, 17, 22, 28];
+const INNEN = -STRASSE - 0.35; // Innenseite der Brüstung
+
+// Sonne in Koordinaten der Strecke; kommt mit jeder Anfrage.
+let SONNE = [0, 1, 0];
+
+// Sonne im Rahmen der Straße bei s: entlang, hoch, quer (zur Bergseite +).
+function sonneBei(s) {
+  const [nx, nz] = normale(s);
+  const [x, y, z] = SONNE;
+  return [x * nz - z * nx, y, x * nx + z * nz];
+}
+
+// Höhe der Krone, auf 1 m gerundet zwischengespeichert (ändert sich langsam).
+const kronen = new Map();
+function krone(s) {
+  const k = Math.round(s);
+  let h = kronen.get(k);
+  if (h === undefined) {
+    h = wandHoehe(k);
+    if (kronen.size > 4000) kronen.clear();
+    kronen.set(k, h);
+  }
+  return h;
+}
+
+// Wie viel Sonne ein Punkt (Weg s, Höhe h, d Meter hinter dem Fahrbahnrand
+// der Bergseite) trotz Felswand bekommt: Strahl zur Sonne, weicher Rand.
+function wandSchatten(s, h, d) {
+  const [ls, ly, lq] = sonneBei(s);
+  if (ly <= 0) return 0;
+  let licht = 1;
+  for (const t of STRAHL) {
+    const s2 = s + t * ls, h2 = h + t * ly, d2 = d + t * lq;
+    // Weiter vor der Wand, als sie irgendwo vorragt, und auf dem Weg weg
+    // von ihr: frei.
+    if (lq < 0 && d2 < VORSPRUNG) break;
+    if (h2 > krone(s2) + 2) break;
+    if (h2 < -0.5) continue;
+    licht = Math.min(licht, glatt(-0.35, 0.35, wandTiefe(s2, h2) - d2));
+    if (licht === 0) break;
+  }
+  return licht;
+}
+
+// Sonne am Boden bei Weg s, Abstand q von der Mitte: Schatten der Brüstung
+// (Sonne von der Meerseite) und der Wand (Sonne von der Bergseite).
+function bodenLicht(s, q) {
+  const [, ly, lq] = sonneBei(s);
+  let licht = 1;
+  if (lq < -1e-3 && q > INNEN) {
+    const art = BRUESTUNG[abschnittBei(s).abschnitt.bruestung];
+    const y = (ly * (q - INNEN)) / -lq;
+    licht = glatt(art.hoehe - 0.12, art.hoehe + 0.12, y);
+  } else if (lq > 1e-3) {
+    licht = wandSchatten(s, 0.05, q - STRASSE);
+  }
+  return licht;
+}
+
+// Himmelslicht an der Wand: Fels, der darüber oder daneben weiter zur Straße
+// vorragt, verdeckt den Himmel; am Fuß wird es dunkler.
+function wandVerdeckung(s, h, d) {
+  let oben = 0;
+  for (const dh of [1, 3, 7]) oben = Math.max(oben, (d - wandTiefe(s, h + dh)) / dh);
+  let seite = 0;
+  for (const ds of [-2, 2]) seite += Math.atan(Math.max(0, (d - wandTiefe(s + ds, h)) / 2));
+  const ao = (1 - 0.55 * Math.sin(Math.atan(oben))) * (1 - 0.2 * seite) * (0.55 + 0.45 * glatt(-0.5, 2.5, h));
+  return Math.min(1, Math.max(0.2, ao));
+}
 
 // Ein Gitter aus Spalten (entlang der Straße) und Zeilen. punkt(s, r) liefert
 // [x, y, z] für den Weg s und die (auch gebrochene) Zeile r; die Normale
 // zeigt nach dr × ds, mit umdrehen nach ds × dr.
-function gitter(spalten, zeilen, punkt, anfang, umdrehen = false) {
+function gitter(spalten, zeilen, punkt, anfang, umdrehen = false, beleuchten = null) {
   const n = spalten.length * (zeilen + 1);
   const position = new Float32Array(n * 3);
   const normal = new Float32Array(n * 3);
+  const licht = new Float32Array(n * 2).fill(1);
   let i = 0;
   for (const s of spalten) {
     for (let r = 0; r <= zeilen; r++) {
@@ -42,6 +122,7 @@ function gitter(spalten, zeilen, punkt, anfang, umdrehen = false) {
       const l = Math.hypot(nx, ny, nz) || 1;
       position.set([p[0] - anfang, p[1], p[2]], i * 3);
       normal.set([nx / l, ny / l, nz / l], i * 3);
+      if (beleuchten) licht.set(beleuchten(s, r), i * 2);
       i++;
     }
   }
@@ -55,7 +136,7 @@ function gitter(spalten, zeilen, punkt, anfang, umdrehen = false) {
       k += 6;
     }
   }
-  return { position, normal, index };
+  return { position, normal, licht, index };
 }
 
 // Felswand: Zeilen vom Fuß bis zur Krone, dann über die Kante zurück und den
@@ -73,7 +154,7 @@ function wand(spalten, anfang) {
     return m;
   };
   const zeilen = WAND_ZEILEN + KRONE_ZEILEN + HANG_ZEILEN;
-  const punkt = (s, r) => {
+  const lage = (s, r) => {
     const { w, hoehe, oben } = werte(s);
     let h, d;
     if (r <= WAND_ZEILEN) {
@@ -88,10 +169,20 @@ function wand(spalten, anfang) {
       h = hoehe + 1.5 + 30 * t ** 1.2;
       d = oben + 9 + 30 * t;
     }
+    return [h, d];
+  };
+  const punkt = (s, r) => {
+    const [h, d] = lage(s, r);
     const [x, z] = quer(s, STRASSE + d);
     return [x, h, z];
   };
-  return gitter(spalten, zeilen, punkt, anfang);
+  // Licht nur für die Wand selbst; Krone und Hang liegen frei.
+  const beleuchten = (s, r) => {
+    if (r > WAND_ZEILEN) return [1, 1];
+    const [h, d] = lage(s, r);
+    return [wandSchatten(s, h + 0.05, d - 0.25), wandVerdeckung(s, h, d)];
+  };
+  return gitter(spalten, zeilen, punkt, anfang, false, beleuchten);
 }
 
 // Klippe von der Abbruchkante bis unter den Meeresspiegel.
@@ -107,9 +198,10 @@ function klippe(spalten, anfang) {
 // Flache Streifen: Straße, Bankett, Streifen bis zur Kante. qs: Abstände von
 // der Mitte, quer über den Streifen und aufsteigend (sonst zeigte die Fläche
 // nach unten).
-function streifen(spalten, qs, y, anfang, mitUv) {
+function streifen(spalten, qs, y, anfang, mitUv, verdeckung = () => 1) {
   const n = spalten.length * qs.length;
   const position = new Float32Array(n * 3), normal = new Float32Array(n * 3);
+  const licht = new Float32Array(n * 2);
   const uv = mitUv ? new Float32Array(n * 2) : null;
   let i = 0;
   for (const s of spalten) {
@@ -118,6 +210,7 @@ function streifen(spalten, qs, y, anfang, mitUv) {
       const [x, z] = quer(s, q);
       position.set([x - anfang, y, z], i * 3);
       normal.set([0, 1, 0], i * 3);
+      licht.set([bodenLicht(s, q), verdeckung(s, q)], i * 2);
       if (uv) uv.set([(s * MARKEN) / UMLAUF, (q + STRASSE) / (2 * STRASSE)], i * 2);
       i++;
     }
@@ -132,7 +225,13 @@ function streifen(spalten, qs, y, anfang, mitUv) {
       k += 6;
     }
   }
-  return uv ? { position, normal, uv, index } : { position, normal, index };
+  return uv ? { position, normal, licht, uv, index } : { position, normal, licht, index };
+}
+
+// Zeilen von a bis b im Abstand QUER, beide Enden dabei.
+function zeilenVon(a, b) {
+  const n = Math.max(1, Math.round((b - a) / QUER));
+  return Array.from({ length: n + 1 }, (_, i) => a + ((b - a) * i) / n);
 }
 
 // Brüstung als Profil, das entlang der Straße läuft: Innenseite, Abdeckung,
@@ -141,8 +240,9 @@ function bruestung(spalten, anfang) {
   const flaechen = 3;
   const n = spalten.length * flaechen * 2;
   const position = new Float32Array(n * 3), normal = new Float32Array(n * 3);
+  const licht = new Float32Array(n * 2).fill(1);
   let i = 0;
-  const innen = -STRASSE - 0.35;
+  const innen = INNEN;
   for (const s of spalten) {
     const art = BRUESTUNG[abschnittBei(s).abschnitt.bruestung];
     const aussen = innen - art.dicke;
@@ -157,6 +257,8 @@ function bruestung(spalten, anfang) {
         const [x, z] = quer(s, q);
         position.set([x - anfang, h, z], i * 3);
         normal.set(nrm, i * 3);
+        // Am Fuß dunkler, wo Mauer und Boden sich treffen.
+        if (h <= 0) licht[i * 2 + 1] = 0.6;
         i++;
       }
     }
@@ -171,7 +273,7 @@ function bruestung(spalten, anfang) {
       k += 6;
     }
   }
-  return { position, normal, index };
+  return { position, normal, licht, index };
 }
 
 function kachelBauen(kachel, stufe) {
@@ -180,9 +282,13 @@ function kachelBauen(kachel, stufe) {
   const spalten = [];
   for (let s = anfang; s <= anfang + KACHEL + 1e-6; s += schritt) spalten.push(s);
   return {
-    strasse: streifen(spalten, [-STRASSE, STRASSE], 0, anfang, true),
-    rand: streifen(spalten, [STRASSE, STRASSE + BANKETT + 0.6], -0.03, anfang, false),
-    kante: streifen(spalten, [(s) => -STRASSE - klippenTiefe(s, 0) - 0.05, -STRASSE], -0.03, anfang, false),
+    // Neben der Brüstung etwas dunkler.
+    strasse: streifen(spalten, zeilenVon(-STRASSE, STRASSE), 0, anfang, true, (s, q) => 0.7 + 0.3 * glatt(0, 0.8, q - INNEN)),
+    // Am Fuß der Wand dunkler.
+    rand: streifen(spalten, zeilenVon(STRASSE, STRASSE + BANKETT + 0.6), -0.03, anfang, false,
+      (s, q) => 0.45 + 0.55 * glatt(0, 2, STRASSE + wandTiefe(s, 0.3) - q)),
+    kante: streifen(spalten, [(s) => -STRASSE - klippenTiefe(s, 0) - 0.05, -STRASSE - 1.4, -STRASSE], -0.03, anfang, false,
+      (s, q) => 0.7 + 0.3 * glatt(0, 0.6, INNEN - 0.5 - q)),
     fels: wand(spalten, anfang),
     klippe: klippe(spalten, anfang),
     bruestung: bruestung(spalten, anfang),
@@ -190,13 +296,17 @@ function kachelBauen(kachel, stufe) {
 }
 
 if (typeof self !== 'undefined') {
-  self.onmessage = ({ data: { kachel, stufe } }) => {
+  self.onmessage = ({ data: { kachel, stufe, sonne, version } }) => {
+    SONNE = sonne;
     const teile = kachelBauen(kachel, stufe);
     const puffer = [];
     for (const teil of Object.values(teile)) for (const a of Object.values(teil)) puffer.push(a.buffer);
-    self.postMessage({ kachel, stufe, teile }, puffer);
+    self.postMessage({ kachel, stufe, version, teile }, puffer);
   };
 }
 
 // Für Prüfungen ohne Worker (scripts/kapsel-kueste-pruefen.mjs).
-export { kachelBauen };
+function sonneSetzen(sonne) {
+  SONNE = sonne;
+}
+export { kachelBauen, sonneSetzen };

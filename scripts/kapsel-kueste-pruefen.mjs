@@ -6,7 +6,7 @@
 // Aufruf: node scripts/kapsel-kueste-pruefen.mjs
 
 import {
-  ABSCHNITTE, KACHEL, KACHELN, SPUR, STRASSE, UMLAUF,
+  ABSCHNITTE, KACHEL, KACHELN, SPUR, STRASSE, UMLAUF, VORSPRUNG,
   klippenTiefe, kruemmung, kurve, kurveSteigung, luftZurWand, wandHoehe, wandTiefe,
 } from '../kapsel/js/kueste/strecke.js';
 import { kachelBauen } from '../kapsel/js/kueste/bau-worker.js';
@@ -26,6 +26,12 @@ const nah = (a, b) => Math.abs(a - b) < 1e-6;
 pruefe(nah(kurve(0), kurve(UMLAUF)) && nah(kurveSteigung(0), kurveSteigung(UMLAUF)), 'Verlauf läuft nicht nahtlos um');
 for (const h of [0, 3, 10, 30]) pruefe(nah(wandTiefe(0, h), wandTiefe(UMLAUF, h)), `Wand bei ${h} m läuft nicht nahtlos um`);
 pruefe(nah(wandHoehe(0), wandHoehe(UMLAUF)) && nah(klippenTiefe(0, -20), klippenTiefe(UMLAUF, -20)), 'Krone oder Klippe läuft nicht nahtlos um');
+
+// Die Wand ragt nirgends weiter vor als VORSPRUNG (darauf baut der Abbruch
+// der Strahlen zur Sonne im Bau-Worker).
+let vorne = Infinity;
+for (let x = 0; x < UMLAUF; x += 0.5) for (let h = -0.5; h < 130; h += 0.5) vorne = Math.min(vorne, wandTiefe(x, h));
+pruefe(vorne >= VORSPRUNG, `Wand ragt ${(-vorne).toFixed(2)} m über den Fahrbahnrand (höchstens ${-VORSPRUNG} m)`);
 
 // 3. Richtung und Radien.
 let maxWinkel = 0, minRadius = Infinity;

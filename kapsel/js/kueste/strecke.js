@@ -18,6 +18,9 @@ export const STRASSE = 4.5; // halbe Breite von Rand zu Rand
 export const BANKETT = 2.75; // vom Fahrbahnrand bis zum Fuß der Wand
 export const MEER = -75; // Meeresspiegel tief unter der Straße
 export const KOPFHOEHE = 6; // darunter steht die Wand nie über dem Bankett
+// Weiter ragt die Wand nirgends über den Fahrbahnrand (d nie kleiner); der
+// Bau-Worker bricht Strahlen davor ab, das Prüfskript sichert es.
+export const VORSPRUNG = -0.5;
 
 // Die Abschnitte der Strecke (siehe Plan). Wand: Höhe in m, Rücksprung des
 // Fußes, Überhang über der Straße, Stufen (Rücksprung je 15 m Höhe), Rauheit
