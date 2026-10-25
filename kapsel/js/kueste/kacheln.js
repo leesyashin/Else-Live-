@@ -1,7 +1,9 @@
 // Der Ring aus Kacheln um das Auto: von HINTEN Metern hinter ihm bis VORN
 // Metern voraus. Fehlende Kacheln baut der Worker (bau-worker.js), die
 // nächsten zuerst; nah gibt es mehr Spalten als fern. Eine Kachel wechselt
-// ihre Stufe erst, wenn die neue fertig ist, so blitzt nichts auf.
+// ihre Stufe erst, wenn die neue fertig ist, so blitzt nichts auf. Licht ist
+// eingebacken: Dreht die Sonne (andere Stimmung), wird jede Kachel neu gebaut,
+// die alte bleibt stehen, bis die neue da ist.
 
 import * as THREE from '../../vendor/three-r186.min.js';
 import { KACHEL, KACHELN, UMLAUF } from './strecke.js';
@@ -26,12 +28,20 @@ export class Kacheln {
     this.kacheln = new Map(); // Nummer -> { gruppe, stufe }
     this.auftraege = new Map(); // Nummer -> Stufe
     this.gewuenscht = new Map(); // Nummer -> Stufe
+    this.sonne = [0, 1, 0]; // Koordinaten der Strecke
+    this.version = 0; // zählt mit jeder neuen Sonne hoch
     this.worker = new Worker(new URL('./bau-worker.js', import.meta.url), { type: 'module' });
     this.worker.onmessage = ({ data }) => this.fertig(data);
     this.worker.onerror = (e) => console.warn('Küste: Bau der Kacheln fehlgeschlagen', e.message);
   }
 
-  fertig({ kachel, stufe, teile }) {
+  // Neue Sonne (Richtung zur Sonne, Koordinaten der Strecke): alles neu backen.
+  sonneSetzen(sonne) {
+    this.sonne = sonne;
+    this.version++;
+  }
+
+  fertig({ kachel, stufe, version, teile }) {
     this.auftraege.delete(kachel);
     // Inzwischen nicht mehr gebraucht oder schon in dieser Stufe da.
     if (!this.gewuenscht.has(kachel)) return;
@@ -40,6 +50,7 @@ export class Kacheln {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(t.position, 3));
       geo.setAttribute('normal', new THREE.BufferAttribute(t.normal, 3));
+      geo.setAttribute('licht', new THREE.BufferAttribute(t.licht, 2));
       if (t.uv) geo.setAttribute('uv', new THREE.BufferAttribute(t.uv, 2));
       geo.setIndex(new THREE.BufferAttribute(t.index, 1));
       geo.computeBoundingSphere();
@@ -48,7 +59,7 @@ export class Kacheln {
       gruppe.add(mesh);
     }
     this.weg(kachel);
-    this.kacheln.set(kachel, { gruppe, stufe });
+    this.kacheln.set(kachel, { gruppe, stufe, version });
     this.welt.add(gruppe);
     if (this.u !== undefined) gruppe.position.x = lage(kachel, this.u);
   }
@@ -84,9 +95,10 @@ export class Kacheln {
     liste.sort((a, b) => a[0] - b[0]);
     for (const [, kachel, stufe] of liste) {
       if (this.auftraege.size >= GLEICHZEITIG) break;
-      if (this.kacheln.get(kachel)?.stufe === stufe || this.auftraege.has(kachel)) continue;
+      const da = this.kacheln.get(kachel);
+      if ((da?.stufe === stufe && da.version === this.version) || this.auftraege.has(kachel)) continue;
       this.auftraege.set(kachel, stufe);
-      this.worker.postMessage({ kachel, stufe });
+      this.worker.postMessage({ kachel, stufe, sonne: this.sonne, version: this.version });
     }
   }
 
@@ -98,7 +110,10 @@ export class Kacheln {
 
   // Jede Kachel in ihrer Stufe da (für Standbilder).
   get vollstaendig() {
-    for (const [kachel, stufe] of this.gewuenscht) if (this.kacheln.get(kachel)?.stufe !== stufe) return false;
+    for (const [kachel, stufe] of this.gewuenscht) {
+      const da = this.kacheln.get(kachel);
+      if (da?.stufe !== stufe || da.version !== this.version) return false;
+    }
     return this.gewuenscht.size > 0 && this.auftraege.size === 0;
   }
 }

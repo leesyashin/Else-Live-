@@ -2,32 +2,43 @@
 // erreichbar). Ziel: eine Straße in einer hellen Kalksteinwand hoch über dem
 // Meer, fotografisch beleuchtet; Plan in docs/auftraege/kapsel-kueste-neu.md.
 //
-// Stand Phase 1: Die Strecke (strecke.js) läuft als Umlauf von 2 km mit
-// Kurven und acht Abschnitten; Straße, Felswand, Klippe und Brüstung kommen
-// als graue Rohformen in Kacheln aus einem Worker (kacheln.js). Das Auto
-// steht, die Welt läuft und dreht sich so, dass die Straße unter ihm entlang
-// x zeigt. Die Kamera (kamera.js) steht schräg hinter dem Auto über der
-// Fahrbahn: links das Meer, rechts die Wand. Schnittstelle wie kueste.js:
-// new Kueste(canvas, kontext), groesse(), zeichnen().
+// Die Strecke (strecke.js) läuft als Umlauf von 2 km mit Kurven und acht
+// Abschnitten; Straße, Felswand, Klippe und Brüstung kommen als Kacheln aus
+// einem Worker (kacheln.js), noch als graue Rohformen. Das Auto steht, die
+// Welt läuft und dreht sich so, dass die Straße unter ihm entlang x zeigt.
+// Die Kamera (kamera.js) steht schräg hinter dem Auto über der Fahrbahn:
+// links das Meer, rechts die Wand.
+//
+// Licht (Phase 2): Die Sonne steht fest zur Landschaft und dreht darum mit
+// der Welt, ebenso Himmel und Umgebungslicht; in Kurven wandert das Licht
+// über das Auto. Nah am Auto wirft die Schattenkarte (jedes Bild neu) die
+// Schatten, weiter weg sind Sonne und Himmelslicht in die Kacheln
+// eingebacken. Dunst nimmt die Farbe des Himmels an (material.js), am Ende
+// kommen Bloom und Farbgebung (bild.js).
+//
+// Schnittstelle wie kueste.js: new Kueste(canvas, kontext), groesse(),
+// zeichnen().
 
 import * as THREE from '../../vendor/three-r186.min.js';
 import { Auto } from './auto.js';
+import { Bild } from './bild.js';
 import { leinwand } from './helfer.js';
 import { Kacheln } from './kacheln.js';
 import { kameraWerte } from './kamera.js';
+import { DUNST, mitLicht } from './material.js';
 import { MEER, SPUR, STRASSE, luftZurWand, quer, richtung, umlauf } from './strecke.js';
 
-// Sonne: Höhe und Richtung in Grad, links (zum Meer) von der Fahrtrichtung.
-// Dunst: Dichte und Farbe des vorläufigen Nebels (Phase 2 rechnet ihn aus dem
-// Himmel).
+// Sonne: Höhe und Richtung in Grad, links (zum Meer) von der mittleren
+// Fahrtrichtung der Strecke. Dunst: 1 / Meter, bei denen gut 60 % der Farbe
+// im Himmel aufgegangen sind.
 const STIMMUNGEN = {
   hell: {
-    sonne: [26, 40], licht: 0xfff0dc, staerke: 3.2, belichtung: 0.23, truebung: 2, rayleigh: 3, mie: 0.0025, wolken: 0,
-    dunst: [0.0009, 0xdfe8ee], scheinwerfer: 0, rueck: 0.35,
+    sonne: [26, 40], licht: 0xffe8cc, staerke: 3.2, belichtung: 0.23, truebung: 2, rayleigh: 1.3, mie: 0.0025, wolken: 0,
+    dunst: 1 / 9000, scheinwerfer: 0, rueck: 0.35,
   },
   dunkel: {
-    sonne: [3, 10], licht: 0xff9a55, staerke: 2.4, belichtung: 0.4, truebung: 4, rayleigh: 2.5, mie: 0.005, wolken: 0.3,
-    dunst: [0.0009, 0x8a6a62], scheinwerfer: 5, rueck: 4,
+    sonne: [3, 10], licht: 0xff9a55, staerke: 2.4, belichtung: 0.52, truebung: 4, rayleigh: 2.5, mie: 0.005, wolken: 0.3,
+    dunst: 1 / 6000, scheinwerfer: 5, rueck: 4,
   },
 };
 
@@ -64,7 +75,8 @@ export class Kueste {
     r.shadowMap.autoUpdate = true;
 
     this.szene = new THREE.Scene();
-    this.szene.fog = new THREE.FogExp2(0xffffff, 0.001);
+    this.bild = new Bild(r);
+    this.sonneWelt = new THREE.Vector3(0, 1, 0); // Koordinaten der Strecke
     this.kamera = new THREE.PerspectiveCamera(36, 1, 0.5, 60000);
     this.fahrt = Math.random() * 2048;
     this.tempo = 18; // m/s
@@ -95,23 +107,30 @@ export class Kueste {
     this.umgebungHimmel.scale.setScalar(45000);
     this.umgebungSzene.add(this.umgebungHimmel);
     this.pmrem = new THREE.PMREMGenerator(this.renderer);
+    // Himmel als Würfel für den Dunst, in Koordinaten der Strecke.
+    this.himmelWuerfel = new THREE.WebGLCubeRenderTarget(64, { type: THREE.HalfFloatType });
+    this.wuerfelKamera = new THREE.CubeCamera(1, 50000, this.himmelWuerfel);
+    DUNST.uHimmel.value = this.himmelWuerfel.texture;
   }
 
   // Graue Rohformen in Kacheln, darunter das Meer.
   weltBauen() {
-    const grau = (farbe, rau = 0.9) => new THREE.MeshStandardMaterial({ color: farbe, roughness: rau });
-    const fels = grau(0xd9d0bf);
+    // Kalkstein wirft gut die Hälfte des Lichts zurück, nicht mehr; sonst
+    // überstrahlt die Wand in der Sonne.
+    const grau = (farbe, name, rau = 0.9) => mitLicht(new THREE.MeshStandardMaterial({ color: farbe, roughness: rau }), { name });
+    const fels = grau(0xcab99c, 'fels');
     this.kacheln = new Kacheln(this.welt, {
-      strasse: new THREE.MeshStandardMaterial({ roughness: 0.92, map: markierung() }),
-      rand: grau(0xa49c8c),
-      kante: grau(0xb8ae9a),
+      strasse: mitLicht(new THREE.MeshStandardMaterial({ roughness: 0.92, map: markierung() }), { name: 'strasse' }),
+      rand: grau(0x9a9282, 'rand'),
+      kante: grau(0xaaa08c, 'kante'),
       fels,
       klippe: fels,
-      bruestung: grau(0xe6dfd0),
+      bruestung: grau(0xd6cfc0, 'bruestung'),
     });
-    // Ohne den vorläufigen Nebel, sonst verschwände das Meer von der Straße
-    // aus ganz im Dunst.
-    const meer = new THREE.Mesh(new THREE.PlaneGeometry(60000, 30000), new THREE.MeshStandardMaterial({ color: 0x06305a, roughness: 0.3, fog: false }));
+    const meer = new THREE.Mesh(
+      new THREE.PlaneGeometry(60000, 30000),
+      mitLicht(new THREE.MeshStandardMaterial({ color: 0x06305a, roughness: 0.3 }), { gebacken: false, name: 'meer' }),
+    );
     meer.rotation.x = -Math.PI / 2;
     meer.position.set(0, MEER, -15000 + 2000);
     this.szene.add(meer);
@@ -122,10 +141,12 @@ export class Kueste {
     sonne.castShadow = true;
     sonne.shadow.mapSize.set(2048, 2048);
     const k = sonne.shadow.camera;
-    k.left = -24; k.right = 24; k.top = 24; k.bottom = -24; k.near = 1; k.far = 220;
+    // Gut 40 m um das Auto, nach vorn versetzt; weiter weg ist der Schatten
+    // eingebacken (material.js blendet ab 30 m über).
+    k.left = -40; k.right = 40; k.top = 40; k.bottom = -40; k.near = 1; k.far = 300;
     sonne.shadow.bias = -0.0004;
-    sonne.shadow.normalBias = 0.03;
-    sonne.target.position.set(8, 0, SPUR);
+    sonne.shadow.normalBias = 0.04;
+    sonne.target.position.set(12, 0, SPUR);
     this.szene.add(sonne, sonne.target);
   }
 
@@ -133,28 +154,30 @@ export class Kueste {
     this.dunkel = dunkel;
     const s = (this.stimmung = dunkel ? STIMMUNGEN.dunkel : STIMMUNGEN.hell);
     const [hoehe, links] = s.sonne.map(THREE.MathUtils.degToRad);
-    const richtungSonne = new THREE.Vector3(Math.cos(hoehe) * Math.cos(links), Math.sin(hoehe), -Math.cos(hoehe) * Math.sin(links));
+    this.sonneWelt.set(Math.cos(hoehe) * Math.cos(links), Math.sin(hoehe), -Math.cos(hoehe) * Math.sin(links));
     for (const himmel of [this.himmel, this.umgebungHimmel]) {
       const u = himmel.material.uniforms;
       u.turbidity.value = s.truebung;
       u.rayleigh.value = s.rayleigh;
       u.mieCoefficient.value = s.mie;
       u.mieDirectionalG.value = 0.8;
-      u.sunPosition.value.copy(richtungSonne);
+      u.sunPosition.value.copy(this.sonneWelt);
       u.cloudCoverage.value = s.wolken;
       // Im Umgebungslicht keine Sonnenscheibe, die gäbe nur Glanzpunkte.
       u.showSunDisc.value = himmel === this.himmel ? 1 : 0;
     }
-    this.szene.fog.density = s.dunst[0];
-    this.szene.fog.color.set(s.dunst[1]);
     this.sonne.color.set(s.licht);
     this.sonne.intensity = s.staerke;
-    this.sonne.position.copy(richtungSonne).multiplyScalar(120).add(this.sonne.target.position);
     this.renderer.toneMappingExposure = s.belichtung;
+    DUNST.uDunst.value = s.dunst;
+    // Umgebungslicht und Dunst-Würfel in Koordinaten der Strecke; beim
+    // Zeichnen drehen sie mit der Welt (sonneDrehen).
+    this.wuerfelKamera.update(this.renderer, this.umgebungSzene);
     const alt = this.umgebung;
     this.umgebung = this.pmrem.fromScene(this.umgebungSzene, 0, 1, 50000, { size: 256 });
     this.szene.environment = this.umgebung.texture;
     alt?.dispose();
+    this.kacheln.sonneSetzen(this.sonneWelt.toArray());
     this.autoLichter();
   }
 
@@ -177,6 +200,17 @@ export class Kueste {
     this.renderer.setPixelRatio(skala);
     this.renderer.setSize(breite, hoehe, false);
     this.bildgroesse = [breite, hoehe];
+    this.bild.groesse();
+  }
+
+  // Die Sonne steht fest zur Landschaft: Sie dreht mit der Welt (winkel),
+  // ebenso Himmel, Umgebungslicht und der Würfel für den Dunst.
+  sonneDrehen(winkel) {
+    const r = this.sonneWelt.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), winkel);
+    this.himmel.material.uniforms.sunPosition.value.copy(r);
+    this.sonne.position.copy(r).multiplyScalar(150).add(this.sonne.target.position);
+    this.szene.environmentRotation.y = winkel;
+    DUNST.uDrehung.value = winkel;
   }
 
   // Die Welt so drehen und schieben, dass die Straße bei u unter dem Auto
@@ -244,6 +278,7 @@ export class Kueste {
     }
     const u = umlauf(this.fahrt);
     this.weltSetzen(u);
+    this.sonneDrehen(richtung(u));
     this.kacheln.aktualisieren(u);
     this.himmel.material.uniforms.time.value = this.zeit;
 
@@ -269,7 +304,7 @@ export class Kueste {
 
     // Erst zeichnen, wenn die Kacheln in der Nähe da sind.
     if (!this.kacheln.bereit) return;
-    this.renderer.render(this.szene, this.kamera);
+    this.bild.zeichnen(this.szene, this.kamera, this.zeit);
     if (!this.canvas.classList.contains('bereit')) this.canvas.classList.add('bereit');
     if (z.bild && this.auto && this.kacheln.vollstaendig) this.canvas.dataset.bild = 'fertig';
   }
