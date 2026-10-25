@@ -65,7 +65,7 @@ const spalte = (teil, letzte, zeilen) => {
   return Array.from(p.subarray(j * zeilen * 3, (j + 1) * zeilen * 3));
 };
 const zeilenVon = (teil, stufe) => teil.position.length / 3 / (KACHEL / [1, 2, 4][stufe] + 1);
-const gebaut = [0, 1, 2].map((stufe) => Array.from({ length: KACHELN }, (_, i) => kachelBauen(i, stufe)));
+const gebaut = [0, 1, 2].map((stufe) => Array.from({ length: KACHELN }, (_, i) => kachelBauen(i, stufe).teile));
 let fugen = 0;
 for (let i = 0; i < KACHELN; i++) {
   const weiter = (i + 1) % KACHELN;

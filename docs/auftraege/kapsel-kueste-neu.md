@@ -1,7 +1,7 @@
 # Auftrag: Kapsel, neuer Hintergrund für die Küste
 
 Repo: leesyashin/Else-Live- · Branch: claude/auftrag-<nr>-kueste-neu (Nummer vergibt der CvD) · Prio: normal · Größe: L (mehrere PRs, darf lange dauern)
-Eltern: keiner · Angelegt von: Session am 24.10.2026 · Zustand: in Arbeit (Phase 0 und 1 gemergt in #41, Phase 2 im Review); Stil fotografisch bestätigt am 24.10.2026
+Eltern: keiner · Angelegt von: Session am 24.10.2026 · Zustand: in Arbeit (Phase 0 und 1 in #41, Phase 2 in #42 gemergt, Phase 3 im Review; Prüfpunkt auf dem iPhone noch offen); Stil fotografisch bestätigt am 24.10.2026
 
 ## Ziel
 
@@ -254,7 +254,7 @@ Jede Phase ist ein eigener PR (Draft gegen `main`) mit Screenshots aus dem Stand
 | 0 | Gerüst: Stil `kueste-neu`, Ordner, Auto als eigenes Modul, Standbild-Modus, Bilder-Skript, CI-Schleife | alte und neue Küste per Parameter umschaltbar, Bilder entstehen |
 | 1 | Strecke, Kacheln, Worker, Kamera; Wand, Straße und Mauer als graue Rohformen; `scripts/kapsel-kueste-pruefen.mjs` in der CI | Bildaufbau stimmt hochkant und quer; keine Fugen, kein Ruckeln beim Kachelwechsel |
 | 2 | Licht: Wechsel auf PBR, Himmel, Sonne mit der Welt gedreht, Schattenkarte jedes Bild, eingebackene Schatten, Bild-Durchgang, Dunst. Umgesetzt: Sonne und Himmelslicht je Ecke im Worker eingebacken (Strahl zur Sonne gegen Wand und Brüstung, Verdeckung durch Überhänge, Pfeiler, Wandfuß), ab 30 bis 45 m vom Auto übergeblendet; Himmel mit Rayleigh 1,3 (mehr Streuung machte den Horizont weißer) | Schon die graue Rohform sieht nach Foto aus |
-| 3 | Felswand vollständig: Form, GPU-Textur, Sinter, Verdeckung, Bewuchs, Netz | Nahaufnahme der Wand hält dem Vergleich mit Bild 1 stand |
+| 3 | Felswand vollständig: Form, GPU-Textur, Sinter, Verdeckung, Bewuchs, Netz. Umgesetzt: Kalkstein-Textur auf der GPU (`texturen.js`), triplanar in zwei Maßstäben plus Detailnormale, Sinter und frischer Bruch je Ecke aus dem Worker, Flechten, Feuchte, Boden auf Krone und Hang, kantige Brocken in der Wandform (56 statt 40 Zeilen), Büsche als `InstancedMesh` je Kachel, Netz mit Maschen im Shader. Efeu und Kapernsträucher kommen mit Phase 5 | Nahaufnahme der Wand hält dem Vergleich mit Bild 1 stand |
 | 4 | Fahrbahn und alle drei Brüstungen | lange Schatten quer über die Fahrbahn wie Bild 1 |
 | 5 | Pflanzen: Zypressen mit Detailstufen, Pinien, Macchia, Agaven, Kakteen | Zypressenreihe wie Bild 1, kein Aufpoppen näher als 150 m |
 | 6 | Meer, Ferne, Wolken, Boote, Felsnadeln | Staffelung der Berge wie Bild 1 und 3, Glitzerpfad |
@@ -264,7 +264,7 @@ Jede Phase ist ein eigener PR (Draft gegen `main`) mit Screenshots aus dem Stand
 
 **Prüfpunkt nach Phase 2:** Screenshots auf deinem iPhone (Safari, `?stil=kueste-neu`), hell und dunkel. Wirkt die graue Rohform mit Licht, Schatten und Dunst schon nach Foto, geht es fotografisch weiter. Wenn nicht, wechselt die Umgebung auf den gemalten Stil; Strecke, Kamera, Bildaufbau, Abschnitte und Schatten bleiben, nur die Materialien ändern sich.
 
-**Offen aus Phase 1 und 2:** 226 Draw Calls pro Bild (Budget 150): Teile einer Kachel mit gleichem Material zusammenlegen (Phase 9). Das Meer ist von der Straße aus blass, weil es im flachen Blick fast nur den hellen Horizont spiegelt; das löst Phase 6 (Wasserfarbe, Wellen, Sonnenpfad). Eine Kachel der feinsten Stufe braucht im Worker gut 80 ms (Desktop) für das eingebackene Licht.
+**Offen aus Phase 1 und 2:** 226 Draw Calls pro Bild (Budget 150): Teile einer Kachel mit gleichem Material zusammenlegen (Phase 9). Das Meer ist von der Straße aus blass, weil es im flachen Blick fast nur den hellen Horizont spiegelt; das löst Phase 6 (Wasserfarbe, Wellen, Sonnenpfad). Eine Kachel der feinsten Stufe braucht im Worker gut 100 ms (Desktop) für Form und eingebackenes Licht. Bei sehr flachem Blick verschmiert die Felstextur entlang der Wand (in SwiftShader stärker als auf echten Grafikkarten mit anisotroper Filterung); im Feinschliff prüfen. Bewuchs: eine Draw Call mehr je Kachel.
 
 Phasen 3 bis 6 hängen nur von 1 und 2 ab und können parallel laufen (bis zu 3 Sessions nach den Regeln des Repos), wenn jede in ihren eigenen Dateien bleibt.
 

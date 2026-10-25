@@ -5,7 +5,7 @@
 // Version im Namen; sie kommen aus einem eigenen Cache, der Updates der Hülle
 // übersteht, und werden erst geladen, wenn jemand die Küste wählt. Ändert
 // sich eine davon, bekommt sie einen neuen Namen und DAUER zählt hoch.
-const VERSION = 'kapsel-26';
+const VERSION = 'kapsel-27';
 const DAUER = 'kapsel-dauer-1';
 const GROSS = /\/(vendor|modelle)\//;
 const HUELLE = [
@@ -27,6 +27,7 @@ const HUELLE = [
   'js/kueste/material.js',
   'js/kueste/strecke.js',
   'js/kueste/szene.js',
+  'js/kueste/texturen.js',
   'js/haptik.js',
   'js/speicher.js',
   'manifest.webmanifest',

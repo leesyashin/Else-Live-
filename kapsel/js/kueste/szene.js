@@ -22,11 +22,12 @@
 import * as THREE from '../../vendor/three-r186.min.js';
 import { Auto } from './auto.js';
 import { Bild } from './bild.js';
-import { leinwand } from './helfer.js';
+import { glatt, leinwand, rauschen } from './helfer.js';
 import { Kacheln } from './kacheln.js';
 import { kameraWerte } from './kamera.js';
-import { DUNST, mitLicht } from './material.js';
+import { DUNST, KALK, mitLicht } from './material.js';
 import { MEER, SPUR, STRASSE, luftZurWand, quer, richtung, umlauf } from './strecke.js';
+import { kalkTexturen } from './texturen.js';
 
 // Sonne: Höhe und Richtung in Grad, links (zum Meer) von der mittleren
 // Fahrtrichtung der Strecke. Dunst: 1 / Meter, bei denen gut 60 % der Farbe
@@ -60,6 +61,26 @@ function markierung() {
   t.wrapS = THREE.RepeatWrapping;
   t.flipY = false;
   return t;
+}
+
+// Busch: eine verbeulte Kugel, unten flach. Die Normalen bleiben die der
+// Kugel (etwas nach oben geneigt), so wirkt er weich wie Laub; innen und
+// unten dunkler, wie Laub, das sich selbst beschattet.
+function buschGeometrie() {
+  const geo = new THREE.IcosahedronGeometry(1, 3);
+  const p = geo.attributes.position, n = geo.attributes.normal;
+  const farben = [];
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const k = 0.72 + 0.5 * rauschen(x * 2.4 + 5, z * 2.4 + y * 1.8, 1 << 20, 3) + 0.15 * rauschen(x * 7, z * 7 + y * 6, 1 << 20, 4);
+    p.setXYZ(i, x * k, Math.max(-0.25, y * k) + 0.25, z * k);
+    n.setXYZ(i, x, y + 0.35, z);
+    const hell = (0.45 + 0.55 * glatt(-0.6, 0.9, y)) * (0.8 + 0.2 * rauschen(x * 4 + 1, z * 4 + y * 3, 1 << 20, 6));
+    farben.push(hell, hell, hell);
+  }
+  geo.normalizeNormals();
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(farben, 3));
+  return geo;
 }
 
 export class Kueste {
@@ -115,10 +136,23 @@ export class Kueste {
 
   // Graue Rohformen in Kacheln, darunter das Meer.
   weltBauen() {
-    // Kalkstein wirft gut die Hälfte des Lichts zurück, nicht mehr; sonst
-    // überstrahlt die Wand in der Sonne.
     const grau = (farbe, name, rau = 0.9) => mitLicht(new THREE.MeshStandardMaterial({ color: farbe, roughness: rau }), { name });
-    const fels = grau(0xcab99c, 'fels');
+    // Kalkstein: Farbe kommt aus der Textur (texturen.js); die Grundfarbe
+    // dämpft sie, damit die Wand in der Sonne nicht überstrahlt.
+    const kalk = kalkTexturen(this.renderer);
+    KALK.tKalkFarbe.value = kalk.farbe;
+    KALK.tKalkNormal.value = kalk.normal;
+    const fels = mitLicht(new THREE.MeshStandardMaterial({ color: 0xf4efe6, roughness: 1 }), { name: 'fels', fels: true });
+    const netz = mitLicht(
+      new THREE.MeshStandardMaterial({ color: 0x6c7074, metalness: 0.6, roughness: 0.45, side: THREE.DoubleSide, alphaToCoverage: true }),
+      { name: 'netz', netz: true },
+    );
+    const busch = {
+      geometrie: buschGeometrie(),
+      material: mitLicht(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }), { gebacken: false, name: 'busch', busch: true }),
+      // Dunkles Macchia-Grün bis trockenes Olivgrün.
+      farben: [new THREE.Color(0x1f3a16), new THREE.Color(0x5b6a2c)],
+    };
     this.kacheln = new Kacheln(this.welt, {
       strasse: mitLicht(new THREE.MeshStandardMaterial({ roughness: 0.92, map: markierung() }), { name: 'strasse' }),
       rand: grau(0x9a9282, 'rand'),
@@ -126,7 +160,8 @@ export class Kueste {
       fels,
       klippe: fels,
       bruestung: grau(0xd6cfc0, 'bruestung'),
-    });
+      netz,
+    }, busch);
     const meer = new THREE.Mesh(
       new THREE.PlaneGeometry(60000, 30000),
       mitLicht(new THREE.MeshStandardMaterial({ color: 0x06305a, roughness: 0.3 }), { gebacken: false, name: 'meer' }),
