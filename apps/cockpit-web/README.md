@@ -7,7 +7,7 @@ Was die Seite zeigt:
 - darunter die Bereiche als Kartenstapel wie in Apple Wallet: Diese Session, sechs Kategorien, Empfohlen
 - eine geöffnete Karte zeigt ihre Skills als Karten
 - **gedrückt halten** lädt einen Skill, **tippen** öffnet ihn als Pass mit SKILL.md und Referenzdateien
-- **Kontext-Ring** oben rechts und auf der Session-Karte: wie voll das Kontextfenster der Session ist, alle 30 Sekunden live über „Claude Code Remote“. Antippen zeigt den großen Ring mit der Marke fürs automatische Zusammenfassen, den Kosten und dem Nutzungslimit.
+- **Kontext-Ring** oben rechts und auf der Session-Karte: wie voll das Kontextfenster der Session ist, alle 30 Sekunden live aus der Datenbank der Seite. Dort schreibt ihn die Cockpit-Mod nach jedem Schritt von Claude hinein (Dokument `cockpit/context`, Einstellung `cockpitUrl` der Mod). Es braucht keinen Connector. Antippen zeigt den großen Ring mit der Marke fürs automatische Zusammenfassen, den Kosten und dem Nutzungslimit.
 
 Wie „Starten“ funktioniert:
 1. Die Seite schickt den Auftrag per „Send to Claude“ als Kommentar an die Session.
@@ -20,11 +20,10 @@ Wie „Starten“ funktioniert:
 python3 -I build_data.py <ausgabe-ordner>   # schreibt index.json und skills.json
 ```
 
-Danach in `shell.html` zwei Platzhalter ersetzen:
+Danach in `shell.html` den Platzhalter ersetzen:
 
 - `__INDEX__` durch den Inhalt von `index.json`, dabei `</` als `<\/` schreiben
-- `__SESSION__` durch die ID der Claude-Session, deren Kontext der Ring zeigen soll
 
-Das Ergebnis als `index.html` veröffentlichen, mit `skills.json` als zusätzlicher Datei und diesen Fähigkeiten: `db`, `user`, `comments` und `mcp` mit dem Connector „Claude Code Remote“ (Werkzeug `get_session`).
+Das Ergebnis als `index.html` veröffentlichen, mit `skills.json` als zusätzlicher Datei und diesen Fähigkeiten: `db`, `user`, `comments`.
 
 `skills.json` wird nicht eingecheckt. Es enthält die Anleitungen deiner eigenen Skills.

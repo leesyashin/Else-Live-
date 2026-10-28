@@ -59,7 +59,7 @@ Eine Mod für Claude Code, die Funktionen und Oberfläche erweitert: mehr Übers
 
 ### Phase 2: Kontext-Ring (umgesetzt)
 
-- **Handy-Seite:** Ring oben rechts und auf der Session-Karte. Die Daten kommen live über den Connector „Claude Code Remote“. Antippen öffnet den großen Ring mit Marke fürs Zusammenfassen, verbleibenden Tokens, Kosten und Nutzungslimit.
+- **Handy-Seite:** Ring oben rechts und auf der Session-Karte. Die Mod schreibt nach jedem Schritt von Claude den Füllstand, die Marke, die Kosten und die Nutzungslimits in die Datenbank der Seite. Die Seite liest sie live mit, ohne Connector und ohne Remote Control. Antippen öffnet den großen Ring mit Marke fürs Zusammenfassen, verbleibenden Tokens, Kosten und Nutzungslimit.
 - **Mod (Desktop, Terminal):** Ring mit Prozentzahl in der Leiste über der Eingabe, nach jedem Zug aktualisiert.
 - **Noch offen:** Ringe pro Kategorie (System, Tools, Skills, Chat). Die Aufschlüsselung kennt nur die Mod, nicht die Handy-Seite.
 

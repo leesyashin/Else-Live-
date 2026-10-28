@@ -2,5 +2,13 @@
   "name": "cockpit",
   "version": "0.1.0",
   "description": "Cockpit: Skill-Launcher mit Status, Infokarten, Referenzen und Zeitstrahl – Leiste über der Eingabe plus Seitenpanel.",
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "cockpitUrl": {
+      "type": "string",
+      "title": "Cockpit-Seite",
+      "description": "Adresse der Cockpit-Seite (claude.ai Artifact), in die der Kontext-Füllstand nach jedem Schritt geschrieben wird. Leer: kein Abgleich.",
+      "default": "https://claude.ai/artifact/3mAJQLuy66EZ9EoNiqAgT8"
+    }
+  }
 }

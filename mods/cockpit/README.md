@@ -30,6 +30,14 @@ Eine Mod für Claude Code, die zeigt, welche Skills du hast, ob Claude sie sieht
 - **Empfohlene Design-Skills:** Emil Kowalski, Anthropic, Jakub Krehel und Taste. Jeweils mit Regeln, Links zu den Referenzen und einem Knopf „Von Claude installieren lassen“.
 - **Nachweis:** Jede Skill-Nutzung (per `/name`, Skill-Tool oder Subagent) erzeugt eine kurze Meldung und einen Eintrag im Zeitstrahl.
 
+## Phase 2: Kontext-Ring
+
+- Die Leiste über der Eingabe zeigt, wie voll das Kontextfenster ist: als Ring mit Prozentzahl, im Terminal als Text.
+- Nach jedem Schritt von Claude schreibt die Mod Füllstand, Zusammenfass-Marke, Kosten und Nutzungslimits in die Cockpit-Seite fürs Handy, ins Dokument `cockpit/context`.
+- Welche Seite das ist, legt die Einstellung `cockpitUrl` fest. Leer heißt: kein Abgleich.
+- Wird das Schreiben verweigert, hört die Mod für diese Session damit auf, statt immer wieder zu fragen.
+- Claude kann den Abgleich mit dem Werkzeug `sync_context` sofort auslösen.
+
 ## Installation
 
 In einer Terminal-Session:

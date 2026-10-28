@@ -30,6 +30,7 @@ import {
   toggleFavorite,
   toggleFold,
 } from './skills'
+import { syncContext } from './sync'
 
 type $ = EngineInterface
 
@@ -93,13 +94,22 @@ function languageOf(path: string): string | undefined {
   return path.split('.').at(-1)?.toLowerCase()
 }
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  const cockpitUrl = typeof options.cockpitUrl === 'string' ? options.cockpitUrl.trim() : ''
+
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'cockpit',
       description: 'Öffnet das Cockpit: alle Skills mit Status, Infokarten und Zeitstrahl',
     })
     await loadFavorites($)
+    if (cockpitUrl) {
+      await $.tool.register({
+        name: 'sync_context',
+        description: 'Schreibt den Kontext-Füllstand dieser Session sofort in die Cockpit-Seite (sonst geschieht das nach jedem Schritt von selbst).',
+        isDeferred: true,
+      })
+    }
     // Relative times ("vor 3 Min") and the band's pulse move on once a minute.
     $.clock.every(60_000, () => void bumpTick($))
     $.clock.after(1500, () => void refresh($))
@@ -126,12 +136,20 @@ export const register: Register = on => {
     return name ? drawCard($, ui, e.surface, name, columns) : drawList($, ui, e.surface, columns)
   })
 
-  // A finished turn changed the context window: the band reads it again.
+  // A finished turn changed the context window: the band reads it again,
+  // and the phone's Cockpit page gets the new fill through its own database.
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
     await bumpTick($).catch(() => undefined)
+    if (cockpitUrl) await syncContext($, cockpitUrl).catch(() => undefined)
 
     return result
+  })
+
+  on('tool.call', { tool: 'mcp__cockpit__sync_context' as never }, async $ => {
+    const text = await syncContext($, cockpitUrl, true).catch(error => `Abgleich fehlgeschlagen: ${String(error)}`)
+
+    return { result: text }
   })
 
   // Every way a skill reaches the model passes here: /name, the Skill tool, a

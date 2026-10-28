@@ -93,6 +93,7 @@ function world(on: On, store: Record<string, unknown> = {}, surfaces: readonly R
   const ran: string[][] = []
   const filled: string[] = []
   on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__cockpit__${e.name}` } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.usage', () => ({ value: USAGE as never }))
@@ -345,4 +346,57 @@ test('the band shows how full the context window is, on every surface', async ($
   const terminal = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await terminal.find({ type: 'Text', text: /^◔ 1 % Kontext$/ })).toBeDefined()
   await terminal.unmount()
+})
+
+// --- Context sync to the phone's Cockpit page ------------------------------------
+
+function syncWorld(on: On, answer: (input: Record<string, unknown>) => Record<string, unknown>) {
+  const { clock } = world(on)
+  const calls: Record<string, unknown>[] = []
+  on('session.id', () => ({ value: 'session_test' }))
+  on('session.repo', () => ({ value: { root: '/', remote: null, internal: false, name: 'Else-Live-' } }))
+  // Typed loosely: the tool table's union is too large to infer here.
+  const onTool = on as unknown as (event: string, matcher: object, hook: (_: unknown, e: Record<string, unknown>) => unknown) => void
+  onTool('tool.call', { tool: 'ArtifactData' }, (_, input) => {
+    calls.push(input)
+    return answer(input)
+  })
+  return { clock, calls }
+}
+
+type Caller = { tool: { call: (args: object) => Promise<{ result?: unknown; text?: string }> } }
+const run = ($: unknown) => ($ as Caller).tool.call({ tool: 'mcp__cockpit__sync_context' })
+
+test('the context fill goes to the Cockpit page, creating its document once', async ($, on) => {
+  let version = 0
+  const { clock, calls } = syncWorld(on, input => {
+    if (input.action === 'get') return { result: '', text: 'No document "cockpit"/"context".', isError: true }
+    version += 1
+    return { result: '', text: `Database set committed. The document is now at version ${version}.` }
+  })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(2000)
+
+  const first = await run($)
+  expect(String(first.result)).toBe('Abgeglichen: 1 %')
+  expect(calls.map(c => c.action)).toEqual(['get', 'set'])
+  const set = calls[1]!
+  expect(set.url).toBe('https://claude.ai/artifact/3mAJQLuy66EZ9EoNiqAgT8')
+  expect(set.if_version).toBeUndefined()
+  expect(set.data).toMatchObject({ sessionId: 'session_test', repo: 'Else-Live-', used: 1000, max: 200000 })
+
+  const second = await run($)
+  expect(String(second.result)).toBe('Abgeglichen: 1 %')
+  expect(calls.map(c => c.action)).toEqual(['get', 'set', 'set'])
+  expect(calls[2]!.if_version).toBe(1)
+})
+
+test('a refused write stops the sync instead of asking again', async ($, on) => {
+  const { clock, calls } = syncWorld(on, () => ({ deny: 'Nicht für Plugins' }))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(2000)
+
+  const answer = await run($)
+  expect(String(answer.result)).toContain('Nicht erlaubt')
+  expect(calls.length).toBe(1)
 })
