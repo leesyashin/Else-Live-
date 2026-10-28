@@ -124,12 +124,13 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--c1); }
 
 /* Wallet */
-.wallet { position: relative; isolation: isolate; transition: height 0.6s var(--spring); }
+/* Cards, detail and height move by springs in script (place, detailTo, heightTo), never by CSS transitions. */
+.wallet { position: relative; isolation: isolate; }
 .wcard {
   position: absolute; left: 0; right: 0; top: 0; height: var(--card-h); border-radius: 18px; overflow: hidden; color: #fff;
   background: radial-gradient(130% 100% at 100% 0%, var(--g, transparent) 0%, transparent 58%), radial-gradient(90% 80% at 0% 100%, rgba(0, 0, 0, 0.16), transparent 62%), linear-gradient(155deg, var(--c1) 0%, var(--c2) 100%);
   box-shadow: var(--shadow), inset 0 0.5px 0 rgba(255, 255, 255, 0.35), inset 0 0 0 0.5px rgba(255, 255, 255, 0.12);
-  transition: transform 0.58s var(--spring), opacity 0.32s ease, scale 0.35s var(--spring), box-shadow 0.4s; will-change: transform, opacity;
+  transition: box-shadow 0.4s; will-change: transform, opacity;
   display: flex; flex-direction: column; justify-content: space-between; padding: 15px 20px 18px; width: 100%;
 }
 .wcard::before { content: ""; position: absolute; inset: 0; background: linear-gradient(118deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 34%, rgba(255, 255, 255, 0) 52%); pointer-events: none; }
@@ -141,7 +142,6 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .wcard[aria-expanded="true"] > .pattern { transform: translate3d(-10px, 6px, 0) scale(1.05); }
 .pattern.fade-r { -webkit-mask-image: linear-gradient(100deg, transparent 18%, #000 78%); mask-image: linear-gradient(100deg, transparent 18%, #000 78%); }
 .pattern.fade-b { -webkit-mask-image: linear-gradient(180deg, transparent 10%, #000 85%); mask-image: linear-gradient(180deg, transparent 10%, #000 85%); }
-.wcard:active { scale: 0.975; transition-duration: 0.58s, 0.32s, 0.12s, 0.4s; }
 .wcard.ticket { color: #1c1c1e; }
 .wcard.ticket::before { background: linear-gradient(118deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 45%); }
 .wcard.ticket .notch { position: absolute; top: 132px; width: 22px; height: 22px; border-radius: 50%; background: var(--bg); z-index: 2; }
@@ -161,8 +161,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .pulse::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--loaded); animation: breathe 1.8s var(--spring) infinite; }
 @keyframes breathe { from { transform: scale(1); opacity: 0.85; } to { transform: scale(2.6); opacity: 0; } }
 
-.detail { position: absolute; left: 0; right: 0; z-index: 30; opacity: 0; transform: translateY(26px); pointer-events: none; transition: opacity 0.16s, transform 0.3s var(--spring); display: flex; flex-direction: column; gap: 10px; }
-.detail.show { opacity: 1; transform: none; pointer-events: auto; transition: opacity 0.4s 0.16s, transform 0.62s 0.12s var(--spring); }
+.detail { position: absolute; left: 0; right: 0; z-index: 30; opacity: 0; transform: translateY(26px); pointer-events: none; display: flex; flex-direction: column; gap: 10px; }
+.detail.show { pointer-events: auto; }
 .mini-dots { display: grid; grid-template-columns: repeat(3, 7px); gap: 4px; }
 .mini-dots i { width: 7px; height: 7px; border-radius: 2.5px; background: var(--d); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.4); }
 .hint { margin: 0 4px; font-size: 13px; color: var(--fg2); }
@@ -509,6 +509,8 @@ summary small { color: var(--fg3); font-size: 13px; }
   /* Gentler, not gone: the sheet cross-fades instead of sliding. */
   .sheet { transform: none !important; opacity: 0; transition: opacity 200ms ease !important; }
   .sheet.open { opacity: 1; }
+  /* The pressed card dims instead of shrinking. */
+  .wcard.pressed { filter: brightness(0.9); }
 }
 @media (prefers-reduced-transparency: reduce) {
   .search { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
@@ -1232,16 +1234,99 @@ summary small { color: var(--fg3); font-size: 13px; }
   const stackY = i => (cards === SKILL_CARDS ? (i === 0 ? 0 : HEAD_PEEK + (i - 1) * PEEK) : i * PEEK)
   const cardEl = card => $('wallet').querySelector(`[data-card="${card.id}"]`)
 
-  // Moves a card. `instant` jumps there without a transition (to set a starting point).
-  function place(el, y, { scale = 1, opacity = 1, delay = 0, instant = false } = {}) {
-    el.style.transition = instant ? 'none' : ''
-    el.style.transitionDelay = !instant && delay ? `${delay}ms` : ''
-    el.style.transform = `translate3d(0, ${y}px, 0)${scale !== 1 ? ` scale(${scale})` : ''}`
-    el.style.opacity = opacity === 1 ? '' : String(opacity)
+  // Every card, the detail and the wallet height keep their live values here. Each value is
+  // its own spring, so any new target picks up from where it is on screen, at its speed.
+  // Opacity and scale run in thousandths: the spring settles within 0.4 units.
+  const UNIT = { y: 1, h: 1, o: 1000, s: 1000, p: 1000 }
+  const STAGGER = 40
+  const motions = new WeakMap()
+  function paintCard(el, m) {
+    el.style.transform = `translate3d(0, ${m.y}px, 0)${m.s * m.p !== 1 ? ` scale(${m.s * m.p})` : ''}`
+    const o = Math.min(1, Math.max(0, m.o))
+    el.style.opacity = o > 0.999 ? '' : String(o)
+    // A card on its way out can still be caught until it has mostly faded.
+    el.style.pointerEvents = m.to.o < 1 && o < 0.5 ? 'none' : ''
   }
-  const reflow = el => void el.offsetHeight
+  function paintDetail(el, m) {
+    el.style.transform = m.y ? `translate3d(0, ${m.y}px, 0)` : 'none'
+    el.style.opacity = String(Math.min(1, Math.max(0, m.o)))
+  }
+  const paintHeight = (el, m) => { el.style.height = `${m.h}px` }
+  function motionOf(el, init = { y: 0, s: 1, o: 1, p: 1 }, paint = paintCard) {
+    let m = motions.get(el)
+    if (!m) { m = { ...init, to: { ...init }, anim: {}, timer: 0, parked: false, paint }; motions.set(el, m) }
+    return m
+  }
+  function drive(el, m, key, to, { response = 0.36, velocity = 0, onDone } = {}) {
+    const u = UNIT[key]
+    const live = m.anim[key]?.stop()
+    m.anim[key] = null
+    const v = live ? live.v : velocity * u
+    if (Math.abs(m[key] - to) * u < 0.4 && Math.abs(v) < 12) { m[key] = to; m.paint(el, m); onDone?.(); return }
+    m.anim[key] = spring({
+      from: m[key] * u, to: to * u, velocity: v, damping: 1, response,
+      onUpdate: x => { m[key] = x / u; m.paint(el, m) },
+      onDone: () => { m.anim[key] = null; onDone?.() },
+    })
+  }
+  function halt(m, keys) { for (const k of keys) { m.anim[k]?.stop(); m.anim[k] = null } }
 
-  // Builds the stack; `from` deals the cards in: each rises into place, the kept card glides from its old spot.
+  // Moves a card. `instant` jumps there (to set a starting point); otherwise it springs from where it is.
+  // `onSettle` runs once its opacity has arrived. Reduced motion only cross-fades: it moves while unseen.
+  function place(el, y, { scale = 1, opacity = 1, delay = 0, instant = false, velocity = 0, onSettle } = {}) {
+    const m = motionOf(el)
+    m.parked = false
+    if (instant) {
+      clearTimeout(m.timer)
+      halt(m, ['y', 's', 'o'])
+      Object.assign(m, { y, s: scale, o: opacity })
+      m.to = { y, s: scale, o: opacity }
+      m.paint(el, m)
+      return
+    }
+    // Already on its way there (a re-render): leave the motion and its delay alone.
+    if (m.to.y === y && m.to.s === scale && m.to.o === opacity) return
+    clearTimeout(m.timer)
+    m.to = { y, s: scale, o: opacity }
+    const go = () => {
+      if (REDUCED.matches) {
+        const jump = () => { halt(m, ['y', 's']); m.y = y; m.s = scale; m.paint(el, m); drive(el, m, 'o', opacity, { response: 0.24, onDone: onSettle }) }
+        if (m.o > 0.02 && (Math.abs(m.y - y) > 0.5 || m.s !== scale)) drive(el, m, 'o', 0, { response: 0.2, onDone: jump })
+        else jump()
+        return
+      }
+      drive(el, m, 'y', y, { velocity })
+      drive(el, m, 's', scale)
+      drive(el, m, 'o', opacity, { response: opacity < 1 ? 0.3 : 0.36, onDone: onSettle })
+    }
+    if (delay) m.timer = setTimeout(go, delay)
+    else go()
+  }
+
+  // The detail rises in a beat after the card, and drops away at once.
+  function detailTo(show, animate = true) {
+    const el = $('detail'), m = motionOf(el, { y: 26, o: 0 }, paintDetail)
+    el.classList.toggle('show', show)
+    clearTimeout(m.timer)
+    const y = show || REDUCED.matches ? 0 : 26, o = show ? 1 : 0
+    if (!animate) { halt(m, ['y', 'o']); m.y = y; m.o = o; m.paint(el, m); return }
+    const go = () => {
+      if (!REDUCED.matches) drive(el, m, 'y', y, { response: show ? 0.4 : 0.3 })
+      else { halt(m, ['y']); m.y = 0 }
+      drive(el, m, 'o', o, { response: show ? 0.36 : 0.2 })
+    }
+    if (show && m.o < 0.05) m.timer = setTimeout(go, 120)
+    else go()
+  }
+
+  function heightTo(h, animate = true) {
+    const el = $('wallet'), m = motionOf(el, { h: el.offsetHeight }, paintHeight)
+    if (!animate || REDUCED.matches) { halt(m, ['h']); m.h = h; m.paint(el, m); return }
+    drive(el, m, 'h', h, { response: 0.4 })
+  }
+
+  // Builds the stack; `from` deals the cards in: each rises into place, the kept card glides on from
+  // where it is, at the speed it had.
   function buildWallet(from = null) {
     const wallet = $('wallet')
     wallet.innerHTML = cards.map((card, i) => `<button class="wcard${card.kind === 'rec' ? ' ticket' : ''}" data-card="${card.id}" style="${colors(lookOf(card))};z-index:${i + 1}" aria-expanded="false"></button>`).join('') + '<div class="detail" id="detail"></div>'
@@ -1252,8 +1337,10 @@ summary small { color: var(--fg3); font-size: 13px; }
       if (card.id === from.keep) place(el, from.keepY, { instant: true })
       else place(el, stackY(i) + 70, { opacity: 0, scale: 0.97, instant: true })
     })
-    reflow(wallet)
-    cards.forEach((card, i) => place(cardEl(card), stackY(i), { delay: card.id === from.keep ? 0 : 60 + i * 34 }))
+    cards.forEach((card, i) => {
+      const keep = card.id === from.keep
+      place(cardEl(card), stackY(i), { delay: keep ? 0 : (i + 1) * STAGGER, velocity: keep ? from.keepV : 0 })
+    })
     layout(true, true)
   }
 
@@ -1266,36 +1353,43 @@ summary small { color: var(--fg3); font-size: 13px; }
     }
   }
 
-  let parkTimer = 0
+  // Once a card that stepped aside has faded, it waits behind the open card so it adds no scroll length.
+  function park(el) {
+    const m = motionOf(el)
+    if (!state.open || m.to.o !== 0) return
+    place(el, 0, { opacity: 0, scale: 0.96, instant: true })
+    m.parked = true
+  }
+
+  let lastOpen = null
   function layout(animate = true, keepPlaces = false) {
+    // A stack change is under way; the new stack lays itself out.
+    if (switchToken) return
     const wallet = $('wallet'), detail = $('detail')
     const h = cardH()
     const openIndex = cards.findIndex(c => c.id === state.open)
-    clearTimeout(parkTimer)
+    // The nearer a card is to the one that moves first, the sooner it follows.
+    const after = (i, from) => animate && from >= 0 ? Math.min(Math.abs(i - from), 5) * STAGGER : 0
     if (openIndex < 0) {
-      detail.classList.remove('show')
+      detailTo(false, animate)
+      const from = cards.findIndex(c => c.id === lastOpen)
       // Cards that stepped aside come back from where they went, a few ms apart.
-      const away = cards.map(card => cardEl(card).dataset.away)
-      if (animate && away.some(Boolean)) {
-        cards.forEach((card, i) => {
-          if (away[i]) place(cardEl(card), stackY(i) + (away[i] === 'up' ? -28 : 96), { opacity: 0, scale: 0.97, instant: true })
-        })
-        reflow(wallet)
-      }
       cards.forEach((card, i) => {
         const el = cardEl(card)
-        if (!keepPlaces) place(el, stackY(i), { instant: !animate, delay: animate && away[i] ? 40 + i * 22 : 0 })
+        if (animate && motionOf(el).parked) place(el, stackY(i) + (el.dataset.away === 'up' ? -28 : 96), { opacity: 0, scale: 0.97, instant: true })
+        if (!keepPlaces) place(el, stackY(i), { instant: !animate, delay: after(i, from) })
         delete el.dataset.away
         el.style.zIndex = i + 1
-        el.style.pointerEvents = ''
         el.removeAttribute('aria-hidden')
         el.setAttribute('aria-expanded', 'false')
       })
-      wallet.style.height = `${stackY(cards.length - 1) + h}px`
+      lastOpen = null
+      heightTo(stackY(cards.length - 1) + h, animate)
     } else {
+      lastOpen = state.open
       const top = h + 16
       detail.style.top = `${top}px`
-      detail.classList.add('show')
+      detailTo(true, animate)
       const detailH = detail.offsetHeight
       // The open card rises; the cards above step up, the ones below step down, both fading.
       cards.forEach((card, i) => {
@@ -1303,30 +1397,25 @@ summary small { color: var(--fg3); font-size: 13px; }
         if (i === openIndex) {
           place(el, 0, { instant: !animate })
           el.style.zIndex = 40
-          el.style.pointerEvents = ''
           el.removeAttribute('aria-hidden')
           el.setAttribute('aria-expanded', 'true')
           delete el.dataset.away
         } else {
           const up = i < openIndex
-          el.dataset.away = up ? 'up' : 'down'
-          place(el, stackY(i) + (up ? -28 : 96), { opacity: 0, scale: 0.97, instant: !animate })
           el.style.zIndex = i + 1
-          el.style.pointerEvents = 'none'
           el.setAttribute('aria-hidden', 'true')
           el.setAttribute('aria-expanded', 'false')
+          if (motionOf(el).parked) return
+          el.dataset.away = up ? 'up' : 'down'
+          place(el, stackY(i) + (up ? -28 : 96), { opacity: 0, scale: 0.97, instant: !animate, delay: after(i, openIndex), onSettle: () => park(el) })
+          if (!animate) park(el)
         }
       })
-      // Once faded, park them behind the open card so they add no scroll length.
-      parkTimer = setTimeout(() => {
-        cards.forEach((card, i) => { if (i !== openIndex) place(cardEl(card), 0, { opacity: 0, scale: 0.96, instant: true }) })
-      }, 450)
-      wallet.style.height = `${top + detailH + 8}px`
+      heightTo(top + detailH + 8, animate)
     }
     const done = $('done')
     done.hidden = openIndex < 0 && cards !== SKILL_CARDS
     done.textContent = openIndex < 0 ? 'Zurück' : 'Fertig'
-    if (!animate) requestAnimationFrame(() => cards.forEach(card => { const el = cardEl(card); if (el) el.style.transition = '' }))
   }
 
   function scrollToWallet() {
@@ -1335,6 +1424,8 @@ summary small { color: var(--fg3); font-size: 13px; }
   }
 
   function openCard(id) {
+    // Caught a card of the stack that was leaving: the switch turns back.
+    if (switchToken) cancelSwitch()
     const closing = state.open === id
     if (!closing && id === 'merge' && pr.data?.state === 'merged' && !pr.lingering && !archived(pr.data)) {
       pr.playedAt = Date.now()
@@ -1361,30 +1452,72 @@ summary small { color: var(--fg3); font-size: 13px; }
   }
 
   // Switches between the main stack and the skills stack; the Skills card is the bridge.
-  let switching = false
+  // Never locked: a tap mid-switch turns it back from wherever the cards are.
+  let levelTarget = 'top', switchToken = null, switchTimer = 0
+  const levelOf = () => cards === SKILL_CARDS ? 'skills' : 'top'
+  function cancelSwitch() {
+    switchToken = null
+    clearTimeout(switchTimer)
+    levelTarget = levelOf()
+  }
   function enterLevel(level) {
-    if (switching) return
-    switching = true
+    cancelSwitch()
+    state.open = null
+    // Turned around before the new stack was dealt: the old one comes back.
+    if (level === levelOf()) { refreshCards(); layout(); return }
+    levelTarget = level
     const wallet = $('wallet')
     const toSkills = level === 'skills'
     const keepEl = wallet.querySelector('[data-card="skills"]')
-    state.open = null
-    $('detail').classList.remove('show')
+    const nextCards = toSkills ? SKILL_CARDS : TOP_CARDS
+    const keepY = toSkills ? 0 : (nextCards.length - 1) * PEEK
+    const token = switchToken = {}
+    const swap = () => {
+      if (switchToken !== token) return
+      switchToken = null
+      clearTimeout(switchTimer)
+      const m = motionOf(keepEl)
+      const live = m.anim.y?.stop()
+      cards = nextCards
+      buildWallet({ keep: 'skills', keepY: m.y, keepV: live ? live.v : 0 })
+      if (toSkills) scrollToWallet()
+    }
+    detailTo(false)
+    place(keepEl, keepY)
+    const leaving = cards.filter(card => cardEl(card) !== keepEl)
+    let left = leaving.length
     cards.forEach((card, i) => {
       const el = cardEl(card)
       if (el === keepEl) return
-      place(el, stackY(i) + (toSkills ? 90 : 60), { opacity: 0, scale: 0.97, delay: toSkills ? i * 18 : (cards.length - i) * 14 })
+      if (motionOf(el).parked) place(el, stackY(i), { opacity: 0, scale: 0.97, instant: true })
+      const order = toSkills ? i : cards.length - 1 - i
+      place(el, stackY(i) + (toSkills ? 90 : 60), { opacity: 0, scale: 0.97, delay: Math.min(order, 5) * 30, onSettle: () => { if (--left <= 0) swap() } })
     })
-    const nextCards = toSkills ? SKILL_CARDS : TOP_CARDS
-    const keepY = toSkills ? 0 : (nextCards.length - 1) * PEEK
-    place(keepEl, keepY)
-    setTimeout(() => {
-      cards = nextCards
-      buildWallet({ keep: 'skills', keepY })
-      if (toSkills) scrollToWallet()
-      switching = false
-    }, 300)
+    // In case a fade was cut short and never settles.
+    switchTimer = setTimeout(swap, 900)
+    if (!left) swap()
   }
+
+  // Pressing gives way at once, on the way down, not when the finger lifts.
+  ;(() => {
+    let pressed = null, px = 0, py = 0
+    const press = (el, down) => {
+      el.classList.toggle('pressed', down)
+      if (REDUCED.matches) return
+      drive(el, motionOf(el), 'p', down ? 0.975 : 1, { response: down ? 0.2 : 0.36 })
+    }
+    const release = () => { if (pressed) press(pressed, false); pressed = null }
+    $('wallet').addEventListener('pointerdown', e => {
+      const el = e.target.closest('.wcard')
+      if (!el || e.button > 0) return
+      release()
+      pressed = el; px = e.clientX; py = e.clientY
+      press(el, true)
+    })
+    document.addEventListener('pointermove', e => { if (pressed && Math.hypot(e.clientX - px, e.clientY - py) > 10) release() }, { passive: true })
+    document.addEventListener('pointerup', release)
+    document.addEventListener('pointercancel', release)
+  })()
 
   // --- Search results --------------------------------------------------------------
   function score(skill, q) {
@@ -2050,7 +2183,8 @@ summary small { color: var(--fg3); font-size: 13px; }
     if (t.id === 'clear') { $('q').value = ''; state.query = ''; renderResults(); $('q').focus(); return }
     if (t.hasAttribute('data-context')) return openSheet({ context: true })
     if (t.dataset.card === 'skills') {
-      if (cards !== SKILL_CARDS) return enterLevel('skills')
+      // By where the stack is heading, so a second tap mid-switch turns it back.
+      if (levelTarget !== 'skills') return enterLevel('skills')
       return state.open ? openCard(state.open) : enterLevel('top')
     }
     if (t.dataset.card) return openCard(t.dataset.card)
