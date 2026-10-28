@@ -177,7 +177,9 @@ Für die nächste Session: Hier steht, was es gibt, wie es zusammenspielt und wi
 
 Die Handy-Seite zeigt:
 - **oben:** Suche („Was willst du tun?“), Vorschläge, Kontext-Ring
-- **darunter:** Bereiche als Wallet-Kartenstapel mit eigenem Muster je Bereich (Session, Design, Code, Daten, Business, Persönlich, Weitere, Empfohlen)
+- **darunter:** ein Wallet-Kartenstapel mit Session, Merge, Setup, Team und Skills, jede Karte mit eigenem Muster
+- **Karte Skills:** öffnet einen zweiten Stapel mit den Bereichen (Design, Code, Daten, Business, Persönlich, Weitere, Empfohlen)
+- **Animation:** Die angetippte Karte gleitet nach oben. Die Karten darüber weichen nach oben aus, die darunter nach unten, beide blenden aus. Beim Schließen kommen sie gestaffelt zurück, beim Drücken gibt die Karte leicht nach.
 - **in einer geöffneten Karte:** Skills als Liste; gedrückt halten lädt den Skill, tippen öffnet ihn als Pass mit Anleitung und Referenzen
 - **Aufgabe zu einem Skill:** wird in einer Karte oben am Bildschirm eingegeben
 

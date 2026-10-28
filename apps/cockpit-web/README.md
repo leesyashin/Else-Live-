@@ -4,7 +4,8 @@ Die Mod in `mods/cockpit` zeichnet nur dort, wo eine Oberfläche Mods darstellt:
 
 Was die Seite zeigt:
 - oben eine Suche („Was willst du tun?“) mit Vorschlägen und Schnellbegriffen
-- darunter die Bereiche als Kartenstapel wie in Apple Wallet: Diese Session, sechs Kategorien, Empfohlen
+- darunter ein Kartenstapel wie in Apple Wallet: Diese Session, Merge, Setup, Team und Skills
+- die Karte **Skills** öffnet einen zweiten Stapel mit den sechs Bereichen und Empfohlen; „Zurück“ oder ein Tipp auf die Skills-Karte führt zum Hauptstapel
 - eine geöffnete Karte zeigt ihre Skills als Karten
 - **gedrückt halten** lädt einen Skill, **tippen** öffnet ihn als Pass mit SKILL.md und Referenzdateien
 - **Kontext-Ring** oben rechts und auf der Session-Karte: wie voll das Kontextfenster der Session ist, alle 30 Sekunden live aus der Datenbank der Seite. Dort schreibt ihn die Cockpit-Mod nach jedem Schritt von Claude hinein (Dokument `cockpit/context`, Einstellung `cockpitUrl` der Mod). Es braucht keinen Connector. Antippen zeigt den großen Ring mit der Marke fürs automatische Zusammenfassen, den Kosten und dem Nutzungslimit.

@@ -124,7 +124,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   position: absolute; left: 0; right: 0; top: 0; height: var(--card-h); border-radius: 18px; overflow: hidden; color: #fff;
   background: radial-gradient(130% 100% at 100% 0%, var(--g, transparent) 0%, transparent 58%), radial-gradient(90% 80% at 0% 100%, rgba(0, 0, 0, 0.16), transparent 62%), linear-gradient(155deg, var(--c1) 0%, var(--c2) 100%);
   box-shadow: var(--shadow), inset 0 0.5px 0 rgba(255, 255, 255, 0.35), inset 0 0 0 0.5px rgba(255, 255, 255, 0.12);
-  transition: transform 0.62s var(--spring), box-shadow 0.4s, opacity 0.3s; will-change: transform;
+  transition: transform 0.58s var(--spring), opacity 0.32s ease, scale 0.35s var(--spring), box-shadow 0.4s; will-change: transform, opacity;
   display: flex; flex-direction: column; justify-content: space-between; padding: 15px 20px 18px; width: 100%;
 }
 .wcard::before { content: ""; position: absolute; inset: 0; background: linear-gradient(118deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 34%, rgba(255, 255, 255, 0) 52%); pointer-events: none; }
@@ -136,7 +136,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .wcard[aria-expanded="true"] > .pattern { transform: translate3d(-10px, 6px, 0) scale(1.05); }
 .pattern.fade-r { -webkit-mask-image: linear-gradient(100deg, transparent 18%, #000 78%); mask-image: linear-gradient(100deg, transparent 18%, #000 78%); }
 .pattern.fade-b { -webkit-mask-image: linear-gradient(180deg, transparent 10%, #000 85%); mask-image: linear-gradient(180deg, transparent 10%, #000 85%); }
-.wcard:active { transition-duration: 0.18s; }
+.wcard:active { scale: 0.975; transition-duration: 0.58s, 0.32s, 0.12s, 0.4s; }
 .wcard.ticket { color: #1c1c1e; }
 .wcard.ticket::before { background: linear-gradient(118deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 45%); }
 .wcard.ticket .notch { position: absolute; top: 132px; width: 22px; height: 22px; border-radius: 50%; background: var(--bg); z-index: 2; }
@@ -156,8 +156,10 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .pulse::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--loaded); animation: breathe 1.8s var(--spring) infinite; }
 @keyframes breathe { from { transform: scale(1); opacity: 0.85; } to { transform: scale(2.6); opacity: 0; } }
 
-.detail { position: absolute; left: 0; right: 0; z-index: 30; opacity: 0; transform: translateY(14px); pointer-events: none; transition: opacity 0.35s, transform 0.55s var(--spring); display: flex; flex-direction: column; gap: 10px; }
-.detail.show { opacity: 1; transform: none; pointer-events: auto; transition-delay: 0.12s; }
+.detail { position: absolute; left: 0; right: 0; z-index: 30; opacity: 0; transform: translateY(26px); pointer-events: none; transition: opacity 0.16s, transform 0.3s var(--spring); display: flex; flex-direction: column; gap: 10px; }
+.detail.show { opacity: 1; transform: none; pointer-events: auto; transition: opacity 0.4s 0.16s, transform 0.62s 0.12s var(--spring); }
+.mini-dots { display: grid; grid-template-columns: repeat(3, 7px); gap: 4px; }
+.mini-dots i { width: 7px; height: 7px; border-radius: 2.5px; background: var(--d); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.4); }
 .hint { margin: 0 4px; font-size: 13px; color: var(--fg2); }
 
 /* Skill rows: grouped like Wallet's transactions; hold to load */
@@ -549,6 +551,7 @@ summary small { color: var(--fg3); font-size: 13px; }
   const SETUP = { c1: '#1d3b30', c2: '#0a1712', g: 'rgba(48, 209, 88, 0.34)', pat: 'pins' }
   const SETUP_ICON = '<path d="M4 7h10M4 12h7M4 17h10"/><path d="M15.5 11.5l2 2 3.5-4"/>'
   const STATE_DOT = { ok: '#30d158', warn: '#ffd60a', fail: '#ff453a' }
+  const SKILLS = { c1: '#6a4fe0', c2: '#1d1663', g: 'rgba(100, 210, 255, 0.42)', pat: 'mosaic' }
   const TEAM = { c1: '#1b2236', c2: '#0a0d16', g: 'rgba(100, 160, 255, 0.4)', pat: 'orbits' }
   const TEAM_ICON = '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9.5" r="2.4"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M14.5 15.2a4.5 4.5 0 0 1 6 3.8"/>'
   const MEMBER_LOOK = {
@@ -615,6 +618,16 @@ summary small { color: var(--fg3); font-size: 13px; }
       for (let i = 0; i < 9; i++) {
         const x = 120 + i * 30, y = 36 + i * 9
         body += `<path d="M${x - 140} ${y} C ${x - 40} ${y}, ${x} 196, ${x + 70} 196"/>`
+      }
+      fade = 'fade-r'
+    } else if (kind === 'mosaic') {
+      // Tiles in the areas' own colours, one per skill area.
+      const tints = ['#c58cff', '#7fb4ff', '#6fe0d0', '#ffc46b', '#a9a4ff', '#d6d6de']
+      for (let y = 14; y < 250; y += 26) {
+        for (let x = 168; x < 410; x += 26) {
+          const k = (x * 3 + y * 7) % 11
+          if (k < 6) body += `<rect x="${x}" y="${y}" width="16" height="16" rx="5" fill="${tints[k]}" fill-opacity="${(0.18 + (k % 3) * 0.08).toFixed(2)}" stroke="none"/>`
+        }
       }
       fade = 'fade-r'
     } else if (kind === 'orbits') {
@@ -858,14 +871,21 @@ summary small { color: var(--fg3); font-size: 13px; }
 
   // --- Wallet ----------------------------------------------------------------------
   const PEEK = 60
-  const cards = [
+  // In the skills stack the Skills card stays on top as its head, showing a little more.
+  const HEAD_PEEK = 78
+  const TOP_CARDS = [
     { id: 'session', kind: 'session', title: 'Diese Session' },
     { id: 'merge', kind: 'merge', title: 'Merge' },
     { id: 'setup', kind: 'setup', title: 'Setup' },
     { id: 'team', kind: 'team', title: 'Team' },
+    { id: 'skills', kind: 'skills', title: 'Skills' },
+  ]
+  const SKILL_CARDS = [
+    { id: 'skills', kind: 'skills', title: 'Skills', head: true },
     ...CATS.map(c => ({ id: c.id, kind: 'cat', title: c.id })),
     { id: 'rec', kind: 'rec', title: 'Empfohlen' },
   ]
+  let cards = TOP_CARDS
 
   function cardHtml(card) {
     const live = loadedSet()
@@ -890,6 +910,15 @@ summary small { color: var(--fg3); font-size: 13px; }
           <div class="wcount"><small>Dateien</small><b>${d.files ?? '–'}</b></div></div>
         <div class="wbottom"><div style="min-width:0"><small class="mstat" style="--dot:${st.dot}"><i></i>${esc(st.short)}</small><p>${esc(d.title)}</p></div>
           <span class="glyph">${glyph}</span></div>`
+    }
+    if (card.kind === 'skills') {
+      const total = DATA.skills.length
+      const dots = CATS.map(c => `<i style="--d:${c.c1}"></i>`).join('')
+      return `${pattern('mosaic')}<div class="wtop"><div><small>${card.head ? '‹ Alle Bereiche' : 'Cockpit'}</small><b>Skills</b></div>
+          <div class="wcount"><small>${card.head ? 'Bereiche' : 'Skills'}</small><b>${card.head ? CATS.length : total}</b></div></div>
+        <div class="wbottom"><div style="min-width:0"><small>${CATS.length} Bereiche${live.size ? ` · ${live.size} geladen` : ''} · ${recommended.length} empfohlen</small>
+            <p>${esc(CATS.map(c => c.id).join(' · '))}</p></div>
+          <span class="glyph"><span class="mini-dots">${dots}</span></span></div>`
     }
     if (card.kind === 'team') {
       const ms = team.members
@@ -1086,84 +1115,147 @@ summary small { color: var(--fg3); font-size: 13px; }
       ${hero}${memoNote}${section('Connectors', 'Connectors')}${section('Skills', 'Skills')}${branch}${recheck}`
   }
 
-  function buildWallet() {
+  const lookOf = card => card.kind === 'session' ? SESSION : card.kind === 'merge' ? MERGE : card.kind === 'setup' ? SETUP
+    : card.kind === 'team' ? TEAM : card.kind === 'skills' ? SKILLS : card.kind === 'rec' ? TICKET : CAT[card.id]
+  const cardH = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-h')) || 214
+  const stackY = i => (cards === SKILL_CARDS ? (i === 0 ? 0 : HEAD_PEEK + (i - 1) * PEEK) : i * PEEK)
+  const cardEl = card => $('wallet').querySelector(`[data-card="${card.id}"]`)
+
+  // Moves a card. `instant` jumps there without a transition (to set a starting point).
+  function place(el, y, { scale = 1, opacity = 1, delay = 0, instant = false } = {}) {
+    el.style.transition = instant ? 'none' : ''
+    el.style.transitionDelay = !instant && delay ? `${delay}ms` : ''
+    el.style.transform = `translate3d(0, ${y}px, 0)${scale !== 1 ? ` scale(${scale})` : ''}`
+    el.style.opacity = opacity === 1 ? '' : String(opacity)
+  }
+  const reflow = el => void el.offsetHeight
+
+  // Builds the stack; `from` deals the cards in: each rises into place, the kept card glides from its old spot.
+  function buildWallet(from = null) {
     const wallet = $('wallet')
-    wallet.innerHTML = cards.map((card, i) => {
-      const look = card.kind === 'session' ? SESSION : card.kind === 'merge' ? MERGE : card.kind === 'setup' ? SETUP : card.kind === 'team' ? TEAM : card.kind === 'rec' ? TICKET : CAT[card.id]
-      return `<button class="wcard${card.kind === 'rec' ? ' ticket' : ''}" data-card="${card.id}" style="${colors(look)};z-index:${i + 1}" aria-expanded="false"></button>`
-    }).join('') + '<div class="detail" id="detail"></div>'
+    wallet.innerHTML = cards.map((card, i) => `<button class="wcard${card.kind === 'rec' ? ' ticket' : ''}" data-card="${card.id}" style="${colors(lookOf(card))};z-index:${i + 1}" aria-expanded="false"></button>`).join('') + '<div class="detail" id="detail"></div>'
     refreshCards()
-    layout(false)
+    if (!from) { layout(false); return }
+    cards.forEach((card, i) => {
+      const el = cardEl(card)
+      if (card.id === from.keep) place(el, from.keepY, { instant: true })
+      else place(el, stackY(i) + 70, { opacity: 0, scale: 0.97, instant: true })
+    })
+    reflow(wallet)
+    cards.forEach((card, i) => place(cardEl(card), stackY(i), { delay: card.id === from.keep ? 0 : 60 + i * 34 }))
+    layout(true, true)
   }
 
   function refreshCards() {
     for (const card of cards) {
-      const el = document.querySelector(`[data-card="${card.id}"]`)
+      const el = cardEl(card)
+      if (!el) continue
       el.innerHTML = cardHtml(card)
-      el.setAttribute('aria-label', `${card.title}${state.open === card.id ? ', geöffnet' : ''}`)
+      el.setAttribute('aria-label', `${card.head ? 'Skills, zurück zu allen Bereichen' : card.title}${state.open === card.id ? ', geöffnet' : ''}`)
     }
   }
 
-  function layout(animate = true) {
+  let parkTimer = 0
+  function layout(animate = true, keepPlaces = false) {
     const wallet = $('wallet'), detail = $('detail')
-    const cardH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-h')) || 214
+    const h = cardH()
     const openIndex = cards.findIndex(c => c.id === state.open)
-    if (!animate) wallet.querySelectorAll('.wcard').forEach(el => { el.style.transition = 'none' })
+    clearTimeout(parkTimer)
     if (openIndex < 0) {
+      detail.classList.remove('show')
+      // Cards that stepped aside come back from where they went, a few ms apart.
+      const away = cards.map(card => cardEl(card).dataset.away)
+      if (animate && away.some(Boolean)) {
+        cards.forEach((card, i) => {
+          if (away[i]) place(cardEl(card), stackY(i) + (away[i] === 'up' ? -28 : 96), { opacity: 0, scale: 0.97, instant: true })
+        })
+        reflow(wallet)
+      }
       cards.forEach((card, i) => {
-        const el = wallet.querySelector(`[data-card="${card.id}"]`)
-        el.style.transform = `translate3d(0, ${i * PEEK}px, 0)`
+        const el = cardEl(card)
+        if (!keepPlaces) place(el, stackY(i), { instant: !animate, delay: animate && away[i] ? 40 + i * 22 : 0 })
+        delete el.dataset.away
         el.style.zIndex = i + 1
-        el.style.opacity = ''
         el.style.pointerEvents = ''
         el.removeAttribute('aria-hidden')
         el.setAttribute('aria-expanded', 'false')
       })
-      detail.classList.remove('show')
-      wallet.style.height = `${(cards.length - 1) * PEEK + cardH}px`
-      $('done').hidden = true
+      wallet.style.height = `${stackY(cards.length - 1) + h}px`
     } else {
-      const top = cardH + 16
+      const top = h + 16
       detail.style.top = `${top}px`
       detail.classList.add('show')
       const detailH = detail.offsetHeight
-      // The other cards tuck in behind the open one; "Fertig" brings them back.
-      let rank = 0
+      // The open card rises; the cards above step up, the ones below step down, both fading.
       cards.forEach((card, i) => {
-        const el = wallet.querySelector(`[data-card="${card.id}"]`)
+        const el = cardEl(card)
         if (i === openIndex) {
-          el.style.transform = 'translate3d(0, 0, 0)'
+          place(el, 0, { instant: !animate })
           el.style.zIndex = 40
-          el.style.opacity = ''
           el.style.pointerEvents = ''
           el.removeAttribute('aria-hidden')
           el.setAttribute('aria-expanded', 'true')
+          delete el.dataset.away
         } else {
-          el.style.transform = 'translate3d(0, 0, 0) scale(0.96)'
-          el.style.zIndex = rank + 1
-          el.style.opacity = '0'
+          const up = i < openIndex
+          el.dataset.away = up ? 'up' : 'down'
+          place(el, stackY(i) + (up ? -28 : 96), { opacity: 0, scale: 0.97, instant: !animate })
+          el.style.zIndex = i + 1
           el.style.pointerEvents = 'none'
           el.setAttribute('aria-hidden', 'true')
           el.setAttribute('aria-expanded', 'false')
-          rank += 1
         }
       })
+      // Once faded, park them behind the open card so they add no scroll length.
+      parkTimer = setTimeout(() => {
+        cards.forEach((card, i) => { if (i !== openIndex) place(cardEl(card), 0, { opacity: 0, scale: 0.96, instant: true }) })
+      }, 450)
       wallet.style.height = `${top + detailH + 8}px`
-      $('done').hidden = false
     }
-    if (!animate) requestAnimationFrame(() => wallet.querySelectorAll('.wcard').forEach(el => { el.style.transition = '' }))
+    const done = $('done')
+    done.hidden = openIndex < 0 && cards !== SKILL_CARDS
+    done.textContent = openIndex < 0 ? 'Zurück' : 'Fertig'
+    if (!animate) requestAnimationFrame(() => cards.forEach(card => { const el = cardEl(card); if (el) el.style.transition = '' }))
+  }
+
+  function scrollToWallet() {
+    const y = $('wallet').getBoundingClientRect().top + window.scrollY - 70
+    if (window.scrollY > y || y - window.scrollY > window.innerHeight * 0.45) window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' })
   }
 
   function openCard(id) {
     const closing = state.open === id
     state.open = closing ? null : id
-    $('detail').innerHTML = state.open ? detailHtml(cards.find(c => c.id === state.open)) : ''
+    if (state.open) $('detail').innerHTML = detailHtml(cards.find(c => c.id === state.open))
     refreshCards()
     layout()
-    if (state.open) {
-      const y = $('wallet').getBoundingClientRect().top + window.scrollY - 70
-      if (window.scrollY > y || y - window.scrollY > window.innerHeight * 0.45) window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' })
-    }
+    if (state.open) scrollToWallet()
+  }
+
+  // Switches between the main stack and the skills stack; the Skills card is the bridge.
+  let switching = false
+  function enterLevel(level) {
+    if (switching) return
+    switching = true
+    const wallet = $('wallet')
+    const toSkills = level === 'skills'
+    const keepEl = wallet.querySelector('[data-card="skills"]')
+    state.open = null
+    $('detail').classList.remove('show')
+    cards.forEach((card, i) => {
+      const el = cardEl(card)
+      if (el === keepEl) return
+      place(el, stackY(i) + (toSkills ? 90 : 60), { opacity: 0, scale: 0.97, delay: toSkills ? i * 18 : (cards.length - i) * 14 })
+    })
+    const nextCards = toSkills ? SKILL_CARDS : TOP_CARDS
+    const keepY = toSkills ? 0 : (TOP_CARDS.length - 1) * PEEK
+    place(keepEl, keepY)
+    setTimeout(() => {
+      cards = nextCards
+      buildWallet({ keep: 'skills', keepY })
+      if (toSkills) scrollToWallet()
+      switching = false
+    }, 300)
   }
 
   // --- Search results --------------------------------------------------------------
@@ -1219,7 +1311,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     renderAlerts()
     refreshCards()
     // Leave the detail alone while a finger holds one of its buttons.
-    if (state.open && !hold) { $('detail').innerHTML = detailHtml(cards.find(c => c.id === state.open)); layout() }
+    if (state.open && !hold) { $('detail').innerHTML = detailHtml(cards.find(c => c.id === state.open)); layout(true) }
     renderResults()
     refreshSheet()
   }
@@ -1388,8 +1480,8 @@ summary small { color: var(--fg3); font-size: 13px; }
     arc.setAttribute('style', `${arcStyle(14, p)};stroke:${look.a}`)
     $('ctx-chip').setAttribute('aria-label', `Kontext dieser Session: ${pct(p)} belegt, ${look.word}`)
     const session = document.querySelector('[data-card="session"]')
-    if (session) session.innerHTML = cardHtml(cards[0])
-    if (state.open === 'session') { $('detail').innerHTML = detailHtml(cards[0]); layout() }
+    if (session) session.innerHTML = cardHtml(TOP_CARDS[0])
+    if (state.open === 'session') { $('detail').innerHTML = detailHtml(TOP_CARDS[0]); layout() }
     if (state.sheet?.context) renderContextSheet(false)
   }
 
@@ -1721,9 +1813,13 @@ summary small { color: var(--fg3); font-size: 13px; }
     const t = e.target.closest('button, .scrim')
     if (!t) return
     if (t.id === 'scrim' || t.hasAttribute('data-close')) return closeSheet()
-    if (t.id === 'done') return openCard(state.open)
+    if (t.id === 'done') return state.open ? openCard(state.open) : enterLevel('top')
     if (t.id === 'clear') { $('q').value = ''; state.query = ''; renderResults(); $('q').focus(); return }
     if (t.hasAttribute('data-context')) return openSheet({ context: true })
+    if (t.dataset.card === 'skills') {
+      if (cards === TOP_CARDS) return enterLevel('skills')
+      return state.open ? openCard(state.open) : enterLevel('top')
+    }
     if (t.dataset.card) return openCard(t.dataset.card)
     if (t.dataset.try) { $('q').value = t.dataset.try; state.query = t.dataset.try; renderResults(); return }
     if (t.dataset.skill) return openSheet({ skill: t.dataset.skill })
