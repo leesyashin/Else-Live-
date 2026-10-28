@@ -100,6 +100,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font: inherit; font-size: 18px; color: var(--fg); }
 .search input::placeholder { color: var(--fg2); }
 .search input::-webkit-search-cancel-button { display: none; }
+.clear[hidden] { display: none; }
 .clear { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--fg3); color: var(--surface); display: grid; place-items: center; font-size: 13px; font-weight: 700; }
 
 .label { margin: 0 4px; font: 600 13px/1.2 var(--font); letter-spacing: 0.03em; color: var(--fg2); text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
@@ -240,6 +241,57 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .best .hold-hint { font-size: 13px; opacity: 0.8; }
 .list { display: flex; flex-direction: column; gap: 8px; }
 .empty { padding: 18px; border-radius: 16px; background: var(--surface); color: var(--fg2); font-size: 15px; text-align: center; }
+
+/* Merge: the branch's PR as a preview, hold to squash-merge */
+.wtarget { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.wtarget b { font: 700 30px/1.05 var(--display); letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wtarget span { font-size: 15px; opacity: 0.7; }
+.wbottom small.mstat, .mstat { display: inline-flex; align-items: center; gap: 6px; }
+.mstat i { width: 8px; height: 8px; border-radius: 50%; background: var(--dot); flex: none; }
+.preview { background: var(--surface); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 14px; animation: rowIn 0.55s var(--spring) both; animation-delay: 0.1s; }
+.preview h3 { margin: 0; font: 600 18px/1.3 var(--display); overflow-wrap: anywhere; }
+.preview .num { color: var(--fg2); font-weight: 500; }
+.route { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.route small { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg2); }
+.route .from { font: 13.5px var(--mono); color: var(--fg2); overflow-wrap: anywhere; }
+.route .to { display: flex; align-items: center; gap: 8px; font: 700 34px/1 var(--display); letter-spacing: -0.015em; min-width: 0; }
+.route .to svg { flex: none; width: 22px; height: 22px; color: var(--fg3); }
+.route .to span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.checks { display: flex; flex-direction: column; gap: 7px; margin: 2px 0 0; padding: 0; list-style: none; font-size: 14px; color: var(--fg2); }
+.checks li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.checks li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.checks i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--dot); }
+.blockers { margin: 0; padding: 12px 14px; border-radius: 14px; background: color-mix(in srgb, var(--warn) 13%, var(--surface)); font-size: 15px; display: flex; flex-direction: column; gap: 4px; }
+.blockers b { font-weight: 600; }
+.mbtn {
+  position: relative; overflow: hidden; width: 100%; min-height: 64px; border-radius: 18px; padding: 12px 18px;
+  display: flex; align-items: center; justify-content: center; gap: 12px; color: #fff; text-align: center;
+  background: linear-gradient(155deg, #8e4ff0, #5b22c2); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 12px 26px -14px #5b22c2;
+  transition: transform 0.35s var(--spring), opacity 0.3s;
+}
+.mbtn svg { position: relative; flex: none; width: 24px; height: 24px; }
+.mbtn span { position: relative; display: flex; flex-direction: column; align-items: flex-start; text-align: left; }
+.mbtn b { font-weight: 600; font-size: 17px; }
+.mbtn small { font-size: 13px; opacity: 0.82; }
+.mbtn .fill { position: absolute; inset: 0; background: rgba(255, 255, 255, 0.22); transform: scaleX(0); transform-origin: left; pointer-events: none; }
+.mbtn.holding { transform: scale(0.97); }
+.mbtn.holding .fill { transform: scaleX(1); transition: transform var(--hold-merge) linear; }
+.mbtn.fired { animation: tilePop 0.62s var(--bounce); }
+.mbtn[disabled] { background: var(--fill); color: var(--fg3); box-shadow: none; cursor: default; }
+.mbtn.busy { background: var(--fill); color: var(--fg); box-shadow: none; }
+.done-mark { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 8px 0 2px; text-align: center; }
+.done-mark svg { width: 84px; height: 84px; overflow: visible; }
+.done-mark .c { fill: none; stroke: #a35cf7; stroke-width: 5; stroke-dasharray: 239; transform: rotate(-90deg); transform-origin: center; transform-box: fill-box; }
+.done-mark .k { fill: none; stroke: #a35cf7; stroke-width: 5.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 48; }
+.done-mark .spark { fill: #a35cf7; opacity: 0; transform-origin: 42px 42px; }
+.done-mark.play svg { animation: tilePop 0.62s 0.55s var(--bounce) both; }
+.done-mark.play .c { stroke-dashoffset: 239; animation: drawIn 0.7s var(--spring) forwards; }
+.done-mark.play .k { stroke-dashoffset: 48; animation: drawIn 0.45s 0.5s var(--spring) forwards; }
+.done-mark.play .spark { animation: spark 0.8s 0.75s var(--spring) forwards; }
+.done-mark b { font: 700 22px/1.2 var(--display); }
+.done-mark span { color: var(--fg2); font-size: 15px; }
+@keyframes drawIn { to { stroke-dashoffset: 0; } }
+@keyframes spark { 0% { opacity: 0; transform: rotate(var(--a)) translateY(-34px) scale(0.4); } 30% { opacity: 1; } 100% { opacity: 0; transform: rotate(var(--a)) translateY(-58px) scale(1); } }
 
 .pill { min-height: 34px; padding: 0 14px; border-radius: 17px; background: var(--fill); color: var(--accent); font-weight: 600; font-size: 15px; text-transform: none; letter-spacing: 0; transition: transform 0.2s var(--spring); }
 .pill:active { transform: scale(0.94); }
@@ -435,6 +487,10 @@ summary small { color: var(--fg3); font-size: 13px; }
   const CAT = Object.fromEntries(CATS.map(c => [c.id, c]))
   const SESSION = { c1: '#3a3a3e', c2: '#151517', g: 'rgba(48, 209, 88, 0.3)', pat: 'radar' }
   const TICKET = { c1: '#fbfbfd', c2: '#e2e2e8', g: 'rgba(196, 212, 255, 0.7)', pat: 'guilloche' }
+  const MERGE = { c1: '#2e2a3a', c2: '#100d18', g: 'rgba(163, 92, 247, 0.42)', pat: 'branches' }
+  const MERGE_HOLD_MS = 1200
+  const MERGE_ICON = '<circle cx="6" cy="5" r="2.2"/><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="12" r="2.2"/><path d="M6 7.2v9.6M6 7.2c0 4 3.5 4.8 9.8 4.8"/>'
+  const ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
   const REC_ICON = '<path d="M12 4v16M4 12h16"/>'
   const CHEV = '<svg class="chev" viewBox="0 0 8 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 1.5 6.5 6.5 1.5 11.5"/></svg>'
   const TRIES = [
@@ -483,6 +539,14 @@ summary small { color: var(--fg3); font-size: 13px; }
       fade = 'fade-b'
     } else if (kind === 'radar') {
       for (let i = 1; i <= 9; i++) body += `<circle cx="372" cy="232" r="${i * 26}" stroke="rgba(48, 209, 88, ${(0.42 - i * 0.035).toFixed(2)})"/>`
+    } else if (kind === 'branches') {
+      // Side branches curving into one main line, like a merge graph.
+      body += `<line x1="-10" y1="196" x2="410" y2="196" stroke="rgba(163, 92, 247, 0.55)" stroke-width="2.5"/>`
+      for (let i = 0; i < 9; i++) {
+        const x = 120 + i * 30, y = 36 + i * 9
+        body += `<path d="M${x - 140} ${y} C ${x - 40} ${y}, ${x} 196, ${x + 70} 196"/>`
+      }
+      fade = 'fade-r'
     } else if (kind === 'guilloche') {
       for (let i = 0; i < 18; i++) body += `<ellipse cx="318" cy="70" rx="74" ry="24" transform="rotate(${i * 10} 318 70)"/>`
       for (let i = 0; i < 18; i++) body += `<ellipse cx="318" cy="70" rx="44" ry="15" transform="rotate(${i * 10 + 5} 318 70)"/>`
@@ -525,6 +589,52 @@ summary small { color: var(--fg3); font-size: 13px; }
     const c = size / 2
     return `<svg viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle class="trk" cx="${c}" cy="${c}" r="${r}" stroke-width="${width}"/><circle class="arc" cx="${c}" cy="${c}" r="${r}" stroke-width="${width}" style="${arcStyle(r, p)};stroke:${look.a}"/></svg>`
   }
+
+  // --- Merge: Claude writes the branch's PR into cockpit/pr after each push or PR event ---
+  const pr = { data: null, error: null, pending: 0, playedAt: 0 }
+  const MERGE_PENDING_MS = 10 * 60000
+  function cleanPr(d) {
+    if (!d || typeof d.number !== 'number' || typeof d.base !== 'string' || typeof d.head !== 'string') return null
+    const str = v => (typeof v === 'string' ? v : '')
+    const num = v => (typeof v === 'number' && isFinite(v) ? v : null)
+    const m = d.merge && typeof d.merge === 'object' ? d.merge : null
+    return {
+      repo: str(d.repo), number: d.number, title: str(d.title), url: /^https:\/\/github\.com\//.test(d.url) ? d.url : '',
+      head: d.head, base: d.base, draft: d.draft === true,
+      state: ['open', 'merged', 'closed'].includes(d.state) ? d.state : 'open',
+      ci: ['success', 'failure', 'pending', 'none'].includes(d.ci) ? d.ci : 'pending',
+      checks: Array.isArray(d.checks) ? d.checks.filter(c => c && typeof c.name === 'string').slice(0, 12) : [],
+      mergeable: typeof d.mergeable === 'boolean' ? d.mergeable : null,
+      files: num(d.files), additions: num(d.additions), deletions: num(d.deletions),
+      updatedAt: num(d.updatedAt) || 0,
+      merge: m && ['running', 'done', 'failed'].includes(m.state)
+        ? { state: m.state, at: num(m.at) || 0, sha: str(m.sha), branchDeleted: m.branchDeleted === true, message: str(m.message) }
+        : null,
+    }
+  }
+  const CHECK_DOT = { success: '#30d158', failure: '#ff453a', pending: '#ffd60a', skipped: '#8e8e93', none: '#8e8e93' }
+  function mergeBlockers(d) {
+    const out = []
+    if (d.ci === 'failure') out.push('CI ist rot. Erst wenn alle Checks grün sind, lässt sich mergen.')
+    if (d.ci === 'pending') out.push('CI läuft noch. Sobald alles grün ist, wird der Knopf frei.')
+    if (d.mergeable === false) out.push(`Konflikte mit ${d.base}. Claude muss sie erst lösen.`)
+    if (d.mergeable === null) out.push('GitHub prüft noch, ob es Konflikte gibt.')
+    return out
+  }
+  const mergeBusy = d => d.state === 'open' && ((pr.pending > 0 && Date.now() - pr.pending < MERGE_PENDING_MS) || d.merge?.state === 'running')
+  function mergeStatus(d) {
+    if (d.state === 'merged') return { dot: '#a35cf7', short: 'Gemergt' }
+    if (d.state === 'closed') return { dot: '#8e8e93', short: 'Geschlossen' }
+    if (mergeBusy(d)) return { dot: '#64d2ff', short: 'Wird gemergt …' }
+    if (d.merge?.state === 'failed') return { dot: '#ff453a', short: 'Merge abgebrochen' }
+    if (d.ci === 'failure') return { dot: '#ff453a', short: 'CI rot' }
+    if (d.mergeable === false) return { dot: '#ff453a', short: 'Konflikte' }
+    if (d.ci === 'pending') return { dot: '#ffd60a', short: 'CI läuft' }
+    if (d.mergeable === null) return { dot: '#ffd60a', short: 'Wird geprüft' }
+    return { dot: '#30d158', short: d.ci === 'none' ? 'Bereit · ohne Checks' : 'Bereit zum Mergen' }
+  }
+  const ciWord = d => ({ success: 'Alle Checks grün', failure: 'Rot', pending: 'Läuft', none: 'Keine Checks eingerichtet' })[d.ci]
+  const shortSha = sha => (sha ? sha.slice(0, 7) : '')
 
   const store = {
     get(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v) } catch { return fallback } },
@@ -618,6 +728,7 @@ summary small { color: var(--fg3); font-size: 13px; }
   const PEEK = 60
   const cards = [
     { id: 'session', kind: 'session', title: 'Diese Session' },
+    { id: 'merge', kind: 'merge', title: 'Merge' },
     ...CATS.map(c => ({ id: c.id, kind: 'cat', title: c.id })),
     { id: 'rec', kind: 'rec', title: 'Empfohlen' },
   ]
@@ -630,6 +741,21 @@ summary small { color: var(--fg3); font-size: 13px; }
           <div class="wcount"><small>Geladen</small><b>${live.size}</b></div></div>
         <div class="wbottom"><div><small>Zuletzt · Kontext ${pct(ctxShare())}</small><p>${esc(recent.join(' · ') || 'Noch kein Skill geladen')}</p></div>
           <span class="glyph ring40">${miniRing(40, 16, 4, ctxShare(), ctxLook(ctxShare()))}<em>${ctxShare() == null ? '–' : Math.round(ctxShare() * 100)}</em></span></div>`
+    }
+    if (card.kind === 'merge') {
+      const d = pr.data
+      if (!d) {
+        return `${pattern('branches')}<div class="wtop"><div><small>Merge</small><b>Kein PR</b></div></div>
+          <div class="wbottom"><div><small>Wartet</small><p>Claude trägt den PR dieses Branches nach dem nächsten Push ein.</p></div>
+            <span class="glyph">${svg(MERGE_ICON)}</span></div>`
+      }
+      const st = mergeStatus(d)
+      const glyph = d.state === 'merged' ? CHECK : mergeBusy(d) ? '<span class="spin"></span>' : svg(MERGE_ICON)
+      return `${pattern('branches')}<div class="wtop"><div style="min-width:0"><small>Merge · #${d.number}</small>
+            <div class="wtarget"><span>in</span><b>${esc(d.base)}</b></div></div>
+          <div class="wcount"><small>Dateien</small><b>${d.files ?? '–'}</b></div></div>
+        <div class="wbottom"><div style="min-width:0"><small class="mstat" style="--dot:${st.dot}"><i></i>${esc(st.short)}</small><p>${esc(d.title)}</p></div>
+          <span class="glyph">${glyph}</span></div>`
     }
     if (card.kind === 'rec') {
       return `${pattern('guilloche')}<span class="notch l"></span><span class="notch r"></span><span class="perf"></span>
@@ -664,6 +790,7 @@ summary small { color: var(--fg3); font-size: 13px; }
       }).join('')
       return `${ctxRow}${TIP('Tippen öffnet den Skill')}${group('Zuletzt geladen', items.length, rows)}`
     }
+    if (card.kind === 'merge') return mergeDetail()
     if (card.kind === 'rec') {
       return `${TIP('Halten: Claude installiert · Tippen: Details')}${group('Für deinen Stil', recommended.length, recommended.map(recRow).join(''))}`
     }
@@ -680,10 +807,60 @@ summary small { color: var(--fg3); font-size: 13px; }
       group(loadedHere.length || favs.length ? 'Weitere Skills' : 'Skills', rest.length, rows(rest))
   }
 
+  function mergeDetail() {
+    const d = pr.data
+    const actions = d => `<div class="links-row">
+        <button class="text-btn" data-pr-refresh>Neu prüfen lassen</button>
+        ${d?.url ? `<a class="text-btn" href="${esc(d.url)}" target="_blank" rel="noopener">Auf GitHub ↗</a>` : ''}
+      </div>`
+    if (!d) {
+      return `<p class="empty">${esc(pr.error ? 'Die Daten der Seite sind gerade nicht lesbar.' : 'Noch kein PR eingetragen. Claude schreibt ihn nach jedem Push oder PR-Ereignis hierher.')}</p>${actions(null)}`
+    }
+    const facts = `
+      <div class="kv"><span>CI</span><span class="mstat" style="--dot:${CHECK_DOT[d.ci]}"><i></i>${esc(ciWord(d))}</span></div>
+      ${d.checks.length ? `<ul class="checks">${d.checks.map(c => `<li style="--dot:${CHECK_DOT[c.state] || '#8e8e93'}"><i></i><span>${esc(c.name)}</span></li>`).join('')}</ul>` : ''}
+      <div class="kv"><span>Konflikte</span><span>${d.mergeable === true ? 'Keine' : d.mergeable === false ? `Ja, mit ${esc(d.base)}` : 'Wird geprüft'}</span></div>
+      <div class="kv"><span>Dateien</span><span>${d.files ?? '–'}${d.additions != null ? ` · <span style="color:var(--loaded)">+${d.additions}</span> <span style="color:#ff453a">−${d.deletions ?? 0}</span>` : ''}</span></div>
+      ${d.draft && d.state === 'open' ? '<div class="kv"><span>Entwurf</span><span>Claude gibt ihn vor dem Mergen frei</span></div>' : ''}
+      <div class="kv"><span>Stand</span><span>${d.updatedAt ? esc(ago(d.updatedAt)) : '–'}</span></div>`
+    const head = `<h3>${esc(d.title)} <span class="num">#${d.number}</span></h3>`
+    if (d.state === 'merged') {
+      const play = Date.now() - pr.playedAt < 3000 ? ' play' : ''
+      const sparks = Array.from({ length: 8 }, (_, i) => `<circle class="spark" cx="42" cy="42" r="3" style="--a:${i * 45}deg"/>`).join('')
+      return `<div class="preview">
+          <div class="done-mark${play}"><svg viewBox="0 0 84 84" aria-hidden="true">${sparks}<circle class="c" cx="42" cy="42" r="38"/><path class="k" d="M27 43l10 10 21-22"/></svg>
+            <b>In ${esc(d.base)} gemergt</b><span>${esc(d.merge?.branchDeleted ? `Branch ${d.head} gelöscht` : d.head)}</span></div>
+          ${head}
+          ${d.merge?.sha ? `<div class="kv"><span>Commit</span><span><code>${esc(shortSha(d.merge.sha))}</code></span></div>` : ''}
+          ${d.merge?.at ? `<div class="kv"><span>Gemergt</span><span>${esc(ago(d.merge.at))}</span></div>` : ''}
+        </div>${actions(d)}`
+    }
+    const blockers = mergeBlockers(d)
+    const busy = mergeBusy(d)
+    let button
+    if (d.state === 'closed') button = `<button class="mbtn" disabled>${svg(MERGE_ICON)}<span><b>Geschlossen</b><small>Dieser PR wurde ohne Merge geschlossen</small></span></button>`
+    else if (busy) button = `<button class="mbtn busy" disabled><span class="spin"></span><span><b>Claude merged …</b><small>Prüft CI und Konflikte noch einmal</small></span></button>`
+    else if (blockers.length) button = `<button class="mbtn" disabled>${svg(MERGE_ICON)}<span><b>Gesperrt</b><small>${esc(mergeStatus(d).short)}</small></span></button>`
+    else button = `<button class="mbtn" data-hold="merge:${d.number}" aria-label="Gedrückt halten: PR ${d.number} per Squash in ${esc(d.base)} mergen">
+        <span class="fill"></span>${svg(MERGE_ICON)}<span><b>Gedrückt halten zum Mergen</b><small>Squash in ${esc(d.base)}, danach Branch löschen</small></span></button>`
+    const failed = !busy && d.merge?.state === 'failed'
+    return `${TIP(blockers.length || busy || d.state !== 'open' ? 'Vorschau des PR' : 'Halten merged · 1,2 s')}
+      <div class="preview">
+        ${head}
+        <div class="route"><small>Ziel</small><div class="to">${ARROW}<span>${esc(d.base)}</span></div><span class="from">aus ${esc(d.head)}</span></div>
+        <div style="display:flex;flex-direction:column;gap:10px">${facts}</div>
+      </div>
+      ${failed ? `<div class="blockers"><b>Merge abgebrochen</b><span>${esc(d.merge.message || 'Claude hat nicht gemergt.')}</span></div>` : ''}
+      ${blockers.length && d.state === 'open' && !busy ? `<div class="blockers"><b>Noch gesperrt</b>${blockers.map(b => `<span>${esc(b)}</span>`).join('')}</div>` : ''}
+      ${button}
+      ${!sendAvailable() && !blockers.length && d.state === 'open' && !busy ? `<p class="hint">${esc(sendReason())}</p>` : ''}
+      ${actions(d)}`
+  }
+
   function buildWallet() {
     const wallet = $('wallet')
     wallet.innerHTML = cards.map((card, i) => {
-      const look = card.kind === 'session' ? SESSION : card.kind === 'rec' ? TICKET : CAT[card.id]
+      const look = card.kind === 'session' ? SESSION : card.kind === 'merge' ? MERGE : card.kind === 'rec' ? TICKET : CAT[card.id]
       return `<button class="wcard${card.kind === 'rec' ? ' ticket' : ''}" data-card="${card.id}" style="${colors(look)};z-index:${i + 1}" aria-expanded="false"></button>`
     }).join('') + '<div class="detail" id="detail"></div>'
     refreshCards()
@@ -802,7 +979,8 @@ summary small { color: var(--fg3); font-size: 13px; }
       : `${DATA.skills.length} Skills bereit`
     renderSuggest()
     refreshCards()
-    if (state.open) { $('detail').innerHTML = detailHtml(cards.find(c => c.id === state.open)); layout() }
+    // Leave the detail alone while a finger holds one of its buttons.
+    if (state.open && !hold) { $('detail').innerHTML = detailHtml(cards.find(c => c.id === state.open)); layout() }
     renderResults()
     refreshSheet()
   }
@@ -1134,7 +1312,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     else { ii.style.cssText = 'background:var(--loaded)'; ii.innerHTML = CHECK }
     el.querySelector('.ispin').hidden = mood !== 'busy'
     el.querySelector('b').textContent = title
-    el.querySelector('div span').textContent = detail || ''
+    el.querySelector(':scope > div > span').textContent = detail || ''
     el.classList.remove('show'); void el.offsetWidth; el.classList.add('show')
     clearTimeout(islandTimer)
     islandTimer = setTimeout(() => el.classList.remove('show'), mood === 'busy' ? 9000 : 3200)
@@ -1143,8 +1321,10 @@ summary small { color: var(--fg3); font-size: 13px; }
   // --- Talking to Claude -----------------------------------------------------------
   let comments = null
   async function refreshLink() {
+    const before = state.canSend
     if (!comments) state.canSend = 'none'
     else { try { state.canSend = await comments.canSendToClaude() } catch { state.canSend = 'off' } }
+    if (before !== state.canSend && state.open === 'merge' && !hold) render()
     const link = $('link')
     link.classList.toggle('on', state.canSend === 'available')
     link.querySelector('span').textContent = state.canSend === 'available' ? 'Mit Claude verbunden' : state.canSend === 'unknown' ? 'Verbinde …' : 'Ohne Claude'
@@ -1189,6 +1369,25 @@ summary small { color: var(--fg3); font-size: 13px; }
     return sent
   }
 
+  async function requestMerge(el) {
+    const d = pr.data
+    if (!d || d.state !== 'open' || mergeBusy(d)) return false
+    const blockers = mergeBlockers(d)
+    if (blockers.length) { island('Gesperrt', blockers[0], 'warn'); return false }
+    const sent = await sendToClaude(`Cockpit · Merge\n${d.repo} #${d.number}: ${d.head} → ${d.base}`, el)
+    if (!sent) return false
+    pr.pending = Date.now()
+    island('Merge angefordert', `#${d.number} → ${d.base} · Claude prüft und merged`, 'busy', { ...MERGE, mono: 'PR' })
+    setTimeout(render, 900)
+    return true
+  }
+
+  async function refreshPr(el) {
+    const repo = pr.data?.repo || ctx.repo || ''
+    const sent = await sendToClaude(`Cockpit · PR prüfen\n${repo}`.trim(), el)
+    if (sent) island('Angefragt', 'Claude trägt den aktuellen Stand ein')
+  }
+
   async function copyCommand(name, task) {
     const text = `/${name}${task ? ' ' + task : ''}`
     try { await navigator.clipboard.writeText(text); island('Befehl kopiert', 'Im Chat einfügen und senden') }
@@ -1200,6 +1399,7 @@ summary small { color: var(--fg3); font-size: 13px; }
   document.documentElement.style.setProperty('--hold', `${HOLD_MS}ms`)
   document.documentElement.style.setProperty('--hold-delay', `${HOLD_DELAY}ms`)
   document.documentElement.style.setProperty('--hold-draw', `${HOLD_MS - HOLD_DELAY}ms`)
+  document.documentElement.style.setProperty('--hold-merge', `${MERGE_HOLD_MS}ms`)
   function cancelHold() {
     if (!hold) return
     clearTimeout(hold.timer)
@@ -1223,10 +1423,11 @@ summary small { color: var(--fg3); font-size: 13px; }
       setTimeout(() => target.classList.remove('fired'), 1500)
       navigator.vibrate?.([8, 40, 14])
       const key = target.dataset.hold
-      if (key.startsWith('rec:')) await installRec(key.slice(4), target)
+      if (key.startsWith('merge:')) await requestMerge(target)
+      else if (key.startsWith('rec:')) await installRec(key.slice(4), target)
       else if (loadedSet().has(key)) island('Schon geladen', `${short(key)} läuft in dieser Session`)
       else await loadSkill(key, '', target)
-    }, HOLD_MS)
+    }, el.dataset.hold.startsWith('merge:') ? MERGE_HOLD_MS : HOLD_MS)
   })
   document.addEventListener('pointermove', e => {
     if (hold && Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 10) cancelHold()
@@ -1266,6 +1467,8 @@ summary small { color: var(--fg3); font-size: 13px; }
       return
     }
     if (t.dataset.copy) return copyCommand(t.dataset.copy, '')
+    if (t.hasAttribute('data-pr-refresh')) return refreshPr(t)
+    if (t.dataset.hold?.startsWith('merge:')) return island('Gedrückt halten', 'Erst nach 1,2 s Halten wird gemergt', 'warn')
     if (t.dataset.start) {
       t.disabled = true
       await loadSkill(t.dataset.start, '', t)
@@ -1316,6 +1519,26 @@ summary small { color: var(--fg3); font-size: 13px; }
       ctx.error = null
       renderContext()
     }, () => { ctx.error = 'no_data'; renderContext() })
+    db.doc('cockpit/pr').onSnapshot(snap => {
+      const before = pr.data
+      const d = snap.exists ? cleanPr(snap.data()) : null
+      pr.data = d
+      pr.error = null
+      if (d && pr.pending) {
+        const answered = d.state !== 'open' || (d.merge && d.merge.at >= pr.pending - 60000 && d.merge.state !== 'running')
+        if (answered || Date.now() - pr.pending > MERGE_PENDING_MS) pr.pending = 0
+      }
+      if (before && d && before.number === d.number) {
+        if (before.state === 'open' && d.state === 'merged') {
+          pr.playedAt = Date.now()
+          navigator.vibrate?.([10, 60, 18])
+          island('Gemergt', `#${d.number} ist in ${d.base}${d.merge?.branchDeleted ? ', Branch gelöscht' : ''}`)
+        } else if (d.merge?.state === 'failed' && before.merge?.at !== d.merge.at) {
+          island('Merge abgebrochen', d.merge.message || `#${d.number} wurde nicht gemergt`, 'warn')
+        }
+      }
+      render()
+    }, () => { pr.error = 'no_data'; render() })
     db.doc('cockpit/status').onSnapshot(snap => {
       const data = snap.exists ? snap.data() : null
       const loaded = Array.isArray(data?.loaded) ? data.loaded.filter(u => u && typeof u.skill === 'string' && typeof u.at === 'number') : []

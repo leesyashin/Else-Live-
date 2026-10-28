@@ -68,7 +68,15 @@ Ursprünglicher Plan:
 - Live-Füllstand der Session als Ring, der von Grün über Gelb zu Rot wechselt.
 - Ein Klick zeigt Ringe pro Kategorie: System, Tools, Skills, Chat.
 
-### Phase 3: Merge-Knopf
+### Phase 3: Merge-Knopf (auf der Handy-Seite umgesetzt)
+
+- **Handy-Seite:** Wallet-Karte „Merge“ direkt unter der Session. Vorn: Ziel-Branch groß, Status, Titel, Anzahl Dateien. Geöffnet: Vorschau mit Quell- und Ziel-Branch, CI und einzelnen Checks, Konflikten, Dateien (+/−), Entwurf-Hinweis und Stand.
+- Statt „scharf machen + zweiter Druck“ gilt auf dem Handy echtes **Halten (1,2 s)**: Der Knopf füllt sich, ein kurzer Druck schickt nichts.
+- Gesperrt bei rotem oder laufendem CI, bei Konflikten und solange GitHub die Konflikte noch prüft (`mergeable: null`).
+- Ergebnis: Spinner „Claude merged …“, dann ein gezeichnetes Häkchen mit Funken, Insel „Gemergt“ und Vibration. Bei Abbruch steht Claudes Grund auf der Karte.
+- **Noch offen:** Merge-Knopf in der Mod (Desktop) und der Eintrag ins Memory (kommt mit Phase 4).
+
+Ursprünglicher Plan:
 
 - Die Vorschau-Karte zeigt PR, Quell- und Ziel-Branch (Ziel groß), CI-Status, Dateien und Konflikte.
 - Der Knopf ist gesperrt, solange CI rot ist oder noch läuft, und solange es Konflikte gibt.
@@ -123,7 +131,7 @@ Ursprünglicher Plan:
 - **Chats untereinander:** Cloud-Sessions brauchen evtl. einmal deine Freigabe, bevor sie andere Sessions erreichen dürfen.
 - **Mod-Name:** offen.
 
-## Übergabe: Stand und nächste Schritte (28.10.2026)
+## Übergabe: Stand und nächste Schritte (28.10.2026, nach Phase 3)
 
 Für die nächste Session: Hier steht, was es gibt, wie es zusammenspielt und wie es weitergeht.
 
@@ -148,8 +156,11 @@ Die Handy-Seite zeigt:
 - **Seite → Claude:** Halten oder „Starten“ schickt per `comments.sendToClaude` einen Kommentar an alle Sessions, die die Seite beobachten. Format:
   - `Cockpit · Skill laden` + neue Zeile + `/<skill> [Aufgabe]`
   - `Cockpit · Skill installieren` + neue Zeile + `<Titel> von <Autor>: <Befehl>`
+  - `Cockpit · Merge` + neue Zeile + `<owner/repo> #<Nummer>: <head> → <base>`
+  - `Cockpit · PR prüfen` + neue Zeile + `<owner/repo>`
 - **Claude → Seite:** über die Datenbank der Seite (Werkzeug `ArtifactData`):
   - `cockpit/status` mit `{ loaded: [{ skill, at }], session, updatedAt }`. Schreibt derzeit Claude von Hand, nachdem ein Skill geladen wurde.
+  - `cockpit/pr` mit dem offenen PR des Branches, Felder siehe `apps/cockpit-web/README.md`. Schreibt Claude nach jedem Push, PR-Ereignis und Merge.
   - `cockpit/context` mit `{ sessionId, repo, used, max, threshold, costUsd, limits[], at }`. Schreibt die Mod automatisch nach jedem Schritt (Hook `turn.complete`, Einstellung `cockpitUrl`). Das Werkzeug `mcp__cockpit__sync_context` löst es sofort aus.
 
 ### So übernimmt eine neue Session
@@ -160,17 +171,21 @@ Die Handy-Seite zeigt:
    1. Den Skill mit dem Skill-Werkzeug starten, die Aufgabe als Argument.
    2. Im Kommentar-Thread kurz antworten und ihn auflösen.
    3. In `cockpit/status` den Eintrag `{ skill, at }` ergänzen, mit `if_version`.
-4. **Seite neu bauen:** wie in `apps/cockpit-web/README.md` beschrieben. Die Skill-Daten liefert `build_data.py` aus der jeweiligen Session.
+4. **Auftrag „Cockpit · Merge“:**
+   1. Den PR live prüfen (GitHub-Werkzeuge): offen, Head unverändert, CI grün auf dem aktuellen Commit, keine Konflikte. Die Seite ist nur der Wunsch, nicht der Beweis.
+   2. `cockpit/pr` auf `merge: { state: 'running', at }` setzen.
+   3. Ist der PR ein Entwurf, ihn freigeben. Dann per Squash mergen und den Branch löschen (`git push origin --delete <branch>`).
+   4. `cockpit/pr` mit `state: 'merged'`, `merge: { state: 'done', at, sha, branchDeleted }` schreiben. Geht etwas nicht: `merge: { state: 'failed', at, message }` mit einem kurzen Grund auf Deutsch.
+   5. Im Thread antworten und ihn auflösen.
+5. **Auftrag „Cockpit · PR prüfen“:** PR des aktuellen Branches lesen und `cockpit/pr` neu schreiben, danach im Thread antworten.
+6. **Seite neu bauen:** wie in `apps/cockpit-web/README.md` beschrieben. Die Skill-Daten liefert `build_data.py` aus der jeweiligen Session.
 
 ### Nächste Schritte, in dieser Reihenfolge
 
 1. **Skill-Status automatisch:** Die Mod schreibt geladene Skills (Hook `skill.prompt`) selbst in `cockpit/status`, so wie schon den Kontext. Dann wird der grüne Status ohne Handarbeit live.
-2. **Phase 3, Merge-Knopf auf der Handy-Seite:**
-   - eine Wallet-Karte „Merge“ mit dem offenen PR des Branches: Ziel-Branch groß, CI-Status, Konflikte
-   - Halten schickt `Cockpit · Merge` an Claude
-   - Claude prüft CI und Konflikte, merged per Squash und löscht den Branch
-   - das Ergebnis kommt in die Datenbank
-   - die Kartendaten (`cockpit/pr`) schreibt Claude nach jedem Push oder PR-Ereignis
+2. **Phase 3 fertigstellen:**
+   - `cockpit/pr` automatisch: Die Mod schreibt den PR nach jedem Push selbst, statt dass Claude es von Hand tut.
+   - Merge-Knopf auch in der Mod (Desktop-Panel, zwei Stufen wie oben).
 3. **Phase 4, Memory und Setup-Check:**
    - Memory-Dateien je Repo in Else-Live- (z. B. `memory/<repo>.md`) mit Setup-Checkliste und Connector-Bedarf
    - auf der Seite als Wallet-Karte „Setup“ mit grünen und roten Punkten
@@ -184,6 +199,8 @@ Die Handy-Seite zeigt:
    - Der Mod-Name ist offen.
 
 ### Stolpersteine, schon gelöst
+
+- **Gestapelte Wallet-Karten:** Im Browser-Test verdeckt die nächste Karte die vorige. Zum Öffnen den sichtbaren oberen Rand anklicken (`position: { x: 100, y: 22 }`).
 
 - **Zustand der Mod:** Der Validator verlangt, dass jedes `atom(...)` in der Datei angelegt ist, die es liest oder schreibt. Deshalb liegt der Zustand nur in `hooks/skills.ts`, alle Zugriffe laufen über dessen Funktionen.
 - **Slash-Befehl:** Befehlsname und Matcher als Literal schreiben (`'cockpit'`). Sonst zählt der Hook als prüfender Hook.

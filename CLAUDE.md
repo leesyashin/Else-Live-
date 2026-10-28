@@ -6,5 +6,6 @@ In diesem Repo entsteht „Cockpit“: eine Mod für Claude Code und eine Handy-
 
 - **Wo was liegt:** Mod in `mods/cockpit`, Quelltext der Handy-Seite in `apps/cockpit-web`. Live-Seite: https://claude.ai/artifact/3mAJQLuy66EZ9EoNiqAgT8
 - **Aufträge vom Handy:** Kommentare mit „Cockpit · Skill laden“ oder „Cockpit · Skill installieren“ schickt der Nutzer über die Seite. Bearbeiten wie in `PLAN.md` beschrieben: Skill starten, im Thread antworten, `cockpit/status` aktualisieren.
+- **Merge vom Handy:** Kommentare „Cockpit · Merge“ und „Cockpit · PR prüfen“ bearbeiten wie in `PLAN.md` beschrieben. Nach jedem Push oder PR-Ereignis `cockpit/pr` aktualisieren.
 - **Merges:** per Squash auf `main`, nur bei grünem CI und ohne Konflikte.
 - **Vor jedem Push der Mod:** `claude plugin validate mods/cockpit` und `claude plugin test mods/cockpit`.
