@@ -143,7 +143,7 @@ Ursprünglicher Plan:
 - **Nur bei Änderungen:** Die Mod schreibt nur, wenn sich etwas geändert hat. Bei derselben PR-Nummer ergänzt sie das Dokument nur (`update`), damit Claudes `merge`-Feld aus dem Merge-Ablauf erhalten bleibt. Eine neue Nummer ersetzt das Dokument.
 - **Werkzeug `sync_pr`:** löst den PR-Abgleich sofort aus, etwa für „Cockpit · PR prüfen“.
 - **Session des PR:** Die Mod schreibt ihre Session-ID (`session`) und in der Cloud den Link (`sessionUrl`) mit in `cockpit/pr`. Der Merge-Knopf nennt diese Session im Auftrag, nur sie merged. Antwortet sie nach 90 s nicht, zeigt die Karte einen Hinweis mit „Session öffnen ↗“.
-- **Gemergt, einmal gezeigt, dann archiviert:** Nach dem Merge zeigt die Karte „Gemergt“ und leuchtet einmal auf. Öffnest du sie, läuft die Merge-Animation (Branch fließt in `main`, Knoten mit Häkchen, Druckwelle, Konfetti). Die Seite setzt dabei `archivedAt` in `cockpit/pr`. Beim Schließen hebt sich die Karte aus dem Stapel, die übrigen rücken nach. Ein neuer PR bringt die Karte zurück.
+- **Gemergt, einmal gezeigt, dann archiviert:** Nach dem Merge zeigt die Karte „Gemergt“ und leuchtet einmal auf. Öffnest du sie, läuft die Merge-Animation (Branch fließt in `main`, Knoten mit Häkchen, Druckwelle, Konfetti). Die Seite setzt dabei `archivedAt` in `cockpit/pr`. Beim Schließen dreht sich die Karte auf ihre leere Seite („Kein offener PR · Zuletzt #n gemergt“). Sie bleibt im Stapel, der nächste PR erscheint darauf.
 
 ## Empfohlene Design-Skills (Recherche 28.10.2026)
 

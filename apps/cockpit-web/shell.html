@@ -319,6 +319,11 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .glyph.pop { animation: tilePop 0.62s 0.2s var(--bounce) both; }
 @keyframes cardFlash { 0% { box-shadow: 0 0 0 0 rgba(163, 92, 247, 0); } 30% { box-shadow: 0 0 0 5px rgba(163, 92, 247, 0.5), 0 18px 40px -12px rgba(163, 92, 247, 0.7); } 100% { box-shadow: 0 0 0 0 rgba(163, 92, 247, 0); } }
 @keyframes sheen { to { transform: translateX(120%); } }
+/* Archived: the merge card flips to its empty side */
+.wcard.swap { animation: cardSwap 0.62s var(--spring); }
+@keyframes cardSwap { 0% { scale: 1; filter: none; } 40% { scale: 0.94; filter: brightness(0.75) saturate(0.6); } 100% { scale: 1; filter: none; } }
+.wcard.swap > :not(.pattern) { animation: swapText 0.62s var(--spring); }
+@keyframes swapText { 0% { opacity: 1; transform: none; } 40% { opacity: 0; transform: translateY(-8px); } 41% { opacity: 0; transform: translateY(10px); } 100% { opacity: 1; transform: none; } }
 
 /* Setup: what this repo needs, green and red dots */
 .dots { display: inline-flex; gap: 5px; align-items: center; }
@@ -761,7 +766,8 @@ summary small { color: var(--fg3); font-size: 13px; }
   // A merged PR shows once; after it was opened it is archived and leaves the stack.
   const prKey = d => `${d.repo}#${d.number}`
   const archived = d => d.state === 'merged' && (d.archivedAt > 0 || store.get('cockpit.prArchived', '') === prKey(d))
-  const showMerge = () => !pr.data || !archived(pr.data) || pr.lingering
+  // The PR the merge card shows: an archived merge leaves the card empty for the next PR.
+  const shownPr = () => (pr.data && archived(pr.data) && !pr.lingering ? null : pr.data)
   async function markSeen() {
     const d = pr.data
     if (!d || d.state !== 'merged' || pr.lingering || archived(d)) return
@@ -927,8 +933,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     ...CATS.map(c => ({ id: c.id, kind: 'cat', title: c.id })),
     { id: 'rec', kind: 'rec', title: 'Empfohlen' },
   ]
-  const topCards = () => TOP_CARDS.filter(c => c.id !== 'merge' || showMerge())
-  let cards = topCards()
+  let cards = TOP_CARDS
 
   function cardHtml(card) {
     const live = loadedSet()
@@ -940,10 +945,11 @@ summary small { color: var(--fg3); font-size: 13px; }
           <span class="glyph ring40">${miniRing(40, 16, 4, ctxShare(), ctxLook(ctxShare()))}<em>${ctxShare() == null ? '–' : Math.round(ctxShare() * 100)}</em></span></div>`
     }
     if (card.kind === 'merge') {
-      const d = pr.data
+      const d = shownPr()
       if (!d) {
-        return `${pattern('branches')}<div class="wtop"><div><small>Merge</small><b>Kein PR</b></div></div>
-          <div class="wbottom"><div><small>Wartet</small><p>Claude trägt den PR dieses Branches nach dem nächsten Push ein.</p></div>
+        const last = pr.data && archived(pr.data) ? pr.data : null
+        return `${pattern('branches')}<div class="wtop"><div><small>Merge</small><b>${last ? 'Kein offener PR' : 'Kein PR'}</b></div></div>
+          <div class="wbottom"><div><small>${last ? `Zuletzt #${last.number} gemergt` : 'Wartet'}</small><p>Claude trägt den PR dieses Branches nach dem nächsten Push ein.</p></div>
             <span class="glyph">${svg(MERGE_ICON)}</span></div>`
       }
       const st = mergeStatus(d)
@@ -1052,7 +1058,7 @@ summary small { color: var(--fg3); font-size: 13px; }
   }
 
   function mergeDetail() {
-    const d = pr.data
+    const d = shownPr()
     const actions = d => `<div class="links-row">
         <button class="text-btn" data-pr-refresh>Neu prüfen lassen</button>
         ${d?.url ? `<a class="text-btn" href="${esc(d.url)}" target="_blank" rel="noopener">Auf GitHub ↗</a>` : ''}
@@ -1294,30 +1300,16 @@ summary small { color: var(--fg3); font-size: 13px; }
     if (state.open) scrollToWallet()
   }
 
-  // The seen merge card lifts away and the cards below close the gap.
+  // The seen merge leaves: the card turns over to its empty side, ready for the next PR.
   function archiveMerge() {
     // Only from the closed main stack; otherwise the next close tries again.
     if (!pr.lingering || state.open || cards === SKILL_CARDS) return
     pr.lingering = false
     const el = cardEl({ id: 'merge' })
-    const was = new Map(cards.map((c, i) => [c.id, stackY(i)]))
-    const settle = () => {
-      cards = topCards()
-      buildWallet()
-      cards.forEach(c => { if (was.has(c.id)) place(cardEl(c), was.get(c.id), { instant: true }) })
-      reflow($('wallet'))
-      cards.forEach((c, i) => place(cardEl(c), stackY(i), { delay: 40 + i * 30 }))
-    }
-    if (!el) return settle()
-    el.style.zIndex = 50
-    place(el, (was.get('merge') || 0) - 34, { opacity: 0, scale: 0.88 })
-    setTimeout(settle, 340)
-  }
-  // Rebuilds the main stack when the merge card comes or goes from outside (a new PR, another device).
-  function syncTopCards() {
-    if (cards === SKILL_CARDS || state.open === 'merge') return
-    const next = topCards()
-    if (next.length !== cards.length) { cards = next; buildWallet() }
+    if (!el) return
+    el.classList.remove('swap'); void el.offsetWidth; el.classList.add('swap')
+    setTimeout(() => refreshCards(), 260)
+    setTimeout(() => el.classList.remove('swap'), 700)
   }
 
   // Switches between the main stack and the skills stack; the Skills card is the bridge.
@@ -1335,7 +1327,7 @@ summary small { color: var(--fg3); font-size: 13px; }
       if (el === keepEl) return
       place(el, stackY(i) + (toSkills ? 90 : 60), { opacity: 0, scale: 0.97, delay: toSkills ? i * 18 : (cards.length - i) * 14 })
     })
-    const nextCards = toSkills ? SKILL_CARDS : topCards()
+    const nextCards = toSkills ? SKILL_CARDS : TOP_CARDS
     const keepY = toSkills ? 0 : (nextCards.length - 1) * PEEK
     place(keepEl, keepY)
     setTimeout(() => {
@@ -2035,7 +2027,6 @@ summary small { color: var(--fg3); font-size: 13px; }
         }
       }
       if (before && d && before.number !== d.number) pr.lingering = false
-      syncTopCards()
       render()
     }, () => { pr.error = 'no_data'; render() })
     db.doc('cockpit/team').onSnapshot(snap => {
