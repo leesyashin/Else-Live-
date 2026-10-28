@@ -124,7 +124,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   position: absolute; left: 0; right: 0; top: 0; height: var(--card-h); border-radius: 18px; overflow: hidden; color: #fff;
   background: radial-gradient(130% 100% at 100% 0%, var(--g, transparent) 0%, transparent 58%), radial-gradient(90% 80% at 0% 100%, rgba(0, 0, 0, 0.16), transparent 62%), linear-gradient(155deg, var(--c1) 0%, var(--c2) 100%);
   box-shadow: var(--shadow), inset 0 0.5px 0 rgba(255, 255, 255, 0.35), inset 0 0 0 0.5px rgba(255, 255, 255, 0.12);
-  transition: transform 0.62s var(--spring), box-shadow 0.4s; will-change: transform;
+  transition: transform 0.62s var(--spring), box-shadow 0.4s, opacity 0.3s; will-change: transform;
   display: flex; flex-direction: column; justify-content: space-between; padding: 15px 20px 18px; width: 100%;
 }
 .wcard::before { content: ""; position: absolute; inset: 0; background: linear-gradient(118deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 34%, rgba(255, 255, 255, 0) 52%); pointer-events: none; }
@@ -406,6 +406,7 @@ summary small { color: var(--fg3); font-size: 13px; }
 .island .ii { position: relative; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex: none; color: #fff; font: 700 12px/1 var(--rounded); background: var(--loaded); }
 .island .ii svg { width: 18px; height: 18px; }
 .island .ispin { margin-left: 4px; }
+.island .ispin[hidden] { display: none; }
 .island b { font-weight: 600; font-size: 15px; display: block; }
 .island span { font-size: 13px; opacity: 0.75; display: block; }
 
@@ -885,6 +886,9 @@ summary small { color: var(--fg3); font-size: 13px; }
         const el = wallet.querySelector(`[data-card="${card.id}"]`)
         el.style.transform = `translate3d(0, ${i * PEEK}px, 0)`
         el.style.zIndex = i + 1
+        el.style.opacity = ''
+        el.style.pointerEvents = ''
+        el.removeAttribute('aria-hidden')
         el.setAttribute('aria-expanded', 'false')
       })
       detail.classList.remove('show')
@@ -895,22 +899,28 @@ summary small { color: var(--fg3); font-size: 13px; }
       detail.style.top = `${top}px`
       detail.classList.add('show')
       const detailH = detail.offsetHeight
-      const stackTop = top + detailH + 28
+      // The other cards tuck in behind the open one; "Fertig" brings them back.
       let rank = 0
       cards.forEach((card, i) => {
         const el = wallet.querySelector(`[data-card="${card.id}"]`)
         if (i === openIndex) {
           el.style.transform = 'translate3d(0, 0, 0)'
           el.style.zIndex = 40
+          el.style.opacity = ''
+          el.style.pointerEvents = ''
+          el.removeAttribute('aria-hidden')
           el.setAttribute('aria-expanded', 'true')
         } else {
-          el.style.transform = `translate3d(0, ${stackTop + rank * 12}px, 0) scale(${0.96 + rank * 0.006})`
+          el.style.transform = 'translate3d(0, 0, 0) scale(0.96)'
           el.style.zIndex = rank + 1
+          el.style.opacity = '0'
+          el.style.pointerEvents = 'none'
+          el.setAttribute('aria-hidden', 'true')
           el.setAttribute('aria-expanded', 'false')
           rank += 1
         }
       })
-      wallet.style.height = `${stackTop + (rank - 1) * 12 + PEEK + 8}px`
+      wallet.style.height = `${top + detailH + 8}px`
       $('done').hidden = false
     }
     if (!animate) requestAnimationFrame(() => wallet.querySelectorAll('.wcard').forEach(el => { el.style.transition = '' }))
