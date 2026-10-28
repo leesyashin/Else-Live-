@@ -111,9 +111,10 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .label { margin: 0 4px; font: 600 13px/1.2 var(--font); letter-spacing: 0.03em; color: var(--fg2); text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .block { display: flex; flex-direction: column; gap: 10px; }
 .suggest { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.app { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; transition: transform 0.3s var(--bounce); }
-.app:active { transform: scale(0.92); }
-.app span:last-child { max-width: 100%; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
+.app { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; transition: transform 0.24s var(--ease-out); }
+/* Press answers on the first frame; letting go eases back a touch slower. */
+.app.holding { transform: scale(0.94); transition: transform 0.12s var(--ease-out); }
+.app > span:last-child { max-width: 100%; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
 .icon { position: relative; width: 60px; height: 60px; border-radius: 15px; display: grid; place-items: center; color: #fff; background: linear-gradient(160deg, var(--c1), var(--c2)); box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.35), 0 2px 6px -2px rgba(0, 0, 0, 0.3); }
 .icon svg { width: 28px; height: 28px; }
 .icon .live { position: absolute; top: -4px; right: -4px; width: 16px; height: 16px; border-radius: 50%; background: var(--loaded); border: 2.5px solid var(--bg); }
@@ -171,47 +172,53 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .glist { background: var(--surface); border-radius: 16px; overflow: hidden; }
 .srow {
   position: relative; width: 100%; min-height: 68px; display: flex; align-items: center; gap: 14px; padding: 10px 14px 10px 12px;
-  transition: background-color 0.25s, transform 0.45s var(--spring);
+  transition: background-color 0.24s ease, transform 0.24s var(--ease-out);
   animation: rowIn 0.55s var(--spring) both; animation-delay: calc(var(--i, 0) * 32ms + 100ms);
 }
 @keyframes rowIn { from { opacity: 0; transform: translateY(14px); } }
 .srow + .srow::before { content: ""; position: absolute; top: 0; left: 72px; right: 0; border-top: 0.5px solid var(--sep); }
-.srow:active { background: var(--surface-2); }
-.srow.holding { background: color-mix(in srgb, var(--c1) 14%, var(--surface)); transform: scale(0.985); transition: background-color var(--hold-draw) linear var(--hold-delay), transform 0.3s var(--spring); }
-.srow.fired { background: color-mix(in srgb, var(--loaded) 13%, var(--surface)); transition: background-color 1.4s 0.6s; }
+.srow.holding { background: var(--surface-2); transform: scale(0.985); transition: background-color 0s, transform 0.12s var(--ease-out); }
+.srow.fired { background: color-mix(in srgb, var(--loaded) 13%, var(--surface)); transition: background-color 0s, transform 0.24s var(--ease-out); }
 .sicon { position: relative; flex: none; width: 46px; height: 46px; }
 .sicon.big { width: 60px; height: 60px; }
 .tile {
   position: absolute; inset: 0; border-radius: 13px; display: grid; place-items: center; color: #fff; font: 700 15px/1 var(--rounded); letter-spacing: 0.03em;
   background: radial-gradient(120% 100% at 100% 0%, var(--g, transparent), transparent 62%), linear-gradient(155deg, var(--c1), var(--c2));
   box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.35), 0 2px 6px -3px rgba(0, 0, 0, 0.35);
-  transition: transform 0.55s var(--bounce);
+  transition: transform 0.2s var(--ease-out);
 }
+/* The loaded green sits on its own layer, so it can fade back instead of snapping. */
+.tile::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(155deg, #4cd964, #1f9d45); opacity: 0; transition: opacity 0.3s ease; }
 .sicon.big .tile { border-radius: 15px; }
 .tile svg { width: 26px; height: 26px; }
 .tile.hollow { background: transparent; color: var(--c1); box-shadow: inset 0 0 0 1.5px var(--c1); }
-.tile .mono { display: grid; place-items: center; transition: opacity 0.2s, transform 0.35s var(--spring); }
-.tile .ok { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; }
+.tile .mono { position: relative; display: grid; place-items: center; transition: opacity 0.2s ease, transform 0.3s var(--ease-out); }
+.tile .ok { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; transition: opacity 0.3s ease; }
 .tile .ok svg { width: 24px; height: 24px; }
-.tile .ok path { stroke-dasharray: 24; stroke-dashoffset: 24; }
+.tile .ok path { stroke-dasharray: 24; stroke-dashoffset: 24; transition: stroke-dashoffset 0s 0.3s; }
 .sicon .live { position: absolute; top: -3px; right: -3px; width: 14px; height: 14px; border-radius: 50%; background: var(--loaded); border: 2.5px solid var(--surface); z-index: 2; }
 .sicon.big .live { width: 16px; height: 16px; border-color: var(--bg); }
-.ripple { position: absolute; inset: 0; border-radius: 16px; background: var(--loaded); opacity: 0; pointer-events: none; }
+.ripple { position: absolute; inset: 0; border-radius: 50%; background: var(--loaded); opacity: 0; pointer-events: none; }
 .hring { position: absolute; left: 50%; top: 50%; width: var(--rs); height: var(--rs); margin: calc(var(--rs) / -2) 0 0 calc(var(--rs) / -2); overflow: visible; pointer-events: none; z-index: 1; }
-.hring rect { fill: none; stroke: var(--c1); stroke-width: 3; stroke-linecap: round; stroke-dasharray: var(--per) var(--per); stroke-dashoffset: var(--per); opacity: 0; transition: stroke-dashoffset 0.25s var(--spring), opacity 0.2s; }
-.holding .hring rect { opacity: 1; stroke-dashoffset: 0; transition: stroke-dashoffset var(--hold-draw) cubic-bezier(0.45, 0, 0.55, 1) var(--hold-delay), opacity 0.12s var(--hold-delay); }
-.holding .tile { transform: scale(0.86); transition: transform var(--hold-draw) var(--spring) var(--hold-delay); }
-.holding .trail { opacity: 0.3; transition: opacity 0.2s var(--hold-delay); }
-.fired .hring rect { opacity: 1; stroke-dashoffset: 0; stroke: var(--loaded); transition: stroke 0.15s; }
-.fired .hring { animation: ringOut 0.7s 0.3s var(--spring) forwards; }
-.fired .tile { background: linear-gradient(155deg, #4cd964, #1f9d45); animation: tilePop 0.62s var(--bounce); }
-.fired .tile .mono { opacity: 0; transform: scale(0.4); }
-.fired .tile .ok { opacity: 1; }
-.fired .tile .ok path { stroke-dashoffset: 0; transition: stroke-dashoffset 0.35s 0.08s var(--spring); }
-.fired .ripple { animation: ripple 0.9s var(--spring); }
-@keyframes ringOut { to { opacity: 0; transform: scale(1.35); } }
+/* Asymmetric: the ring fills evenly while you decide (linear), and runs back fast when you let go. */
+.hring rect { fill: none; stroke: var(--c1); stroke-width: 3; stroke-linecap: round; stroke-dasharray: var(--per) var(--per); stroke-dashoffset: var(--per); opacity: 0; transition: stroke-dashoffset 0.2s var(--ease-out), opacity 0.16s ease; }
+.holding .hring rect { opacity: 1; stroke-dashoffset: 0; transition: stroke-dashoffset var(--hold-draw) linear var(--hold-delay), opacity 0.1s ease var(--hold-delay); }
+.holding .tile { transform: scale(0.88); transition: transform var(--hold-draw) cubic-bezier(0.37, 0, 0.63, 1) var(--hold-delay); }
+.holding .trail { opacity: 0.3; transition: opacity 0.2s ease var(--hold-delay); }
+/* Firing: check, ripple and pop all start on the same frame. */
+.fired .hring rect { opacity: 1; stroke-dashoffset: 0; stroke: var(--loaded); transition: none; animation: ringFade 0.45s 0.25s ease forwards; }
+.fired .hring { animation: ringOut 0.45s 0.25s var(--ease-out) forwards; }
+.fired .tile { animation: tileFire 0.5s var(--bounce); }
+.fired .tile::before { opacity: 1; transition: none; }
+.fired .tile .mono { opacity: 0; transform: scale(0.5); transition: opacity 0.1s ease, transform 0.2s var(--ease-out); }
+.fired .tile .ok { opacity: 1; transition: none; }
+.fired .tile .ok path { stroke-dashoffset: 0; transition: stroke-dashoffset 0.32s var(--ease-out); }
+.fired .ripple { animation: ripple 0.7s var(--ease-out); }
+@keyframes ringOut { to { transform: scale(1.3); } }
+@keyframes ringFade { to { opacity: 0; } }
 @keyframes tilePop { 0% { transform: scale(0.86); } 50% { transform: scale(1.14); } 100% { transform: scale(1); } }
-@keyframes ripple { 0% { opacity: 0.4; transform: scale(0.9); } 100% { opacity: 0; transform: scale(2.8); } }
+@keyframes tileFire { 0% { transform: scale(0.88); } 45% { transform: scale(1.08); } 100% { transform: scale(1); } }
+@keyframes ripple { 0% { opacity: 0.4; transform: scale(0.9); } 100% { opacity: 0; transform: scale(2.2); } }
 .stext { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .stext b { font-weight: 600; font-size: 16.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stext span { font-size: 14px; color: var(--fg2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -226,7 +233,6 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.6px), #000 calc(100% - 2.2px)); mask: radial-gradient(farthest-side, transparent calc(100% - 2.6px), #000 calc(100% - 2.2px));
   animation: rot 0.8s linear infinite; }
 @keyframes rot { to { transform: rotate(1turn); } }
-.app.holding .tile { transform: scale(0.84); }
 .dhead { display: flex; align-items: center; justify-content: center; margin-top: 2px; }
 .tip { display: inline-flex; align-items: center; gap: 9px; font-size: 13px; color: var(--fg2); background: var(--surface); padding: 7px 13px 7px 11px; border-radius: 999px; }
 .tip .press { position: relative; width: 10px; height: 10px; border-radius: 50%; background: var(--fg2); }
@@ -280,10 +286,12 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .mbtn span { position: relative; display: flex; flex-direction: column; align-items: flex-start; text-align: left; }
 .mbtn b { font-weight: 600; font-size: 17px; }
 .mbtn small { font-size: 13px; opacity: 0.82; }
-.mbtn .fill { position: absolute; inset: 0; background: rgba(255, 255, 255, 0.22); transform: scaleX(0); transform-origin: left; pointer-events: none; }
-.mbtn.holding { transform: scale(0.97); }
+.mbtn .fill { position: absolute; inset: 0; background: rgba(255, 255, 255, 0.22); transform: scaleX(0); transform-origin: left; pointer-events: none; transition: transform 0.22s var(--ease-out), opacity 0s 0.22s; }
+.mbtn.holding { transform: scale(0.97); transition: transform 0.12s var(--ease-out); }
 .mbtn.holding .fill { transform: scaleX(1); transition: transform var(--hold-merge) linear; }
-.mbtn.fired { animation: tilePop 0.62s var(--bounce); }
+.mbtn.fired .fill { transform: scaleX(1); opacity: 0; transition: opacity 0.4s ease; }
+.mbtn.fired { animation: btnFire 0.45s var(--bounce); }
+@keyframes btnFire { 0% { transform: scale(0.97); } 45% { transform: scale(1.025); } 100% { transform: scale(1); } }
 .mbtn[disabled] { background: var(--fill); color: var(--fg3); box-shadow: none; cursor: default; }
 .mbtn.busy { background: var(--fill); color: var(--fg); box-shadow: none; }
 .merged { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 4px 0 2px; text-align: center; }
@@ -488,21 +496,29 @@ summary small { color: var(--fg3); font-size: 13px; }
 .doc blockquote { margin: 8px 0; padding-left: 12px; border-left: 3px solid var(--sep); color: var(--fg2); }
 .doc a { color: var(--accent); }
 
-/* Dynamic Island */
+/* Dynamic Island: a black pill whose size springs to fit its content (set from JS);
+   the content sits centred inside and is revealed by the growing shape. */
 .island {
   position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 50%; z-index: 50;
-  transform: translateX(-50%) scale(0.55); opacity: 0; pointer-events: none;
-  background: #000; color: #fff; border-radius: 999px; padding: 10px 18px 10px 12px;
-  display: flex; align-items: center; gap: 10px; max-width: calc(100% - 32px); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
-  transition: transform 0.45s var(--bounce), opacity 0.25s;
+  width: 96px; height: 32px; transform: translateX(-50%); opacity: 0; pointer-events: none; overflow: hidden;
+  background: #000; color: #fff; border-radius: 999px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+  transition: opacity 0.2s var(--ease-out);
 }
-.island.show { transform: translateX(-50%) scale(1); opacity: 1; }
-.island .ii { position: relative; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex: none; color: #fff; font: 700 12px/1 var(--rounded); background: var(--loaded); }
-.island .ii svg { width: 18px; height: 18px; }
-.island .ispin { margin-left: 4px; }
-.island .ispin[hidden] { display: none; }
-.island b { font-weight: 600; font-size: 15px; display: block; }
-.island span { font-size: 13px; opacity: 0.75; display: block; }
+.island.show { opacity: 1; }
+.iface {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: max-content; max-width: min(408px, calc(100vw - 32px));
+  display: flex; align-items: center; gap: 10px; padding: 10px 18px 10px 12px;
+  transition: opacity 0.22s ease 0.06s, filter 0.22s ease 0.06s, transform 0.3s var(--ease-out) 0.06s;
+}
+/* Old and new content blur into each other, so it reads as one morph rather than a swap. */
+.iface.in { opacity: 0; filter: blur(4px); transform: translate(-50%, -50%) scale(0.94); }
+.iface.out { opacity: 0; filter: blur(4px); transform: translate(-50%, -50%) scale(0.97); transition-duration: 0.14s; transition-delay: 0s; }
+.iface .ii { position: relative; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex: none; color: #fff; font: 700 12px/1 var(--rounded); background: var(--loaded); }
+.iface .ii svg { width: 18px; height: 18px; }
+.iface .ispin { margin-left: 4px; flex: none; }
+.iface b { font-weight: 600; font-size: 15px; display: block; }
+.iface .itext span { font-size: 13px; opacity: 0.75; display: block; }
+.haptic { position: fixed; left: -100px; top: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
@@ -511,6 +527,20 @@ summary small { color: var(--fg3); font-size: 13px; }
   .sheet.open { opacity: 1; }
   /* The pressed card dims instead of shrinking. */
   .wcard.pressed { filter: brightness(0.9); }
+  /* Holding: no shrinking or drawing; the ring and the check only fade in. */
+  .app.holding, .srow.holding, .mbtn.holding, .holding .tile, .fired .tile, .mbtn.fired, .fired .hring { transform: none !important; animation: none !important; }
+  .hring rect { stroke-dashoffset: 0 !important; transition: opacity 0.16s ease !important; }
+  .holding .hring rect { transition: opacity var(--hold-draw) linear var(--hold-delay) !important; }
+  .fired .hring rect { animation: ringFade 0.3s 0.3s ease forwards !important; }
+  .fired .ripple { animation: none !important; }
+  .tile::before, .tile .ok, .tile .mono { transition: opacity 0.2s ease !important; }
+  .tile .ok path { stroke-dashoffset: 0 !important; }
+  .mbtn .fill { transform: scaleX(1) !important; opacity: 0; transition: opacity 0.16s ease !important; }
+  .mbtn.holding .fill { opacity: 1; transition: opacity var(--hold-merge) linear !important; }
+  .mbtn.fired .fill { opacity: 0; transition: opacity 0.3s ease !important; }
+  /* The island keeps its size changes instant and only cross-fades. */
+  .island, .iface { transition: opacity 0.2s ease !important; }
+  .iface, .iface.in, .iface.out { filter: none !important; transform: translate(-50%, -50%) !important; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .search { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
@@ -577,7 +607,8 @@ summary small { color: var(--fg3); font-size: 13px; }
   </div>
   <div class="c-foot"><span>Claude startet den Skill damit.</span><span id="c-count">0/3000</span></div>
 </section>
-<div class="island" id="island" role="status" aria-live="polite"><span class="ii"></span><div><b></b><span></span></div><span class="spin ispin" hidden></span></div>
+<div class="island" id="island" role="status" aria-live="polite"></div>
+<label class="haptic" id="haptic" aria-hidden="true"><input type="checkbox" switch tabindex="-1"></label>
 
 <script type="application/json" id="index">__INDEX__</script>
 <script>
@@ -2000,19 +2031,64 @@ summary small { color: var(--fg3); font-size: 13px; }
   })()
 
   // --- Dynamic Island --------------------------------------------------------------
-  let islandTimer = 0
+  // Grows out of a small pill into the size its content needs, morphs when new content
+  // arrives (the springs carry on from where they are), and shrinks back before it fades.
   const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'
-  function island(title, detail, mood = 'ok', look = null) {
-    const el = $('island'), ii = el.querySelector('.ii')
+  const PILL = { w: 96, h: 32 }
+  const isl = { w: PILL.w, h: PILL.h, sw: null, sh: null, face: null, shown: false, timer: 0, fade: 0 }
+  function islandFace(title, detail, mood, look) {
+    const face = document.createElement('div')
+    face.className = 'iface in'
+    face.innerHTML = '<span class="ii"></span><div class="itext"><b></b><span></span></div>'
+    const ii = face.querySelector('.ii')
     if (mood === 'busy' && look) { ii.style.cssText = `${colors(look)};background:linear-gradient(155deg,var(--c1),var(--c2))`; ii.textContent = look.mono }
     else if (mood === 'warn') { ii.style.cssText = 'background:var(--warn)'; ii.textContent = '!' }
     else { ii.style.cssText = 'background:var(--loaded)'; ii.innerHTML = CHECK }
-    el.querySelector('.ispin').hidden = mood !== 'busy'
-    el.querySelector('b').textContent = title
-    el.querySelector(':scope > div > span').textContent = detail || ''
-    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show')
-    clearTimeout(islandTimer)
-    islandTimer = setTimeout(() => el.classList.remove('show'), mood === 'busy' ? 9000 : 3200)
+    face.querySelector('b').textContent = title
+    face.querySelector('.itext span').textContent = detail || ''
+    if (mood === 'busy') face.insertAdjacentHTML('beforeend', '<span class="spin ispin"></span>')
+    return face
+  }
+  function islandSize(w, h, grow) {
+    const el = $('island')
+    const now = { w: isl.sw ? isl.sw.stop() : { x: isl.w, v: 0 }, h: isl.sh ? isl.sh.stop() : { x: isl.h, v: 0 } }
+    isl.sw = isl.sh = null
+    if (REDUCED.matches) {
+      isl.w = w; isl.h = h; el.style.width = `${w}px`; el.style.height = `${h}px`; return
+    }
+    // Growing gets a little life (bounce ~0.15); shrinking settles without overshoot.
+    const feel = grow ? { damping: 0.82, response: 0.42 } : { damping: 1, response: 0.3 }
+    isl.sw = spring({ from: now.w.x, velocity: now.w.v, to: w, ...feel, onUpdate: x => { isl.w = x; el.style.width = `${x}px` }, onDone: () => { isl.sw = null } })
+    isl.sh = spring({ from: now.h.x, velocity: now.h.v, to: h, ...feel, onUpdate: x => { isl.h = x; el.style.height = `${x}px` }, onDone: () => { isl.sh = null } })
+  }
+  function island(title, detail, mood = 'ok', look = null) {
+    const el = $('island')
+    const face = islandFace(title, detail, mood, look)
+    el.append(face)
+    const w = face.offsetWidth, h = face.offsetHeight
+    if (isl.face) { const old = isl.face; old.classList.add('out'); old.setAttribute('aria-hidden', 'true'); setTimeout(() => old.remove(), 200) }
+    isl.face = face
+    clearTimeout(isl.fade)
+    if (!isl.shown) { isl.shown = true; el.classList.add('show') }
+    face.classList.remove('in')
+    islandSize(w, h, true)
+    clearTimeout(isl.timer)
+    isl.timer = setTimeout(hideIsland, mood === 'busy' ? 9000 : 3200)
+  }
+  function hideIsland() {
+    const el = $('island'), face = isl.face
+    if (!face) return
+    isl.face = null
+    face.classList.add('out'); face.setAttribute('aria-hidden', 'true')
+    setTimeout(() => face.remove(), 200)
+    if (REDUCED.matches) {
+      el.classList.remove('show'); isl.shown = false
+      isl.fade = setTimeout(() => islandSize(PILL.w, PILL.h, false), 220)
+      return
+    }
+    // The fade overlaps the end of the shrink, so it never pops out at full size.
+    isl.fade = setTimeout(() => { el.classList.remove('show'); isl.shown = false }, 160)
+    islandSize(PILL.w, PILL.h, false)
   }
 
   // --- Talking to Claude -----------------------------------------------------------
@@ -2143,22 +2219,32 @@ summary small { color: var(--fg3); font-size: 13px; }
     hold.el.classList.remove('holding')
     hold = null
   }
+  // Android vibrates; iOS Safari gives a tick when a switch checkbox is toggled.
+  $('haptic').addEventListener('click', e => e.stopPropagation())
+  function haptic(pattern) {
+    if (navigator.vibrate) navigator.vibrate(pattern)
+    else $('haptic').click()
+  }
   document.addEventListener('pointerdown', e => {
     swallowClick = false
+    // A second finger ends the hold instead of starting another one.
+    if (!e.isPrimary) { cancelHold(); return }
     const el = e.target.closest('[data-hold]')
     if (!el || (e.pointerType === 'mouse' && e.button !== 0)) return
     cancelHold()
-    hold = { el, x: e.clientX, y: e.clientY, timer: 0 }
+    el.classList.remove('fired')
+    hold = { el, x: e.clientX, y: e.clientY, id: e.pointerId, timer: 0 }
     el.classList.add('holding')
     hold.timer = setTimeout(async () => {
       const target = hold && hold.el
       if (!target) return
       hold = null
-      swallowClick = true
+      // One frame: the hold state goes, the check, ripple and haptic arrive together.
       target.classList.remove('holding')
       target.classList.add('fired')
+      haptic([8, 40, 14])
+      swallowClick = true
       setTimeout(() => target.classList.remove('fired'), 1500)
-      navigator.vibrate?.([8, 40, 14])
       const key = target.dataset.hold
       if (key.startsWith('merge:')) await requestMerge(target)
       else if (key.startsWith('rec:')) await installRec(key.slice(4), target)
@@ -2167,10 +2253,14 @@ summary small { color: var(--fg3); font-size: 13px; }
     }, el.dataset.hold.startsWith('merge:') ? MERGE_HOLD_MS : HOLD_MS)
   })
   document.addEventListener('pointermove', e => {
-    if (hold && Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 10) cancelHold()
+    if (!hold || e.pointerId !== hold.id || Math.hypot(e.clientX - hold.x, e.clientY - hold.y) <= 10) return
+    // The finger is moving, not pressing: drop the hold and the tap that would follow.
+    cancelHold()
+    swallowClick = true
   }, { passive: true })
   document.addEventListener('pointerup', cancelHold)
   document.addEventListener('pointercancel', cancelHold)
+  document.addEventListener('keydown', () => { swallowClick = false })
   document.addEventListener('contextmenu', e => { if (e.target.closest('[data-hold]')) e.preventDefault() })
 
   // --- Events ----------------------------------------------------------------------
