@@ -43,9 +43,9 @@ Eine Mod für Claude Code, die Funktionen und Oberfläche erweitert: mehr Übers
 
 ## Phasen
 
-### Phase 1: Skill-Launcher
+### Phase 1: Skill-Launcher (umgesetzt in `mods/cockpit`)
 
-- Alle Skills mit Status: ● verfügbar, ◉ in dieser Session geladen, ○ fehlt.
+- Alle Skills mit Status: ● verfügbar, ◉ in dieser Session geladen, ○ fehlt. Zusätzlich ● grau für Skills, die nicht in Claudes Liste passen; der Kopf warnt, wenn das passiert.
 - Favoriten oben, der Rest nach Kategorie: Design, Code, Daten, Business, Persönlich.
 - Ein Klick öffnet die Infokarte: Beschreibung, Herkunft, Referenzen. Darunter „Starten“ mit Eingabefeld.
 - Jede Skill-Nutzung erzeugt einen Toast und einen Eintrag im Zeitstrahl.

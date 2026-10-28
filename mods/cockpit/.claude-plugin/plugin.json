@@ -1,0 +1,6 @@
+{
+  "name": "cockpit",
+  "version": "0.1.0",
+  "description": "Cockpit: Skill-Launcher mit Status, Infokarten, Referenzen und Zeitstrahl – Leiste über der Eingabe plus Seitenpanel.",
+  "types": "./types/index.d.ts"
+}

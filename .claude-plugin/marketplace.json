@@ -1,0 +1,16 @@
+{
+  "name": "else-live",
+  "owner": {
+    "name": "leesyashin"
+  },
+  "metadata": {
+    "description": "Mods für Claude Code aus Else-Live-: das Cockpit für Skills, Merge, Kontext und Teamwork."
+  },
+  "plugins": [
+    {
+      "name": "cockpit",
+      "source": "./mods/cockpit",
+      "description": "Skill-Launcher mit Status, Infokarten, Referenzen und Zeitstrahl."
+    }
+  ]
+}
