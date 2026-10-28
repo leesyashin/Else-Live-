@@ -79,7 +79,12 @@ const FILES: Record<string, string> = {
 }
 
 // Nothing sits beneath the plugin: each hook here stands for the engine.
-function world(on: On, store: Record<string, unknown> = {}, surfaces: readonly RenderSurface[] = ['desktop']) {
+function world(
+  on: On,
+  store: Record<string, unknown> = {},
+  surfaces: readonly RenderSurface[] = ['desktop'],
+  env: Record<string, string> = {},
+) {
   // The store in memory, so a test can read what the plugin kept.
   const saved: Record<string, unknown> = { ...store }
   on('store.get', (_, e) => ({ value: saved[e.key] }))
@@ -87,7 +92,7 @@ function world(on: On, store: Record<string, unknown> = {}, surfaces: readonly R
     saved[e.key] = e.value
     return { value: undefined }
   })
-  mock.env(on, { HOME })
+  mock.env(on, { HOME, ...env })
   const clock = mock.clock(on, { now: 1_000_000 })
   const toasts: string[] = []
   const ran: string[][] = []
@@ -350,11 +355,15 @@ test('the band shows how full the context window is, on every surface', async ($
 
 // --- Context sync to the phone's Cockpit page ------------------------------------
 
-function syncWorld(on: On, answer: (input: Record<string, unknown>) => Record<string, unknown>) {
-  const { clock } = world(on)
+function syncWorld(
+  on: On,
+  answer: (input: Record<string, unknown>) => Record<string, unknown>,
+  env: Record<string, string> = {},
+) {
+  const { clock } = world(on, {}, ['desktop'], env)
   const calls: Record<string, unknown>[] = []
   on('session.id', () => ({ value: 'session_test' }))
-  on('session.repo', () => ({ value: { root: '/', remote: null, internal: false, name: 'Else-Live-' } }))
+  on('session.repo', () => ({ value: { root: '/home/user/x', remote: 'https://github.com/leesyashin/Else-Live-', internal: false, name: null } }))
   // Typed loosely: the tool table's union is too large to infer here.
   const onTool = on as unknown as (event: string, matcher: object, hook: (_: unknown, e: Record<string, unknown>) => unknown) => void
   onTool('tool.call', { tool: 'ArtifactData' }, (_, input) => {
@@ -399,4 +408,18 @@ test('a refused write stops the sync instead of asking again', async ($, on) => 
   const answer = await run($)
   expect(String(answer.result)).toContain('Nicht erlaubt')
   expect(calls.length).toBe(1)
+})
+
+test('a session that compacts early reports its own threshold', async ($, on) => {
+  const { clock, calls } = syncWorld(on, input =>
+    input.action === 'get'
+      ? { result: '', text: 'No document.', isError: true }
+      : { result: '', text: 'The document is now at version 1.' },
+  { CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '80' })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(2000)
+
+  await run($)
+  // 80 % of the 200k window less the summary's reserve.
+  expect(calls[1]!.data).toMatchObject({ threshold: 144000, repo: 'Else-Live-' })
 })

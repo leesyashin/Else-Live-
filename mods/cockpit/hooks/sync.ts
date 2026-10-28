@@ -7,6 +7,9 @@ type $ = EngineInterface
 const COLLECTION = 'cockpit'
 const DOC = 'context'
 const MIN_GAP_MS = 15_000
+// Room the engine keeps free for the summary: a 1M window compacts against
+// an effective 980k, as the session itself reports it.
+const SUMMARY_RESERVE = 20_000
 
 export type ContextSnapshot = {
   sessionId: string
@@ -29,12 +32,24 @@ export function syncState(): string {
   return stopped ?? (lastAt ? 'aktiv' : 'wartet auf den ersten Schritt')
 }
 
+function repoName(location: string): string | null {
+  const last = location.replace(/\.git$/, '').split(/[/:]/).filter(Boolean).at(-1)
+
+  return last ?? null
+}
+
 export async function snapshot($: $): Promise<ContextSnapshot> {
   const usage = await $.session.usage()
   if (threshold === undefined) {
     const full = await $.session.usage({ breakdown: 'summary' }).catch(() => undefined)
     const breakdown = full?.context.breakdown
     threshold = breakdown && breakdown.isAutoCompactEnabled ? (breakdown.autoCompactThreshold ?? null) : null
+    // A session may compact earlier than the default (cloud sessions use 80 %).
+    const override = Number(await $.env.get('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE').catch(() => undefined))
+    if (override > 0 && override <= 100) {
+      const early = Math.round(((usage.context.window - SUMMARY_RESERVE) * override) / 100)
+      threshold = threshold === null ? early : Math.min(threshold, early)
+    }
   }
   const [sessionId, repo, at] = await Promise.all([
     $.session.id(),
@@ -45,7 +60,7 @@ export async function snapshot($: $): Promise<ContextSnapshot> {
 
   return {
     sessionId,
-    repo: repo?.name ?? null,
+    repo: repo ? (repo.name ?? repoName(repo.remote ?? repo.root)) : null,
     used: context.tokens ?? Math.round(((context.percent ?? 0) / 100) * context.window),
     max: context.window,
     threshold,
