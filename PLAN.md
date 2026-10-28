@@ -122,3 +122,74 @@ Ursprünglicher Plan:
 - **Memory zurückschreiben:** Eine Session in einem anderen Repo braucht Schreibzugriff auf Else-Live-. Ob das ohne Rückfrage geht, wird in Phase 4 geprüft.
 - **Chats untereinander:** Cloud-Sessions brauchen evtl. einmal deine Freigabe, bevor sie andere Sessions erreichen dürfen.
 - **Mod-Name:** offen.
+
+## Übergabe: Stand und nächste Schritte (28.10.2026)
+
+Für die nächste Session: Hier steht, was es gibt, wie es zusammenspielt und wie es weitergeht.
+
+### Was es gibt
+
+| Teil | Ort | Zweck |
+| --- | --- | --- |
+| Mod „cockpit“ | `mods/cockpit` | Skill-Launcher (Leiste, Panel, `/cockpit` als Text), Kontext-Ring in der Leiste, Abgleich mit der Handy-Seite. 15 Tests. |
+| Handy-Seite | `apps/cockpit-web` (Quelltext), live: https://claude.ai/artifact/3mAJQLuy66EZ9EoNiqAgT8 | Das Cockpit auf dem Handy, siehe unten. |
+| Marketplace | `.claude-plugin/marketplace.json` | `/plugin install cockpit --marketplace leesyashin/Else-Live-` |
+| Design-Entwürfe | https://claude.ai/artifact/5EBWMLf4CEbFLtgNSRfi5Q | Fünf Richtungen; gewählt wurden Wallet (3) und Suche mit Vorschlägen (4). |
+
+Die Handy-Seite zeigt:
+- **oben:** Suche („Was willst du tun?“), Vorschläge, Kontext-Ring
+- **darunter:** Bereiche als Wallet-Kartenstapel mit eigenem Muster je Bereich (Session, Design, Code, Daten, Business, Persönlich, Weitere, Empfohlen)
+- **in einer geöffneten Karte:** Skills als Liste; gedrückt halten lädt den Skill, tippen öffnet ihn als Pass mit Anleitung und Referenzen
+- **Aufgabe zu einem Skill:** wird in einer Karte oben am Bildschirm eingegeben
+
+### Wie die Teile zusammenspielen
+
+- **Warum eine Seite:** Die Claude-App auf dem Handy zeigt bei Cloud-Sessions keine Mod-Oberfläche. Die Session meldet dort keine Zeichenfläche. Deshalb ist die Handy-Oberfläche eine Artifact-Seite.
+- **Seite → Claude:** Halten oder „Starten“ schickt per `comments.sendToClaude` einen Kommentar an alle Sessions, die die Seite beobachten. Format:
+  - `Cockpit · Skill laden` + neue Zeile + `/<skill> [Aufgabe]`
+  - `Cockpit · Skill installieren` + neue Zeile + `<Titel> von <Autor>: <Befehl>`
+- **Claude → Seite:** über die Datenbank der Seite (Werkzeug `ArtifactData`):
+  - `cockpit/status` mit `{ loaded: [{ skill, at }], session, updatedAt }`. Schreibt derzeit Claude von Hand, nachdem ein Skill geladen wurde.
+  - `cockpit/context` mit `{ sessionId, repo, used, max, threshold, costUsd, limits[], at }`. Schreibt die Mod automatisch nach jedem Schritt (Hook `turn.complete`, Einstellung `cockpitUrl`). Das Werkzeug `mcp__cockpit__sync_context` löst es sofort aus.
+
+### So übernimmt eine neue Session
+
+1. **Mod laden:** Skill `plugin-authoring` aufrufen. Dann `mods/cockpit` ohne `.claude-plugin/types` in den Mods-Ordner kopieren, den der Skill nennt, und den Nutzer „Turn them on“ bestätigen lassen. In einer Terminal-Session geht stattdessen `/plugin install cockpit --marketplace leesyashin/Else-Live-`.
+2. **Seite beobachten:** `ArtifactComments` mit `action: watch` und der Seiten-URL. Erst dann kommen Aufträge vom Handy an.
+3. **Auftrag „Cockpit · Skill laden“:**
+   1. Den Skill mit dem Skill-Werkzeug starten, die Aufgabe als Argument.
+   2. Im Kommentar-Thread kurz antworten und ihn auflösen.
+   3. In `cockpit/status` den Eintrag `{ skill, at }` ergänzen, mit `if_version`.
+4. **Seite neu bauen:** wie in `apps/cockpit-web/README.md` beschrieben. Die Skill-Daten liefert `build_data.py` aus der jeweiligen Session.
+
+### Nächste Schritte, in dieser Reihenfolge
+
+1. **Skill-Status automatisch:** Die Mod schreibt geladene Skills (Hook `skill.prompt`) selbst in `cockpit/status`, so wie schon den Kontext. Dann wird der grüne Status ohne Handarbeit live.
+2. **Phase 3, Merge-Knopf auf der Handy-Seite:**
+   - eine Wallet-Karte „Merge“ mit dem offenen PR des Branches: Ziel-Branch groß, CI-Status, Konflikte
+   - Halten schickt `Cockpit · Merge` an Claude
+   - Claude prüft CI und Konflikte, merged per Squash und löscht den Branch
+   - das Ergebnis kommt in die Datenbank
+   - die Kartendaten (`cockpit/pr`) schreibt Claude nach jedem Push oder PR-Ereignis
+3. **Phase 4, Memory und Setup-Check:**
+   - Memory-Dateien je Repo in Else-Live- (z. B. `memory/<repo>.md`) mit Setup-Checkliste und Connector-Bedarf
+   - auf der Seite als Wallet-Karte „Setup“ mit grünen und roten Punkten
+4. **Phase 5, Chat-Teamwork:**
+   - Ein Lead-Chat verteilt Aufgaben (`create_session`, `send_message`).
+   - Der Status steht im Dokument `cockpit/team` und erscheint auf der Seite als Avatare.
+5. **Kontext-Ringe pro Kategorie:** Die Mod gibt die Aufschlüsselung (`breakdown`) in `cockpit/context` mit, und das Kontext-Blatt zeigt sie an.
+6. **Kleinigkeiten:**
+   - Neue Skills erscheinen auf der Seite erst nach dem Neu-Veröffentlichen.
+   - Favoriten gelten pro Gerät.
+   - Der Mod-Name ist offen.
+
+### Stolpersteine, schon gelöst
+
+- **Zustand der Mod:** Der Validator verlangt, dass jedes `atom(...)` in der Datei angelegt ist, die es liest oder schreibt. Deshalb liegt der Zustand nur in `hooks/skills.ts`, alle Zugriffe laufen über dessen Funktionen.
+- **Slash-Befehl:** Befehlsname und Matcher als Literal schreiben (`'cockpit'`). Sonst zählt der Hook als prüfender Hook.
+- **`$.tool.call`:** nie in einer Variablen ablegen. `ArtifactData` mit Cast direkt am Aufruf rufen, `($.tool.call as unknown as …)(…)`. Sonst braucht `tsc` über 2 GB Speicher.
+- **Handy-Oberfläche:** Die Elementliste enthält `Input`, gezeichnet wird es aber nicht. Deshalb nach `e.surface` entscheiden, nicht nach der Liste.
+- **Zusammenfass-Marke:** Cloud-Sessions fassen bei 80 % zusammen (`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`). Die Marke ist (Fenster − 20k) × 80 %, also 784k bei 1 Mio.
+- **Connector:** „Claude Code Remote“ ließ sich auf dem Handy nicht verbinden. Deshalb läuft der Kontext über die Datenbank der Seite.
+- **iOS-Eingabe:** Ein Eingabefeld unten in einem fixierten Blatt schiebt das Blatt weg. Eingaben deshalb in einer Karte oben am Bildschirm.
+- **Prüfen:** `claude plugin validate mods/cockpit`, `claude plugin test mods/cockpit` und `tsc -p <Mod-Ordner>`. Die Typen liegen nach dem Laden in `.claude-plugin/types`.
