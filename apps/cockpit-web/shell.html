@@ -304,10 +304,6 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .sline i { width: 9px; height: 9px; border-radius: 50%; background: var(--dot); transform: translateY(-1px); }
 .sline b { font-weight: 600; font-size: 16px; overflow-wrap: anywhere; }
 .sline span { grid-column: 2; font-size: 14px; color: var(--fg2); }
-.todo { display: flex; gap: 10px; font-size: 15px; align-items: baseline; }
-.todo i { flex: none; font-style: normal; color: var(--fg3); }
-.todo.done { color: var(--fg2); }
-.todo.done i { color: var(--loaded); }
 
 .pill { min-height: 34px; padding: 0 14px; border-radius: 17px; background: var(--fill); color: var(--accent); font-weight: 600; font-size: 15px; text-transform: none; letter-spacing: 0; transition: transform 0.2s var(--spring); }
 .pill:active { transform: scale(0.94); }
@@ -675,8 +671,6 @@ summary small { color: var(--fg3); font-size: 13px; }
       repo: str(d.repo) || null, branch: str(d.branch) || null, memory: str(d.memory) || null,
       checks: d.checks.filter(c => c && GROUPS.includes(c.group) && ['ok', 'warn', 'fail'].includes(c.state))
         .map(c => ({ group: c.group, name: str(c.name), state: c.state, detail: str(c.detail) })).slice(0, 40),
-      checklist: Array.isArray(d.checklist) ? d.checklist.filter(i => i && typeof i.text === 'string').map(i => ({ text: i.text, done: i.done === true })).slice(0, 30) : [],
-      merges: Array.isArray(d.merges) ? d.merges.filter(m => typeof m === 'string').slice(0, 5) : [],
       at: typeof d.at === 'number' ? d.at : 0,
     }
   }
@@ -937,10 +931,8 @@ summary small { color: var(--fg3); font-size: 13px; }
       if (!mine.length) return ''
       return `<div class="sgroup"><small>${LABEL[g]}</small>${mine.map(c => `<div class="sline" style="--dot:${STATE_DOT[c.state]}"><i></i><b>${esc(c.name)}</b><span>${esc(c.detail)}</span></div>`).join('')}</div>`
     }).join('')
-    const todo = d.checklist.length ? `<div class="preview"><h3>Checkliste</h3>${d.checklist.map(i => `<div class="todo${i.done ? ' done' : ''}"><i>${i.done ? '✓' : '○'}</i><span>${esc(i.text)}</span></div>`).join('')}</div>` : ''
-    const merges = d.merges.length ? `<div class="preview"><h3>Letzte Merges</h3>${d.merges.map(m => `<div class="todo"><i>·</i><span>${esc(m)}</span></div>`).join('')}</div>` : ''
     return `${TIP(`${d.repo || 'Kein Repo'} · geprüft ${d.at ? ago(d.at) : '–'}`)}
-      <div class="preview">${groups}</div>${todo}${merges}${recheck}`
+      <div class="preview">${groups}</div>${recheck}`
   }
 
   function buildWallet() {

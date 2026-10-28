@@ -18,8 +18,6 @@ export type Memory = {
   connectors: string[]
   optional: string[]
   skills: string[]
-  checklist: { text: string; done: boolean }[]
-  merges: string[]
 }
 
 let lastAt = 0
@@ -31,24 +29,14 @@ const list = (value: string | undefined) =>
     .map(one => one.trim())
     .filter(Boolean)
 
-// Reads the head (`key: value` lines between `---`) and the two lists the
-// cockpit shows; the rest of the file is the person's own.
+// Reads the head (`key: value` lines between `---`); the rest of the file is
+// the person's own notes.
 export function parseMemory(text: string): Memory {
   const head = new Map<string, string>()
   const match = text.replace(/\r/g, '').match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
-  const body = match?.[2] ?? text
   for (const line of (match?.[1] ?? '').split('\n')) {
     const pair = line.replace(/\s+#.*$/, '').match(/^([a-z]+):\s*(.*)$/i)
     if (pair?.[1]) head.set(pair[1].toLowerCase(), (pair[2] ?? '').trim())
-  }
-  const section = (title: string) => {
-    const lines: string[] = []
-    let inside = false
-    for (const line of body.split('\n')) {
-      if (/^##\s/.test(line)) inside = line.replace(/^##\s+/, '').trim().toLowerCase() === title
-      else if (inside && /^\s*[-*]\s+/.test(line)) lines.push(line.replace(/^\s*[-*]\s+/, '').trim())
-    }
-    return lines
   }
 
   return {
@@ -57,11 +45,6 @@ export function parseMemory(text: string): Memory {
     connectors: list(head.get('connectors')),
     optional: list(head.get('optional')),
     skills: list(head.get('skills')),
-    checklist: section('setup').map(item => {
-      const box = item.match(/^\[([ xX])\]\s*(.*)$/)
-      return box ? { text: box[2] ?? '', done: box[1] !== ' ' } : { text: item, done: false }
-    }),
-    merges: section('merges'),
   }
 }
 
@@ -167,8 +150,6 @@ export async function checkSetup($: $): Promise<SetupReport> {
     branch,
     memory: memory ? file : null,
     checks,
-    checklist: memory?.checklist ?? [],
-    merges: (memory?.merges ?? []).slice(0, 5),
     at,
   }
   await saveSetup($, report)
@@ -220,14 +201,6 @@ export function setupText(report: SetupReport): string {
     if (mine.length === 0) continue
     lines.push(group)
     for (const check of mine) lines.push(`  ${mark[check.state]} ${check.name}: ${check.detail}`)
-  }
-  if (report.checklist.length > 0) {
-    lines.push('', 'Checkliste')
-    for (const item of report.checklist) lines.push(`  ${item.done ? '☑' : '☐'} ${item.text}`)
-  }
-  if (report.merges.length > 0) {
-    lines.push('', 'Letzte Merges')
-    for (const merge of report.merges) lines.push(`  · ${merge}`)
   }
 
   return lines.join('\n')

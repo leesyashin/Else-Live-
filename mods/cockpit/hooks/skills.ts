@@ -22,7 +22,7 @@ const selected = atom({ plugin: 'cockpit', key: 'selected' } as const, null)
 const showBody = atom({ plugin: 'cockpit', key: 'showBody' } as const, false)
 const query = atom({ plugin: 'cockpit', key: 'query' } as const, '')
 const tick = atom({ plugin: 'cockpit', key: 'tick' } as const, 0)
-const setup = atom({ plugin: 'cockpit', key: 'setup' } as const, null, { shape: 'setup-1' })
+const setup = atom({ plugin: 'cockpit', key: 'setup' } as const, null, { shape: 'setup-2' })
 
 // --- Views a drawing reads (each read subscribes it to that value) ----------
 

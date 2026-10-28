@@ -375,7 +375,6 @@ async function drawList($: $, ui: ElementTable, surface: RenderSurface, columns:
 function setupSection($: $, ui: ElementTable, report: SetupReport, isClosed: boolean, columns: number) {
   const { Box, Button, Text } = ui
   const good = report.checks.filter(check => check.state === 'ok').length
-  const open = report.checklist.filter(item => !item.done)
 
   return (
     <Box flexDirection="column">
@@ -389,13 +388,6 @@ function setupSection($: $, ui: ElementTable, report: SetupReport, isClosed: boo
             <Text color={COLOR[check.state]}>●</Text>
             {` ${check.name} `}
             <Text dimColor>{clip(check.detail, columns - check.name.length - 4)}</Text>
-          </Text>
-        ))}
-      {!isClosed &&
-        open.map(item => (
-          <Text>
-            <Text color="inactive">☐</Text>
-            {` ${clip(item.text, columns - 3)}`}
           </Text>
         ))}
     </Box>

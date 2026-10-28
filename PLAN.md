@@ -91,7 +91,7 @@ Ursprünglicher Plan:
 
 ### Phase 4: Memory & Setup-Check (umgesetzt)
 
-- **Memory:** eine Datei pro Repo in `mods/cockpit/memory/<repo>.md`, Format in `mods/cockpit/memory/README.md`. Kopf mit `base`, `branch`, `connectors`, `optional` und `skills`, dazu eine Checkliste und die letzten Merges. Die Dateien liegen in der Mod, damit sie mit jeder Installation in jedem Repo ankommen.
+- **Memory:** eine Datei pro Repo in `mods/cockpit/memory/<repo>.md`, Format in `mods/cockpit/memory/README.md`. Kopf mit `base`, `branch`, `connectors`, `optional` und `skills`. Darunter frei: Notizen, Checkliste, Merges (das Cockpit zeigt sie nicht an). Die Dateien liegen in der Mod, damit sie mit jeder Installation in jedem Repo ankommen.
 - **Mod prüft selbst:**
   - Beim Session-Start nach 4 s, dann nach Zügen höchstens einmal pro Minute.
   - Connectors: an den MCP-Werkzeugnamen der Session (`mcp__<server>__…`) erkannt.
@@ -100,10 +100,10 @@ Ursprünglicher Plan:
   - Ein fehlender Pflicht-Connector oder Skill ist rot, ein optionaler gelb.
 - **Anzeige:**
   - Leiste: drei Punkte (Connectors, Skills, Branch) und „Setup“.
-  - Panel: Abschnitt „Setup“ mit jeder Prüfung und den offenen Punkten der Checkliste.
+  - Panel: Abschnitt „Setup“ mit jeder Prüfung.
   - Als Text: `/cockpit setup`.
   - Werkzeug `check_setup` für Claude.
-- **Handy-Seite:** Wallet-Karte „Setup“ mit „n von m“ oder „Alles bereit“ und den drei Punkten. Geöffnet zeigt sie jede Prüfung, die Checkliste und die letzten Merges. Die Mod schreibt `cockpit/setup`, aber nur bei Änderungen.
+- **Handy-Seite:** Wallet-Karte „Setup“ mit „n von m“ oder „Alles bereit“ und den drei Punkten. Geöffnet zeigt sie jede Prüfung. Die Mod schreibt `cockpit/setup`, aber nur bei Änderungen.
 - **Memory nach dem Merge:** Claude trägt jeden Merge vom Handy unter `## Merges` ein (siehe Ablauf „Cockpit · Merge“).
 - **Noch offen:** Aus einem anderen Repo heraus braucht der Merge-Eintrag Schreibzugriff auf Else-Live-. Bis dahin trägt ihn die nächste Session in Else-Live- nach.
 
@@ -180,8 +180,8 @@ Die Handy-Seite zeigt:
 - **Claude → Seite:** über die Datenbank der Seite (Werkzeug `ArtifactData`):
   - `cockpit/status` mit `{ loaded: [{ skill, at }], session, updatedAt }`. Schreibt derzeit Claude von Hand, nachdem ein Skill geladen wurde.
   - `cockpit/pr` mit dem offenen PR des Branches, Felder siehe `apps/cockpit-web/README.md`. Schreibt Claude nach jedem Push, PR-Ereignis und Merge.
-  - `cockpit/context` mit `{ sessionId, repo, used, max, threshold, costUsd, limits[], at }`.
-  - `cockpit/setup` mit `{ repo, branch, memory, checks[], checklist[], merges[], at }`. Schreibt die Mod beim Start und nach Änderungen. Schreibt die Mod automatisch nach jedem Schritt (Hook `turn.complete`, Einstellung `cockpitUrl`). Das Werkzeug `mcp__cockpit__sync_context` löst es sofort aus.
+  - `cockpit/context` mit `{ sessionId, repo, used, max, threshold, costUsd, limits[], at }`. Schreibt die Mod automatisch nach jedem Schritt (Hook `turn.complete`, Einstellung `cockpitUrl`). Das Werkzeug `mcp__cockpit__sync_context` löst es sofort aus.
+  - `cockpit/setup` mit `{ repo, branch, memory, checks[], at }`. Schreibt die Mod beim Start und nach Änderungen. Das Werkzeug `mcp__cockpit__check_setup` löst es sofort aus.
 
 ### So übernimmt eine neue Session
 
@@ -195,8 +195,8 @@ Die Handy-Seite zeigt:
    1. Den PR live prüfen (GitHub-Werkzeuge): offen, Head unverändert, CI grün auf dem aktuellen Commit, keine Konflikte. Die Seite ist nur der Wunsch, nicht der Beweis.
    2. `cockpit/pr` auf `merge: { state: 'running', at }` setzen.
    3. Ist der PR ein Entwurf, ihn freigeben. Dann per Squash mergen und den Branch löschen (`git push origin --delete <branch>`).
-   4. `cockpit/pr` mit `state: 'merged'`, `merge: { state: 'done', at, sha, branchDeleted }` schreiben.
-   5. Eine Zeile `- JJJJ-MM-TT · #<Nummer> <Titel>` oben unter `## Merges` in `mods/cockpit/memory/<repo>.md` eintragen und mit nach `main` bringen. Geht etwas nicht: `merge: { state: 'failed', at, message }` mit einem kurzen Grund auf Deutsch.
+   4. `cockpit/pr` mit `state: 'merged'`, `merge: { state: 'done', at, sha, branchDeleted }` schreiben. Geht etwas nicht: `merge: { state: 'failed', at, message }` mit einem kurzen Grund auf Deutsch.
+   5. Eine Zeile `- JJJJ-MM-TT · #<Nummer> <Titel>` oben unter `## Merges` in `mods/cockpit/memory/<repo>.md` eintragen und mit nach `main` bringen.
    6. Im Thread antworten und ihn auflösen.
 5. **Auftrag „Cockpit · Setup prüfen“:** das Werkzeug `mcp__cockpit__check_setup` aufrufen (ohne geladene Mod: `/cockpit setup`). Danach im Thread antworten.
 6. **Auftrag „Cockpit · PR prüfen“:** PR des aktuellen Branches lesen und `cockpit/pr` neu schreiben, danach im Thread antworten.

@@ -474,7 +474,7 @@ test('the setup check finds connectors, skills and the branch from the memory fi
 
   // The page got the whole report once.
   expect(page.length).toBe(1)
-  const report = page[0] as { checks: { name: string; state: string }[]; checklist: unknown[]; merges: string[]; memory: string }
+  const report = page[0] as { checks: { name: string; state: string }[]; memory: string }
   const states = Object.fromEntries(report.checks.map(check => [check.name, check.state]))
   expect(states).toEqual({
     [MEMORY_FILE]: 'ok',
@@ -484,11 +484,6 @@ test('the setup check finds connectors, skills and the branch from the memory fi
     'plugin-authoring': 'fail',
     'claude/phase-4': 'ok',
   })
-  expect(report.checklist).toEqual([
-    { text: 'Mod geladen', done: true },
-    { text: 'Figma freigeben', done: false },
-  ])
-  expect(report.merges).toEqual(['2026-10-28 · #46 Merge-Knopf'])
 
   // The band shows one dot per group: connectors yellow, skills red, branch green.
   for (const surface of ['desktop', 'terminal'] as const) {
@@ -500,11 +495,10 @@ test('the setup check finds connectors, skills and the branch from the memory fi
     await band.unmount()
   }
 
-  // The pane lists each check and the open checklist items.
+  // The pane lists each check.
   const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await pane.find({ key: 'k:Setup' }))?.text).toContain('4/6')
   expect(await pane.find({ type: 'Text', text: /plugin-authoring Fehlt in dieser Session/ })).toBeDefined()
-  expect(await pane.find({ type: 'Text', text: /Figma freigeben/ })).toBeDefined()
   await pane.press({ key: 'k:Setup' })
   expect(await pane.find({ type: 'Text', text: /plugin-authoring Fehlt/ })).toBeUndefined()
   await pane.unmount()

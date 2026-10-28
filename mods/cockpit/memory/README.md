@@ -24,7 +24,7 @@ skills: plugin-authoring    # Pflicht, fehlt einer: rot
 - 2026-10-28 · #46 Titel des PR
 ```
 
-Alles nach dem Kopf ist frei. Das Cockpit liest nur die Häkchenliste unter `## Setup` und die Liste unter `## Merges`.
+Alles nach dem Kopf ist frei und nur für Menschen und Claude: Das Cockpit liest allein den Kopf.
 
 ## Wer schreibt hinein
 

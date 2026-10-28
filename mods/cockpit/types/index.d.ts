@@ -52,8 +52,6 @@ export type SetupReport = {
   branch: string | null
   memory: string | null
   checks: SetupCheck[]
-  checklist: { text: string; done: boolean }[]
-  merges: string[]
   at: number
 }
 
