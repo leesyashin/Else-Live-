@@ -153,10 +153,12 @@ test('a loaded skill shows as a toast, in the band and in the timeline', async (
 
   const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
   expect((await band.find({ key: 'cockpit-skills' }))?.text).toContain('1 geladen')
-  expect(await band.find({ type: 'Svg' })).toBeDefined()
+  const pulse = async () =>
+    (await band.findAll({ type: 'Svg' })).find(svg => String(svg.props.alt).includes('Skill geladen'))
+  expect(await pulse()).toBeDefined()
   // The pulse settles once the moment has passed; the minute tick redraws it.
   await clock.advance(120_000)
-  expect(await band.find({ type: 'Svg' })).toBeUndefined()
+  expect(await pulse()).toBeUndefined()
   expect(await band.find({ type: 'Text', text: /ux-copy · vor 1 Min/ })).toBeDefined()
   await band.unmount()
 
@@ -328,4 +330,19 @@ test('on the desktop a loaded skill shows as a toast alone', async ($, on) => {
 
   expect(toasts).toContain('✦ Skill geladen: ux-copy')
   expect(session.appended().filter(row => row.message.type === 'system')).toHaveLength(0)
+})
+
+test('the band shows how full the context window is, on every surface', async ($, on) => {
+  const { clock } = world(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(2000)
+
+  const desktop = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(await desktop.find({ type: 'Text', text: /^1 % Kontext$/ })).toBeDefined()
+  expect((await desktop.findAll({ type: 'Svg' })).length).toBeGreaterThan(0)
+  await desktop.unmount()
+
+  const terminal = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await terminal.find({ type: 'Text', text: /^◔ 1 % Kontext$/ })).toBeDefined()
+  await terminal.unmount()
 })

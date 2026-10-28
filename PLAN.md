@@ -57,7 +57,13 @@ Eine Mod für Claude Code, die Funktionen und Oberfläche erweitert: mehr Übers
 - ein Starten-Knopf, der den Auftrag per „Send to Claude“ an die Session schickt
 - Live-Status über die Datenbank der Seite
 
-### Phase 2: Kontext-Ring
+### Phase 2: Kontext-Ring (umgesetzt)
+
+- **Handy-Seite:** Ring oben rechts und auf der Session-Karte. Die Daten kommen live über den Connector „Claude Code Remote“. Antippen öffnet den großen Ring mit Marke fürs Zusammenfassen, verbleibenden Tokens, Kosten und Nutzungslimit.
+- **Mod (Desktop, Terminal):** Ring mit Prozentzahl in der Leiste über der Eingabe, nach jedem Zug aktualisiert.
+- **Noch offen:** Ringe pro Kategorie (System, Tools, Skills, Chat). Die Aufschlüsselung kennt nur die Mod, nicht die Handy-Seite.
+
+Ursprünglicher Plan:
 
 - Live-Füllstand der Session als Ring, der von Grün über Gelb zu Rot wechselt.
 - Ein Klick zeigt Ringe pro Kategorie: System, Tools, Skills, Chat.

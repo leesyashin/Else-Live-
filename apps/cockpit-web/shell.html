@@ -57,9 +57,42 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding-top: 14px; }
 .top h1 { font: 700 34px/1.1 var(--display); letter-spacing: 0.01em; margin: 0; }
 .top p { margin: 4px 0 0; color: var(--fg2); font-size: 15px; }
-.link-state { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--fg2); background: var(--fill); padding: 6px 10px; border-radius: 999px; white-space: nowrap; }
-.link-state i { width: 8px; height: 8px; border-radius: 50%; background: var(--fg3); }
+.link-state { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 13px; color: var(--fg2); white-space: nowrap; }
+.link-state i { width: 7px; height: 7px; border-radius: 50%; background: var(--fg3); }
 .link-state.on i { background: var(--loaded); }
+
+/* Context ring */
+.ctx-chip { flex: none; display: flex; align-items: center; gap: 9px; padding: 6px 13px 6px 7px; border-radius: 999px; background: var(--surface); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); transition: transform 0.3s var(--bounce); }
+.ctx-chip:active { transform: scale(0.94); }
+.ctx-chip svg { width: 34px; height: 34px; }
+.ctx-chip b { display: block; font: 700 16px/1.05 var(--rounded); font-variant-numeric: tabular-nums; }
+.ctx-chip small { display: block; font-size: 11px; color: var(--fg2); }
+.trk { fill: none; stroke: var(--fill); }
+.arc { fill: none; stroke-linecap: round; transform: rotate(-90deg); transform-origin: center; transform-box: fill-box; transition: stroke-dashoffset 0.9s var(--spring), stroke 0.6s; }
+.arc.draw { animation: ringIn 1.3s var(--spring) both; }
+@keyframes ringIn { from { stroke-dashoffset: var(--len); } }
+.ring40 { position: relative; }
+.ring40 svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ring40 svg .trk { stroke: rgba(255, 255, 255, 0.18); }
+.ring40 em { position: relative; font: 700 11px/1 var(--rounded); font-style: normal; }
+.ring-card { align-items: center; padding: 22px 16px 18px; }
+.ring-wrap { position: relative; width: 240px; max-width: 100%; aspect-ratio: 1; }
+.ring-wrap svg { width: 100%; height: 100%; display: block; }
+.ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; }
+.ring-center b { font: 700 52px/1 var(--rounded); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.ring-center span { font-size: 14px; color: var(--fg2); font-variant-numeric: tabular-nums; }
+.tick { stroke: var(--fg); stroke-width: 3; stroke-linecap: round; opacity: 0.55; }
+.legend { display: flex; justify-content: center; gap: 16px; font-size: 13px; color: var(--fg2); }
+.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+.meter { position: relative; height: 8px; border-radius: 4px; background: var(--fill); overflow: hidden; }
+.meter i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: linear-gradient(90deg, var(--ca), var(--cb)); transition: width 0.9s var(--spring); }
+.ctx-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; border-radius: 16px; background: var(--surface); transition: transform 0.3s var(--spring); }
+.ctx-row:active { transform: scale(0.98); }
+.ctx-row svg { flex: none; width: 34px; height: 34px; }
+.ctx-row span { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ctx-row b { font-weight: 600; }
+.ctx-row small { font-size: 13px; color: var(--fg2); }
+
 
 /* Search (Spotlight) */
 .search { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 14px; border-radius: 16px; background: var(--surface); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04); }
@@ -304,8 +337,12 @@ summary small { color: var(--fg3); font-size: 13px; }
     <div>
       <h1>Cockpit</h1>
       <p id="subtitle">Skills dieser Session</p>
+      <span class="link-state" id="link"><i></i><span>Verbinde …</span></span>
     </div>
-    <span class="link-state" id="link"><i></i><span>Verbinde …</span></span>
+    <button class="ctx-chip" id="ctx-chip" data-context aria-label="Kontext dieser Session">
+      <svg viewBox="0 0 36 36" aria-hidden="true"><circle class="trk" cx="18" cy="18" r="14" stroke-width="5"/><circle class="arc" id="chip-arc" cx="18" cy="18" r="14" stroke-width="5" style="stroke-dasharray:88 88;stroke-dashoffset:88"/></svg>
+      <span><b id="chip-pct">–</b><small>Kontext</small></span>
+    </button>
   </header>
 
   <label class="search">
@@ -410,6 +447,47 @@ summary small { color: var(--fg3); font-size: 13px; }
   }
   const short = name => name.split(':').pop()
 
+  // --- Context (read live from the session through the Claude Code Remote connector) ---
+  const SESSION_ID = '__SESSION__'
+  const ctx = { used: null, max: null, threshold: null, cost: null, limit: null, at: 0, error: null }
+  const ctxShare = () => (ctx.used != null && ctx.max ? Math.min(1, ctx.used / ctx.max) : null)
+  const ctxMark = () => (ctx.threshold && ctx.max ? ctx.threshold / ctx.max : 0.8)
+  function ctxLook(p) {
+    const th = ctxMark()
+    if (p == null) return { a: '#8e8e93', b: '#8e8e93', word: 'Wird geladen …' }
+    if (p < 0.5) return { a: '#30d158', b: '#a6e86a', word: 'Viel Platz' }
+    if (p < th - 0.08) return { a: '#ffd60a', b: '#ff9f0a', word: 'Füllt sich' }
+    if (p < th) return { a: '#ff9f0a', b: '#ff453a', word: 'Bald Zusammenfassung' }
+    return { a: '#ff453a', b: '#ff2d55', word: 'Wird zusammengefasst' }
+  }
+  const pct = p => (p == null ? '–' : `${Math.round(p * 100)} %`)
+  function tokens(n) {
+    if (n == null) return '–'
+    if (n >= 1e6) return `${(n / 1e6).toLocaleString('de-DE', { maximumFractionDigits: 1 })} Mio`
+    if (n >= 1e3) return `${Math.round(n / 1e3)}k`
+    return String(n)
+  }
+  function ctxError() {
+    return {
+      none: 'Diese Ansicht kann die Session nicht abfragen.',
+      consent_required: 'Erlaube der Seite einmal den Zugriff auf Claude Code Remote.',
+      not_granted: 'Der Zugriff auf Claude Code Remote ist für diese Seite aus.',
+      server_not_connected: 'Claude Code Remote ist für dein Konto nicht verbunden.',
+      needs_reauth: 'Claude Code Remote muss neu verbunden werden.',
+      blocked_by_policy: 'Deine Organisation erlaubt diese Abfrage nicht.',
+      no_data: 'Die Session meldet gerade keinen Füllstand.',
+    }[ctx.error] || 'Der Kontext ist gerade nicht abrufbar. Er wird gleich neu versucht.'
+  }
+  // A ring arc of radius r at share p, as a style for an .arc circle.
+  function arcStyle(r, p) {
+    const len = 2 * Math.PI * r
+    return `--len:${len.toFixed(1)};stroke-dasharray:${len.toFixed(1)} ${len.toFixed(1)};stroke-dashoffset:${(len * (1 - (p ?? 0))).toFixed(1)}`
+  }
+  function miniRing(size, r, width, p, look) {
+    const c = size / 2
+    return `<svg viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle class="trk" cx="${c}" cy="${c}" r="${r}" stroke-width="${width}"/><circle class="arc" cx="${c}" cy="${c}" r="${r}" stroke-width="${width}" style="${arcStyle(r, p)};stroke:${look.a}"/></svg>`
+  }
+
   const store = {
     get(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v) } catch { return fallback } },
     set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)) } catch {} },
@@ -512,8 +590,8 @@ summary small { color: var(--fg3); font-size: 13px; }
       const recent = uniqueLoaded().slice(0, 3).map(u => short(u.skill))
       return `${pattern('radar')}<div class="wtop"><div><small>Cockpit</small><b>Diese Session</b></div>
           <div class="wcount"><small>Geladen</small><b>${live.size}</b></div></div>
-        <div class="wbottom"><div><small>Zuletzt</small><p>${esc(recent.join(' · ') || 'Noch kein Skill geladen')}</p></div>
-          <span class="glyph"><span class="pulse"></span></span></div>`
+        <div class="wbottom"><div><small>Zuletzt · Kontext ${pct(ctxShare())}</small><p>${esc(recent.join(' · ') || 'Noch kein Skill geladen')}</p></div>
+          <span class="glyph ring40">${miniRing(40, 16, 4, ctxShare(), ctxLook(ctxShare()))}<em>${ctxShare() == null ? '–' : Math.round(ctxShare() * 100)}</em></span></div>`
     }
     if (card.kind === 'rec') {
       return `${pattern('guilloche')}<span class="notch l"></span><span class="notch r"></span><span class="perf"></span>
@@ -539,12 +617,14 @@ summary small { color: var(--fg3); font-size: 13px; }
   function detailHtml(card) {
     if (card.kind === 'session') {
       const items = uniqueLoaded()
-      if (!items.length) return `${TIP('Halte eine Skill-Karte gedrückt, um sie zu laden')}<p class="empty">In dieser Session wurde noch kein Skill geladen.</p>`
+      const look = ctxLook(ctxShare())
+      const ctxRow = `<button class="ctx-row" data-context>${miniRing(36, 14, 5, ctxShare(), look)}<span><b>Kontext ${pct(ctxShare())}</b><small>${esc(ctx.error ? 'Nicht abrufbar' : `${look.word} · ${tokens(ctx.used)} von ${tokens(ctx.max)}`)}</small></span>${CHEV}</button>`
+      if (!items.length) return `${ctxRow}${TIP('Halte eine Skill-Karte gedrückt, um sie zu laden')}<p class="empty">In dieser Session wurde noch kein Skill geladen.</p>`
       const rows = items.map((u, i) => {
         const s = skillByName(u.skill)
         return s ? skillRow(s, i, `<span class="time">${esc(ago(u.at))}</span>`) : ''
       }).join('')
-      return `${TIP('Tippen öffnet den Skill')}${group('Zuletzt geladen', items.length, rows)}`
+      return `${ctxRow}${TIP('Tippen öffnet den Skill')}${group('Zuletzt geladen', items.length, rows)}`
     }
     if (card.kind === 'rec') {
       return `${TIP('Halten: Claude installiert · Tippen: Details')}${group('Für deinen Stil', recommended.length, recommended.map(recRow).join(''))}`
@@ -761,6 +841,7 @@ summary small { color: var(--fg3); font-size: 13px; }
   function refreshSheet() {
     const open = state.sheet
     if (!open) return
+    if (open.context) return
     const go = $('go'), hint = $('go-hint')
     if (go) go.disabled = !sendAvailable()
     if (hint) { hint.hidden = sendAvailable(); hint.textContent = sendReason() }
@@ -773,9 +854,91 @@ summary small { color: var(--fg3); font-size: 13px; }
     if (fav) { const on = state.favorites.has(skill.name); fav.setAttribute('aria-pressed', on); fav.textContent = on ? '★' : '☆' }
   }
 
+  function contextBody() {
+    const p = ctxShare(), look = ctxLook(p), th = ctxMark()
+    const R = 100, C = 120
+    const a = (th * 360 - 90) * Math.PI / 180
+    const tick = `<line class="tick" x1="${(C + (R - 13) * Math.cos(a)).toFixed(1)}" y1="${(C + (R - 13) * Math.sin(a)).toFixed(1)}" x2="${(C + (R + 13) * Math.cos(a)).toFixed(1)}" y2="${(C + (R + 13) * Math.sin(a)).toFixed(1)}"/>`
+    const left = ctx.threshold != null && ctx.used != null ? Math.max(0, ctx.threshold - ctx.used) : null
+    const reset = ctx.limit?.resetsAt ? new Date(ctx.limit.resetsAt * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : null
+    const limitText = !ctx.limit ? '–' : `${ctx.limit.status === 'allowed' ? 'im Rahmen' : 'erreicht'}${reset ? ` · neu um ${reset}` : ''}`
+    const limitName = ctx.limit?.rateLimitType === 'five_hour' ? 'Nutzungslimit (5 Std.)' : ctx.limit?.rateLimitType === 'seven_day' ? 'Nutzungslimit (7 Tage)' : 'Nutzungslimit'
+    return `
+      <div class="card ring-card">
+        <div class="ring-wrap">
+          <svg viewBox="0 0 240 240" role="img" aria-label="Kontext ${pct(p)} belegt">
+            <defs><linearGradient id="ctx-grad" x1="0" y1="0" x2="1" y2="1"><stop id="ctx-g1" offset="0" stop-color="${look.a}"/><stop id="ctx-g2" offset="1" stop-color="${look.b}"/></linearGradient></defs>
+            <circle class="trk" cx="${C}" cy="${C}" r="${R}" stroke-width="24"/>
+            <circle class="arc draw" id="ctx-arc" cx="${C}" cy="${C}" r="${R}" stroke-width="24" stroke="url(#ctx-grad)" style="${arcStyle(R, p)}"/>
+            ${tick}
+          </svg>
+          <div class="ring-center"><b id="ctx-num">${pct(p)}</b><span id="ctx-sub">${tokens(ctx.used)} von ${tokens(ctx.max)}</span></div>
+        </div>
+        <div class="legend"><span><i style="background:${look.a}"></i>belegt</span><span><i style="background:var(--fg);opacity:.55"></i>Zusammenfassen bei ${pct(th)}</span></div>
+      </div>
+      ${ctx.error ? `<div class="card"><p class="muted" id="ctx-err">${esc(ctxError())}</p></div>` : ''}
+      <div class="card">
+        <div class="kv"><span>Bis zum Zusammenfassen</span><span id="ctx-left">${left == null ? '–' : `noch ${tokens(left)}`}</span></div>
+        <div class="meter" style="--ca:${look.a};--cb:${look.b}"><i id="ctx-meter" style="width:${p == null ? 0 : Math.min(100, (p / th) * 100).toFixed(1)}%"></i></div>
+        <p class="small">Erreicht der Kontext die Marke, fasst Claude den bisherigen Verlauf zusammen, damit Platz für Neues bleibt. Einzelheiten aus frühen Teilen können dabei verloren gehen.</p>
+      </div>
+      <div class="card">
+        <div class="kv"><span>Kosten dieser Session</span><span id="ctx-cost">${ctx.cost == null ? '–' : `${ctx.cost.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`}</span></div>
+        <div class="kv"><span>${esc(limitName)}</span><span id="ctx-limit">${esc(limitText)}</span></div>
+        <div class="kv"><span>Aktualisiert</span><span id="ctx-at">${ctx.at ? esc(agoSec(ctx.at)) : '–'}</span></div>
+      </div>`
+  }
+
+  function agoSec(at) {
+    const s = Math.max(0, Math.round((Date.now() - at) / 1000))
+    return s < 10 ? 'gerade eben' : s < 60 ? `vor ${s} s` : ago(at)
+  }
+
+  function renderContextSheet(fresh) {
+    const pass = $('pass'), body = $('sheet-body')
+    const p = ctxShare(), look = ctxLook(p)
+    if (fresh) {
+      pass.className = 'pass'
+      pass.style.cssText = colors(SESSION)
+      pass.innerHTML = `${pattern('radar')}<span class="grab"></span>
+        <div class="pass-head"><div class="txt"><small>Cockpit · diese Session</small><h2 id="sheet-title">Kontext</h2></div>
+          <button class="round" data-close aria-label="Schließen">✕</button></div>
+        <span class="pass-status" id="pass-status" style="--dot:${look.a}"><i></i><span>${esc(ctx.error ? 'Nicht abrufbar' : look.word)}</span></span>`
+      body.innerHTML = contextBody()
+      return
+    }
+    // Live update in place, so the ring glides instead of redrawing.
+    const arc = $('ctx-arc')
+    if (!arc || (ctx.error && !$('ctx-err'))) { body.innerHTML = contextBody(); return }
+    arc.classList.remove('draw')
+    arc.setAttribute('style', arcStyle(100, p))
+    $('ctx-g1').setAttribute('stop-color', look.a); $('ctx-g2').setAttribute('stop-color', look.b)
+    $('ctx-num').textContent = pct(p)
+    $('ctx-sub').textContent = `${tokens(ctx.used)} von ${tokens(ctx.max)}`
+    const left = ctx.threshold != null && ctx.used != null ? Math.max(0, ctx.threshold - ctx.used) : null
+    $('ctx-left').textContent = left == null ? '–' : `noch ${tokens(left)}`
+    $('ctx-meter').style.width = `${p == null ? 0 : Math.min(100, (p / ctxMark()) * 100).toFixed(1)}%`
+    $('ctx-at').textContent = ctx.at ? agoSec(ctx.at) : '–'
+    const pill = $('pass-status')
+    if (pill) { pill.style.setProperty('--dot', look.a); pill.querySelector('span').textContent = ctx.error ? 'Nicht abrufbar' : look.word }
+  }
+
+  function renderContext() {
+    const p = ctxShare(), look = ctxLook(p)
+    $('chip-pct').textContent = pct(p)
+    const arc = $('chip-arc')
+    arc.setAttribute('style', `${arcStyle(14, p)};stroke:${look.a}`)
+    $('ctx-chip').setAttribute('aria-label', `Kontext dieser Session: ${pct(p)} belegt, ${look.word}`)
+    const session = document.querySelector('[data-card="session"]')
+    if (session) session.innerHTML = cardHtml(cards[0])
+    if (state.open === 'session') { $('detail').innerHTML = detailHtml(cards[0]); layout() }
+    if (state.sheet?.context) renderContextSheet(false)
+  }
+
   async function renderSheet() {
     const open = state.sheet
     const pass = $('pass'), body = $('sheet-body')
+    if (open.context) { renderContextSheet(true); return }
     if (open.rec) {
       const rec = DATA.recommended.find(r => r.id === open.rec)
       pass.className = 'pass light'
@@ -1005,6 +1168,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     if (t.id === 'scrim' || t.hasAttribute('data-close')) return closeSheet()
     if (t.id === 'done') return openCard(state.open)
     if (t.id === 'clear') { $('q').value = ''; state.query = ''; renderResults(); $('q').focus(); return }
+    if (t.hasAttribute('data-context')) return openSheet({ context: true })
     if (t.dataset.card) return openCard(t.dataset.card)
     if (t.dataset.try) { $('q').value = t.dataset.try; state.query = t.dataset.try; renderResults(); return }
     if (t.dataset.skill) return openSheet({ skill: t.dataset.skill })
@@ -1035,6 +1199,27 @@ summary small { color: var(--fg3); font-size: 13px; }
 
   buildWallet()
   render()
+
+  // --- Live context from the session ------------------------------------------------
+  ;(async () => {
+    const mcp = await use('mcp')
+    if (!mcp) { ctx.error = 'none'; renderContext(); return }
+    mcp.watchTool('Claude Code Remote', 'get_session', { session_id: SESSION_ID }, ev => {
+      if (ev.type === 'error') { ctx.error = ev.error?.code || 'upstream_error'; renderContext(); return }
+      const meta = ev.result?.payload?.ccr?.external_metadata
+      const usage = meta?.context_usage
+      if (!usage || typeof usage.used_tokens !== 'number' || typeof usage.max_tokens !== 'number') { ctx.error = 'no_data'; renderContext(); return }
+      ctx.used = usage.used_tokens
+      ctx.max = usage.max_tokens
+      ctx.threshold = typeof meta.autocompact_state?.threshold === 'number' && meta.autocompact_state.enabled !== false ? meta.autocompact_state.threshold : null
+      ctx.cost = typeof meta.usage?.cost_usd === 'number' ? meta.usage.cost_usd : null
+      ctx.limit = meta.rate_limit_info || null
+      ctx.at = ev.result.cache?.storedAt || Date.now()
+      ctx.error = null
+      renderContext()
+    }, { cache: { staleTime: 20000, gcTime: 600000 }, refetchInterval: 30000 })
+  })()
+  setInterval(() => { if (state.sheet?.context && ctx.at) $('ctx-at').textContent = agoSec(ctx.at) }, 5000)
 
   // --- Live status from the session (written by Claude) ----------------------------
   ;(async () => {

@@ -48,6 +48,23 @@ const PULSE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14" width
 </circle>
 </svg>`
 
+// The context window's fill, colour-coded as the phone's Cockpit page does it.
+function contextLook(share: number): { color: string; theme: 'success' | 'warning' | 'error' } {
+  if (share < 0.5) return { color: '#30D158', theme: 'success' }
+  if (share < 0.72) return { color: '#FFD60A', theme: 'warning' }
+  return { color: '#FF453A', theme: 'error' }
+}
+
+function contextRing(share: number, color: string): string {
+  const r = 7
+  const len = 2 * Math.PI * r
+  const off = (len * (1 - share)).toFixed(2)
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" width="18" height="18">
+<circle cx="9" cy="9" r="${r}" fill="none" stroke="rgba(142,142,147,.35)" stroke-width="3"/>
+<circle cx="9" cy="9" r="${r}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-dasharray="${len.toFixed(2)} ${len.toFixed(2)}" stroke-dashoffset="${off}" transform="rotate(-90 9 9)"/>
+</svg>`
+}
+
 function clip(text: string, room: number): string {
   if (room <= 1) return ''
 
@@ -109,6 +126,14 @@ export const register: Register = on => {
     return name ? drawCard($, ui, e.surface, name, columns) : drawList($, ui, e.surface, columns)
   })
 
+  // A finished turn changed the context window: the band reads it again.
+  on('turn.complete', async ($, e, next) => {
+    const result = await next(e)
+    await bumpTick($).catch(() => undefined)
+
+    return result
+  })
+
   // Every way a skill reaches the model passes here: /name, the Skill tool, a
   // subagent's preload. That is the proof a skill was really used.
   on('skill.prompt', async ($, e, next) => {
@@ -141,9 +166,20 @@ export const register: Register = on => {
     const isRecent = last !== undefined && now - last.at < RECENT_MS
     const count = rows.length > 0 ? `${rows.length}` : ''
     const loaded = active.size > 0 ? ` · ${active.size} geladen` : ''
+    const { context } = await $.session.usage().catch(() => ({ context: undefined }))
+    const share = context
+      ? Math.min(1, (context.percent ?? ((context.tokens ?? 0) / Math.max(1, context.window)) * 100) / 100)
+      : undefined
+    const look = share === undefined ? undefined : contextLook(share)
 
     return (
       <Box flexDirection="row" alignItems="center" gap={1}>
+        {look && share !== undefined && Svg && (
+          <Svg source={contextRing(share, look.color)} alt={`Kontext ${Math.round(share * 100)} Prozent belegt`} width={18} height={18} />
+        )}
+        {look && share !== undefined && (
+          <Text color={look.theme}>{`${Svg ? '' : '◔ '}${Math.round(share * 100)} % Kontext`}</Text>
+        )}
         {isRecent && Svg && <Svg source={PULSE} alt="Gerade wurde ein Skill geladen" width={14} height={14} isInteractive />}
         <Button key="cockpit-skills" plain onPress={() => openPane($)}>
           ✦ Skills <Text dimColor>{`${count}${loaded}`}</Text>
