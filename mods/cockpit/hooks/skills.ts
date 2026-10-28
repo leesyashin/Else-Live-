@@ -375,6 +375,36 @@ export async function askToInstall($: $, id: string): Promise<void> {
   })
 }
 
+// The /cockpit row as text: what a surface shows where it draws no tree of
+// the plugin's, and what the model reads of the run.
+export async function textOverview($: $): Promise<string> {
+  const [rows, used, sum, now] = await Promise.all([
+    read($, skills),
+    read($, uses),
+    read($, summary),
+    $.clock.now(),
+  ])
+  const active = new Set(used.map(use => use.skill))
+  const installed = new Set(rows.map(row => catalogFor(row.name)?.id))
+  const missing = CATALOG.filter(entry => !installed.has(entry.id))
+  const lines = [
+    `**Cockpit · Skills**: ◉ ${active.size} geladen · ● ${rows.length} verfügbar · ○ ${missing.length} empfohlen`,
+  ]
+  const unlisted = sum ? Math.max(0, sum.total - sum.included) : 0
+  if (unlisted > 0) lines.push(`⚠ ${unlisted} Skills passen nicht in Claudes Liste.`)
+  for (const category of CATEGORIES) {
+    const names = rows
+      .filter(row => categorize(row) === category)
+      .map(row => (active.has(row.name) ? `◉ ${shortName(row.name)}` : shortName(row.name)))
+    if (category === 'Design') names.push(...missing.map(entry => `○ ${entry.title}`))
+    if (names.length > 0) lines.push(`**${category}:** ${names.join(', ')}`)
+  }
+  const last = used.at(-1)
+  if (last) lines.push(`Zuletzt geladen: ${shortName(last.skill)} (${ago(now, last.at)})`)
+
+  return lines.join('\n\n')
+}
+
 export function ago(now: number, at: number): string {
   const minutes = Math.floor((now - at) / 60000)
   if (minutes < 1) return 'gerade eben'

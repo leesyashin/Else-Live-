@@ -251,3 +251,29 @@ test('search narrows the list and ignores folded categories', async ($, on) => {
   expect(await ui.find({ key: 's:berater' })).toBeUndefined()
   await ui.unmount()
 })
+
+test('on the phone /cockpit draws the cockpit into its own row', async ($, on) => {
+  const { clock, ran } = world(on)
+  on('session.surfaces', () => ({ value: ['mobile'] }))
+  await $.session.start({ cwd: '/', surface: 'mobile', isInteractive: true })
+  await clock.advance(2000)
+
+  const { text } = await $.command.run({ command: 'cockpit' } as never)
+  expect(text).toContain('**Cockpit · Skills**: ◉ 0 geladen · ● 3 verfügbar')
+  expect(text).toContain('**Design:** frontend-design, ux-copy, ○ apple-design')
+
+  const row = await $.ui.mount({
+    plugin: 'cockpit',
+    component: 'CommandOutput',
+    requestId: 'row',
+    surface: 'mobile',
+    props: { command: 'cockpit', args: '', text: text ?? '', isErrored: false },
+  })
+  expect((await row.find({ key: 's:frontend-design' }))?.text).toContain('frontend-design')
+  await row.press({ key: 's:frontend-design' })
+  // No text field on the phone: the card offers Starten as a button.
+  expect(await row.find({ key: 'task' })).toBeUndefined()
+  await row.press({ key: 'start' })
+  expect(ran).toContainEqual(['frontend-design', ''])
+  await row.unmount()
+})

@@ -1,4 +1,4 @@
-import type { ElementTable, EngineInterface, Register } from 'claude-code'
+import type { ElementTable, EngineInterface, Register, RenderSurface } from 'claude-code'
 
 import type { SkillFile, SkillRow, SkillUse } from '../types'
 import { CATALOG, catalogFor } from './catalog'
@@ -25,6 +25,7 @@ import {
   shortName,
   sourceLabel,
   startSkill,
+  textOverview,
   toggleBody,
   toggleFavorite,
   toggleFold,
@@ -53,9 +54,22 @@ function clip(text: string, room: number): string {
   return text.length > room ? `${text.slice(0, room - 1)}…` : text
 }
 
+// Opens the pane where a surface docks one; the phone places none, so there
+// the cockpit is printed into the conversation as /cockpit's row instead.
 async function openPane($: $): Promise<void> {
-  await $.ui.open({ id: PANE, title: TITLE })
+  const { isPlaced } = await $.ui.open({ id: PANE, title: TITLE })
   await refresh($)
+  if (!isPlaced) await $.command.run({ command: 'cockpit' })
+}
+
+// The surface decides, not the table: an element a surface lacks may still be
+// in it and draw nothing (the phone's text field).
+function inputOf(ui: ElementTable, surface: RenderSurface) {
+  return surface !== 'mobile' && 'Input' in ui ? ui.Input : undefined
+}
+
+function svgOf(ui: ElementTable, surface: RenderSurface) {
+  return surface !== 'terminal' && 'Svg' in ui ? ui.Svg : undefined
 }
 
 function languageOf(path: string): string | undefined {
@@ -77,9 +91,22 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'cockpit' }, async $ => {
-    await openPane($)
+    await $.ui.open({ id: PANE, title: TITLE })
+    await refresh($)
 
-    return { text: 'Cockpit geöffnet.' }
+    return { text: await textOverview($) }
+  })
+
+  // On the phone the cockpit lives in /cockpit's own row: the same list and
+  // cards as the pane, drawn inline. Elsewhere the pane shows them and the
+  // row keeps its text.
+  on('ui.render', { component: 'CommandOutput', props: { command: 'cockpit' } }, async ($, e, next) => {
+    if (e.surface !== 'mobile' || e.props.isErrored) return next(e)
+    const ui = $.ui.resolve(e)
+    const name = await selectedSkill($)
+    const columns = e.viewport?.columns ?? 40
+
+    return name ? drawCard($, ui, e.surface, name, columns) : drawList($, ui, e.surface, columns)
   })
 
   // Every way a skill reaches the model passes here: /name, the Skill tool, a
@@ -100,7 +127,7 @@ export const register: Register = on => {
     if (e.props.hasSurvey) return next(e)
     const ui = $.ui.resolve(e)
     const { Box, Button, Text } = ui
-    const Svg = 'Svg' in ui ? ui.Svg : undefined
+    const Svg = svgOf(ui, e.surface)
     const { rows, used, now } = await bandView($)
     const active = new Set(used.map(use => use.skill))
     const last = used.at(-1)
@@ -128,13 +155,13 @@ export const register: Register = on => {
     const name = await selectedSkill($)
     const columns = e.props.bodyColumns
 
-    return name ? drawCard($, ui, name, columns) : drawList($, ui, columns)
+    return name ? drawCard($, ui, e.surface, name, columns) : drawList($, ui, e.surface, columns)
   })
 }
 
-async function drawList($: $, ui: ElementTable, columns: number) {
+async function drawList($: $, ui: ElementTable, surface: RenderSurface, columns: number) {
   const { Box, Button, Text } = ui
-  const Input = 'Input' in ui ? ui.Input : undefined
+  const Input = inputOf(ui, surface)
   const { rows, used, favs, sum, needle, closed, now } = await listView($)
   const active = new Set(used.map(use => use.skill))
   const term = needle.trim().toLowerCase()
@@ -251,10 +278,10 @@ async function drawList($: $, ui: ElementTable, columns: number) {
   )
 }
 
-async function drawCard($: $, ui: ElementTable, name: string, columns: number) {
+async function drawCard($: $, ui: ElementTable, surface: RenderSurface, name: string, columns: number) {
   const { Box, Button, Code, Link, Markdown, Text } = ui
-  const Input = 'Input' in ui ? ui.Input : undefined
-  const Svg = 'Svg' in ui ? ui.Svg : undefined
+  const Input = inputOf(ui, surface)
+  const Svg = svgOf(ui, surface)
   const { rows, used, favs, card, isBodyOpen, now } = await cardView($)
   const isCatalog = name.startsWith(CATALOG_PREFIX)
   const entry = isCatalog

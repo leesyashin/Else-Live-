@@ -15,6 +15,7 @@ Eine Mod für Claude Code, die zeigt, welche Skills du hast, ob Claude sie sieht
   - Über die Suche findest du Skills nach Name oder Beschreibung.
   - Eine Warnung erscheint, wenn Skills nicht in Claudes Liste passen. Claude wählt sie dann nicht von selbst.
   - Der Zeitstrahl zeigt, welcher Skill wann geladen wurde.
+- **Auf dem Handy:** Die Mobile-App zeigt keine Seitenpanels. Dort zeichnet `/cockpit` dieselbe Liste samt Infokarten direkt in den Chat, mit Starten-Knopf statt Eingabefeld. Auf jeder Oberfläche liefert `/cockpit` außerdem eine Textübersicht.
 - **Infokarte pro Skill:**
   - Herkunft, Platz in Claudes Kontext und Beschreibung.
   - Ein Feld „Aufgabe“ mit **Starten**: Der Skill läuft als `/skill Aufgabe`.
