@@ -663,6 +663,8 @@ test('an order naming another session is left alone, without a claim', async ($,
 
   const note = await read($)
   expect(note).toContain('Thread t-merge („Merge“): gehört NICHT dieser Session. Der Auftrag nennt Session other.')
+  // Not meant for it: one line in its own chat, no explanation.
+  expect(note).toContain('genau einer Zeile, „Cockpit: Auftrag für eine andere Session.“')
   expect(calls.filter(call => call.collection === 'cockpit/jobs/threads').length).toBe(0)
 })
 

@@ -81,13 +81,16 @@ export function verdictNote(verdicts: Verdict[]): string {
   const lines = verdicts.map(v => {
     const head = `- Thread ${v.thread} („${v.kind}“):`
     if (v.mine === 'mine') return `${head} gehört DIESER Session. ${v.why} Bearbeite ihn.`
-    if (v.mine === 'theirs') return `${head} gehört NICHT dieser Session. ${v.why} Nichts tun: nicht antworten, nicht auflösen, nichts schreiben, nichts installieren.`
+    if (v.mine === 'theirs') return `${head} gehört NICHT dieser Session. ${v.why} Nichts tun: nicht antworten, nicht auflösen, nichts schreiben, nichts installieren. Auch dem Nutzer im Chat nichts erklären: Beende den Zug mit genau einer Zeile, ${SILENT}`
     return `${head} ${v.why} Erst selbst beanspruchen wie in den Cockpit-Regeln, dann bearbeiten.`
   })
   const install = verdicts.some(v => v.mine !== 'theirs' && v.kind === 'Skill installieren') ? `\n\n${INSTALL_RULE}` : ''
 
   return `Cockpit-Mod, Zuteilung der Aufträge vom Handy:\n${lines.join('\n')}${install}`
 }
+
+// What a session that is not meant says in its own chat: one line, nothing more.
+export const SILENT = '„Cockpit: Auftrag für eine andere Session.“'
 
 export const INSTALL_RULE = `„Cockpit · Skill installieren“ heißt global, nicht nur für diese Session:
 <name> ist das erste Wort in Zeile 2 des Auftrags, dahinter steht die Quelle.
@@ -101,6 +104,7 @@ export const INSTALL_RULE = `„Cockpit · Skill installieren“ heißt global, 
 // The rules every session with the mod reads, whatever repo it works in.
 export const RULES = `# Cockpit-Aufträge vom Handy
 Kommentare auf der Cockpit-Seite, die mit „Cockpit · “ beginnen, sind Aufträge. Alle Sessions, die die Seite beobachten, werden geweckt; nur eine handelt.
-- Nach dem Lesen des Threads (ArtifactComments read) hängt die Cockpit-Mod eine Zuteilung an. Steht dort „gehört NICHT dieser Session“: nichts tun, auch nicht antworten.
+- Nach dem Lesen des Threads (ArtifactComments read) hängt die Cockpit-Mod eine Zuteilung an. Steht dort „gehört NICHT dieser Session“: nichts tun, auch nicht im Thread antworten.
+- Ist der Auftrag nicht für diese Session, auch im eigenen Chat nichts erklären. Den Zug mit genau einer Zeile beenden: ${SILENT}
 - Ohne Zuteilung (Mod nicht geladen): Steht \`Session: <ID>\` im Auftrag und passt nicht zu $CLAUDE_CODE_SESSION_ID, nichts tun. Sonst zuerst beanspruchen: ArtifactData set auf cockpit/jobs/threads/<Thread-ID> mit { session } und ohne if_version. Wird das abgelehnt, weil es das Dokument schon gibt, nichts tun.
 ${INSTALL_RULE}`

@@ -232,7 +232,7 @@ Die Handy-Seite zeigt:
    5. In `cockpit/skills` unter `installed` `{ id, name, title, author, at, pr }` ergänzen.
    6. Im Thread antworten (mit PR-Nummer) und ihn auflösen.
 4. **Auftrag „Cockpit · Merge“:**
-   0. **Nur die Session des PR merged.** Steht eine Zeile `Session: <ID>` im Auftrag, mit `echo $CLAUDE_CODE_SESSION_ID` vergleichen. Passt sie nicht, nichts tun: nicht antworten, nicht auflösen, nichts schreiben. Den Merge übernimmt die genannte Session. Fehlt die Zeile (ältere Seite), gilt der Ablauf für jede Session.
+   0. **Nur die Session des PR merged.** Steht eine Zeile `Session: <ID>` im Auftrag, mit `echo $CLAUDE_CODE_SESSION_ID` vergleichen. Passt sie nicht, nichts tun: nicht antworten, nicht auflösen, nichts schreiben, und auch im eigenen Chat nichts erklären, nur die eine Zeile „Cockpit: Auftrag für eine andere Session.“. Den Merge übernimmt die genannte Session. Fehlt die Zeile (ältere Seite), gilt der Ablauf für jede Session.
    1. Den PR live prüfen (GitHub-Werkzeuge): offen, Head unverändert, CI grün auf dem aktuellen Commit, keine Konflikte. Die Seite ist nur der Wunsch, nicht der Beweis.
    2. `cockpit/pr` auf `merge: { state: 'running', at }` setzen.
    3. Ist der PR ein Entwurf, ihn freigeben. Dann per Squash mergen und den Branch löschen (`git push origin --delete <branch>`).
@@ -265,6 +265,8 @@ Die Handy-Seite zeigt:
    - Der Mod-Name ist offen.
 
 ### Stolpersteine, schon gelöst
+
+- **Fremde Sessions erklären sich im Chat (28.10.):** Beim Merge von #48 blieben die anderen Sessions richtig still, schrieben dir aber je einen Absatz, warum. Jetzt beenden sie den Zug mit genau einer Zeile: „Cockpit: Auftrag für eine andere Session.“
 
 - **Drei Sessions auf einen Auftrag (28.10.):** Jeder Kommentar weckt alle Sessions, die die Seite beobachten. Lösung: `Session:`-Zeile in jedem Auftrag mit klarer Ziel-Session, sonst Beanspruchen über `cockpit/jobs/threads/<Thread-ID>` (die Mod erledigt das beim Lesen des Threads).
 - **Skill nur lokal installiert:** `~/.claude/skills` gehört dem Container der Session und verschwindet mit ihr. Global heißt `mods/cockpit/skills` plus Link in `.claude/skills` (Claude Code folgt dem Link, getestet).
