@@ -71,7 +71,7 @@ Eine Mod für Claude Code, die zeigt, welche Skills du hast, ob Claude sie sieht
 
 ## Skills, die mit der Mod kommen
 
-- In `skills/` liegen die über das Cockpit installierten Skills, z. B. `apple-design` und `emil-design-eng` von Emil Kowalski (MIT). Sie gelten überall, wo die Mod installiert ist.
+- In `skills/` liegen die über das Cockpit installierten Skills: `apple-design` und `emil-design-eng` von Emil Kowalski (MIT), `frontend-design` von Anthropic (Apache 2.0), `high-end-visual-design` von Leonxlnx (MIT, nur beim Namen aufrufbar). Sie gelten überall, wo die Mod installiert ist.
 - Im Repo Else-Live- zeigen Links in `.claude/skills/` darauf, so hat jede Cloud-Session dort sie ohne Mod.
 
 ## Installation
