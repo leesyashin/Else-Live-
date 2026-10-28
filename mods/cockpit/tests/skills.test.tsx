@@ -726,3 +726,155 @@ test('/seite opens the Cockpit page and leaves its link', async ($, on) => {
     await ui.unmount()
   }
 })
+
+// --- Every current session, by repo -----------------------------------------------------
+
+const NOW_ISO = new Date(1_000_000).toISOString()
+const OLD_ISO = new Date(1_000_000 - 2 * 24 * 60 * 60 * 1000).toISOString()
+const SESSIONS = [
+  { id: 'session_b', title: 'Website', session_status: 'SESSION_STATUS_IDLE', status_bucket: 'SESSION_STATUS_BUCKET_BLOCKED', updated_at: NOW_ISO },
+  { id: 'session_test', title: 'Diese hier', session_status: 'SESSION_STATUS_RUNNING', status_bucket: 'SESSION_STATUS_BUCKET_WORKING', updated_at: NOW_ISO },
+  { id: 'session_a', title: 'Prop review', session_status: 'SESSION_STATUS_IDLE', status_bucket: 'SESSION_STATUS_BUCKET_REVIEW_READY', updated_at: NOW_ISO },
+  { id: 'session_old', title: 'Alt', session_status: 'SESSION_STATUS_IDLE', status_bucket: 'SESSION_STATUS_BUCKET_COMPLETED', updated_at: OLD_ISO },
+  { id: 'session_gone', title: 'Archiviert', session_status: 'SESSION_STATUS_ARCHIVED', status_bucket: 'SESSION_STATUS_BUCKET_COMPLETED', updated_at: NOW_ISO },
+  { id: 'session_none', title: 'Nur Chat', session_status: 'SESSION_STATUS_IDLE', status_bucket: 'SESSION_STATUS_BUCKET_COMPLETED', updated_at: NOW_ISO },
+]
+const SOURCES: Record<string, string | null> = {
+  session_b: 'https://github.com/leesyashin/Else-Live-',
+  session_test: 'https://github.com/leesyashin/Else-Live-',
+  session_a: 'https://github.com/leesyashin/IF-Prop',
+  session_none: null,
+}
+
+function sessionsWorld(on: On) {
+  const asked: string[] = []
+  const { clock, calls } = syncWorld(on, () => ({ result: '', text: 'The document is now at version 1.' }))
+  on('mcp.call', (_, e) => {
+    const id = String(e.args.session_id ?? '')
+    asked.push(`${e.server}:${e.tool}${id ? `:${id}` : ''}`)
+    const source = SOURCES[id]
+    const body =
+      e.tool === 'list_sessions' ? { ccr: { data: SESSIONS, has_more: false } }
+      : { ccr: { id, session_context: { sources: source ? [{ git_repository: { url: source } }] : [] } } }
+    // The connector wraps its JSON in a note of its own.
+    return { value: { content: [{ type: 'text', text: `<other-session>\n${JSON.stringify(body)}\n</other-session>` }], isError: false } }
+  })
+  return { clock, calls, asked }
+}
+
+test('/sessions lists the current sessions under their repo, each one a link', async ($, on) => {
+  const { clock, calls, asked } = sessionsWorld(on)
+  await $.session.start({ cwd: '/', surface: 'mobile', isInteractive: true })
+  await clock.advance(8000)
+
+  expect(asked).toContain('claude-code-remote:list_sessions')
+  // Archived and old sessions are read no further.
+  expect(asked).not.toContain('claude-code-remote:get_session:session_old')
+
+  const text = String(((await $.command.run({ command: 'sessions', args: '' } as never)) as { text?: string }).text)
+  expect(text).not.toContain('Alt')
+  expect(text).not.toContain('Archiviert')
+  // Repos A–Z, then the sessions without one.
+  const order = ['**leesyashin/Else-Live-** · 2', '**leesyashin/IF-Prop** · 1', '**Ohne Repo** · 1'].map(line => text.indexOf(line))
+  expect(order.every(at => at >= 0)).toBe(true)
+  expect([...order].sort((a, b) => a - b)).toEqual(order)
+  expect(text).toContain('[Website](https://claude.ai/code/session_b) · wartet auf dich')
+  expect(text).toContain('[Diese hier](https://claude.ai/code/session_test) · arbeitet · gerade eben · diese Session')
+
+  // The phone's page gets the same list.
+  const doc = calls.find(call => call.doc_id === 'sessions' && call.action === 'set')
+  expect((doc?.data as { rows: unknown[] }).rows.length).toBe(4)
+
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({
+      plugin: 'cockpit', component: 'CommandOutput', requestId: 'sessions', surface,
+      props: { command: 'sessions', args: '', isErrored: false, text: '', bodyColumns: 40, scroll: { offset: 0, bodyRows: 20 }, view: {} },
+    } as never)
+    const hrefs = (await ui.findAll({ type: 'Link' })).map(link => link.props.href)
+    expect(hrefs).toEqual([
+      'https://claude.ai/code/session_b', 'https://claude.ai/code/session_test',
+      'https://claude.ai/code/session_a', 'https://claude.ai/code/session_none',
+    ])
+    await ui.unmount()
+  }
+
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await pane.find({ key: 'k:Sessions' }))?.text).toContain('4 aktuell · 3 Repos')
+  await pane.unmount()
+})
+
+// --- A finished team leaves the page ----------------------------------------------------
+
+function teamWorld(on: On, prState: string, memberState = 'done') {
+  const line = (id: string, data: object, version: number) => JSON.stringify({ id, data, version })
+  const members = ['session_m1', 'session_m2'].map((id, i) =>
+    line(id, { name: `Teil ${i + 1}`, state: memberState, pr: 53 + i, url: `https://claude.ai/code/${id}` }, 3))
+  const { clock, calls } = syncWorld(on, input => {
+    if (input.action === 'get' && input.doc_id === 'team') {
+      return { result: '', text: `=== BEGIN ARTIFACT DB x ===\n${line('team', { goal: 'Smooth', state: 'done', startedAt: 7 }, 2)}\n=== END ARTIFACT DB x ===` }
+    }
+    if (input.action === 'list') return { result: '', text: `=== BEGIN ARTIFACT DB x ===\n${members.join('\n')}\n=== END ARTIFACT DB x ===` }
+    if (input.action === 'set' && input.collection === 'cockpit/jobs/threads') return { result: '', text: 'Database set committed.' }
+    return { result: '', text: 'Database set committed. The document is now at version 1.' }
+  })
+  const archived: string[] = []
+  on('mcp.call', (_, e) => {
+    const text = (body: unknown) => ({ value: { content: [{ type: 'text', text: JSON.stringify(body) }], isError: false } })
+    if (e.tool === 'pull_request_read') return text({ number: e.args.pullNumber, state: prState, merged: false })
+    if (e.tool === 'archive_session') {
+      archived.push(String(e.args.session_id))
+      return text({ ok: true })
+    }
+    if (e.tool === 'get_session') return text({ ccr: { id: e.args.session_id, session_context: { sources: [{ git_repository: { url: 'https://github.com/leesyashin/Else-Live-' } }] } } })
+    return text({ ccr: { data: [] } })
+  })
+  return { clock, calls, archived }
+}
+
+test('a team that is done and merged is archived and its cards cleared', async ($, on) => {
+  const { clock, calls, archived } = teamWorld(on, 'closed')
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(8000)
+
+  expect(archived).toEqual(['session_m1', 'session_m2'])
+  const batch = calls.find(call => call.action === 'batch') as { writes: Record<string, unknown>[] } | undefined
+  expect(batch?.writes).toEqual([
+    { op: 'delete', collection: 'cockpit/team/members', doc_id: 'session_m1', if_version: 3 },
+    { op: 'delete', collection: 'cockpit/team/members', doc_id: 'session_m2', if_version: 3 },
+    expect.objectContaining({ op: 'update', doc_id: 'team', if_version: 2, data: expect.objectContaining({ state: 'archived' }) }),
+  ])
+})
+
+test('a team with a PR still open stays', async ($, on) => {
+  const { clock, archived, calls } = teamWorld(on, 'open')
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(8000)
+  expect(archived).toEqual([])
+  expect(calls.some(call => call.action === 'batch')).toBe(false)
+})
+
+test('a team chat still at work keeps the team', async ($, on) => {
+  const { clock, archived } = teamWorld(on, 'closed', 'working')
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(8000)
+  expect(archived).toEqual([])
+})
+
+test('an order to archive from the page is carried out by the mod, never on itself', async ($, on) => {
+  const { clock, read } = commentsWorld(on, thread('t-arch', ['Cockpit · Archivieren', 'session_m1', 'session_test', 'kein-id']))
+  const archived: string[] = []
+  on('mcp.call', (_, e) => {
+    if (e.tool === 'archive_session') archived.push(String(e.args.session_id))
+    return { value: { content: [{ type: 'text', text: '{"ccr":{"data":[]}}' }], isError: false } }
+  })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(2000)
+
+  const note = await read($)
+  expect(archived).toEqual(['session_m1'])
+  expect(note).toContain('Thread t-arch („Archivieren“): gehört DIESER Session.')
+  expect(note).toContain('Die Mod hat die Sessions schon archiviert (1 archiviert · diese Session selbst nicht (sie läuft gerade))')
+  // Read again: nothing is archived twice.
+  await read($)
+  expect(archived).toEqual(['session_m1'])
+})

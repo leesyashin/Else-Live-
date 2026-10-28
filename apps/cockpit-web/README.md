@@ -4,7 +4,7 @@ Die Mod in `mods/cockpit` zeichnet nur dort, wo eine Oberfläche Mods darstellt:
 
 Was die Seite zeigt:
 - oben eine Suche („Was willst du tun?“) mit Vorschlägen und Schnellbegriffen
-- darunter ein Kartenstapel wie in Apple Wallet: Diese Session, Merge, Setup, Team und Skills
+- darunter ein Kartenstapel wie in Apple Wallet: Diese Session, Merge, Setup, Team, Sessions und Skills
 - die Karte **Skills** öffnet einen zweiten Stapel mit den sechs Bereichen und Empfohlen; „Zurück“ oder ein Tipp auf die Skills-Karte führt zum Hauptstapel
 - eine geöffnete Karte zeigt ihre Skills als Karten
 - **gedrückt halten** lädt einen Skill, **tippen** öffnet ihn als Pass mit SKILL.md und Referenzdateien
@@ -15,6 +15,8 @@ Was die Seite zeigt:
 - **Setup-Karte:** Ist das Repo bereit? Grüne, gelbe und rote Punkte für Connectors, Skills und Branch, geprüft gegen das Memory des Repos. Die Daten schreibt die Cockpit-Mod beim Start der Session.
 
 - **Team-Karte:** die Chats, auf die Claude eine größere Aufgabe verteilt hat, als Avatare mit Status. „Aufgabe verteilen“ schickt `Cockpit · Team`. Hat ein Chat eine Frage oder einen Konflikt, erscheint oben ein Hinweis mit „Antworten“.
+
+- **Sessions-Karte:** alle aktuellen Sessions (letzte 24 h, ohne archivierte), nach Repo gruppiert, mit Status. Tippen öffnet die Session. Der Knopf rechts archiviert sie (zweimal tippen), ebenso „Team archivieren“ in der Team-Karte und „Chat archivieren“ im Blatt eines Team-Chats. Gesendet wird `Cockpit · Archivieren` mit den Session-IDs. Die Liste schreibt die Cockpit-Mod jeder Session (Dokument `cockpit/sessions`).
 
 Jeder Auftrag nennt die Session, für die er gedacht ist (`Session: <ID>`, die Session, die zuletzt `cockpit/context` geschrieben hat). Nur „Skill installieren“ geht ohne Namen raus: Dort übernimmt die erste Session, die `cockpit/jobs/threads/<Thread-ID>` anlegt. Installiert wird immer global (`mods/cockpit/skills`), nie nur in einer Session.
 
@@ -39,8 +41,9 @@ Daten, die Claude in die Datenbank der Seite schreibt (Sammlung `cockpit`):
 | `skills` | `{ installed: [{ id, name, title, author, at, pr }] }`: über das Cockpit installierte Skills. Sie verlassen „Empfohlen“ sofort und stehen unter Design. |
 | `jobs/threads/<Thread-ID>` | `{ session, kind, at }`: welche Session einen Auftrag übernommen hat. Nur die erste legt das Dokument an. |
 | `setup` | schreibt die Mod: `{ repo, branch, memory, checks: [{ group: Memory\|Connectors\|Skills\|Branch, name, state: ok\|warn\|fail, detail }], at }` |
-| `team` | schreibt der Lead-Chat: `{ goal, lead, startedAt, state }` |
+| `team` | schreibt der Lead-Chat: `{ goal, lead, startedAt, state, pr? }`; die Mod setzt nach dem Aufräumen `state: archived`, `archivedAt`, `archived` (die archivierten Session-IDs) |
 | `team/members/<Session-ID>` | schreibt jeder Team-Chat selbst: `{ name, task, state: working\|waiting\|question\|conflict\|done\|failed, note, question, branch, pr, url, updatedAt }` |
+| `sessions` | schreibt die Mod: `{ rows: [{ id, title, repo, state: working\|blocked\|review\|failed\|done\|idle, note, updatedAt, url, isSelf }], at, error }`, nur aktuelle Sessions |
 | `pr` | `{ repo, number, title, url, head, base, draft, state: open\|merged\|closed, ci: success\|failure\|pending\|none, checks: [{ name, state }], mergeable: true\|false\|null, files, additions, deletions, updatedAt, session, sessionUrl?, archivedAt?, merge?: { state: running\|done\|failed, at, sha, branchDeleted, message } }` |
 
 `mergeable: null` heißt „GitHub prüft noch“ und sperrt den Knopf ebenso wie Konflikte.

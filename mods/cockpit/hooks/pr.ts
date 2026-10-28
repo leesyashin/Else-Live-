@@ -46,7 +46,7 @@ export function repoSlug(remote: string | null | undefined): { owner: string; na
   return match?.[1] && match[2] ? { owner: match[1], name: match[2] } : null
 }
 
-async function github($: $, tool: string, args: Record<string, unknown>): Promise<unknown> {
+export async function github($: $, tool: string, args: Record<string, unknown>): Promise<unknown> {
   const result = await $.mcp.call(GITHUB, tool, args)
   const text = result.content.find(block => block.type === 'text')?.text
   if (result.isError || !text) throw new Error(text ?? `${tool} failed`)

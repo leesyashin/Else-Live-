@@ -58,6 +58,21 @@ Eine Mod für Claude Code, die zeigt, welche Skills du hast, ob Claude sie sieht
 - **Der PR des Branches** geht ins Dokument `cockpit/pr`, mit CI, Checks, Konflikten und Dateien. Das passiert beim Start, kurz nach jedem `git push` oder jeder PR-Änderung und nach Zügen höchstens alle 90 s. Geschrieben wird nur, wenn sich etwas geändert hat.
 - Das Werkzeug `sync_pr` löst den PR-Abgleich sofort aus.
 
+## Sessions
+
+- Die Mod kennt jede Session deines Kontos und öffnet sie mit einem Tipp. Sie liest sie über den Connector „Claude Code Remote“ (`list_sessions`, dazu einmal `get_session` pro Session für das Repo).
+- **Nur die aktuellen:** nicht archiviert und in den letzten 24 Stunden aktiv; was gerade arbeitet, immer.
+- **Nach Repo sortiert:** Repos von A bis Z, Sessions ohne Repo zuletzt, innerhalb eines Repos die neueste zuerst. Status: arbeitet, wartet auf dich, zum Ansehen, Fehler, fertig.
+- **Wo:** im Panel als Abschnitt „Sessions“, in der Leiste als `⧉ n Sessions`, als `/sessions` (auch auf dem Handy, mit Links) und für Claude als Werkzeug `list_sessions`.
+- Die Liste wird beim Start und alle 3 Minuten neu gelesen und, wenn sie sich geändert hat, ins Dokument `cockpit/sessions` der Cockpit-Seite geschrieben. Dort erscheint sie als Wallet-Karte „Sessions“.
+
+## Fertige Teams räumen sich auf
+
+- Sind alle Team-Chats fertig und ist kein Team-PR mehr offen (gemergt oder in den PR des Leads übernommen), archiviert die Mod die Team-Chats und löscht ihre Karten auf der Seite. Steht im Dokument `cockpit/team` ein `pr`, muss der gemergt sein.
+- Nur eine Session räumt auf: die erste, die `cockpit/jobs/threads/team-<startedAt>` anlegt. Ihren eigenen Chat archiviert sie nie.
+- Die Team-Karte bleibt und zeigt „Kein Team“ mit dem letzten Ziel. Die archivierten Chats verschwinden aus der Sessions-Liste.
+- **Von Hand auf der Seite:** Archiv-Knopf rechts an jeder Session, „Team archivieren“ in der Team-Karte und „Chat archivieren“ im Blatt eines Team-Chats, jeweils mit zweitem Tipp zum Bestätigen. Die Seite schickt `Cockpit · Archivieren` mit den Session-IDs; die Mod der Session, die den Auftrag zuerst beansprucht, archiviert sie selbst und räumt die Team-Karten auf.
+
 ## Zur Cockpit-Seite
 
 - `/seite` öffnet die Cockpit-Seite und zeigt ihren Link als Knopf, in jeder Session, auch auf dem Handy.
