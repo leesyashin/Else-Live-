@@ -38,6 +38,20 @@ Eine Mod für Claude Code, die zeigt, welche Skills du hast, ob Claude sie sieht
 - Wird das Schreiben verweigert, hört die Mod für diese Session damit auf, statt immer wieder zu fragen.
 - Claude kann den Abgleich mit dem Werkzeug `sync_context` sofort auslösen.
 
+## Phase 4: Memory und Setup-Check
+
+- In `memory/<repo>.md` steht pro Repo, was es braucht: Connectors (Pflicht und optional), Skills, Ziel-Branch und Muster der Arbeits-Branches. Dazu eine Checkliste und die letzten Merges. Das Format steht in `memory/README.md`.
+- Beim Start der Session prüft die Mod:
+  - ob die Connectors verbunden sind
+  - ob die Skills da sind
+  - ob die Session auf dem richtigen Branch arbeitet
+- Nach Zügen prüft sie höchstens einmal pro Minute erneut.
+- **Leiste:** drei Punkte für Connectors, Skills und Branch, grün, gelb oder rot.
+- **Panel:** Abschnitt „Setup“ mit jeder Prüfung und den offenen Punkten der Checkliste.
+- **Als Text:** `/cockpit setup`.
+- **Für Claude:** das Werkzeug `check_setup`.
+- **Handy-Seite:** Das Ergebnis geht ins Dokument `cockpit/setup` und erscheint dort als Wallet-Karte „Setup“.
+
 ## Installation
 
 In einer Terminal-Session:

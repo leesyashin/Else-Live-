@@ -37,6 +37,26 @@ export type SkillDetail = {
   openText?: string
 }
 
+// One line of the setup check: is what this repo needs here?
+export type SetupCheck = {
+  group: 'Memory' | 'Connectors' | 'Skills' | 'Branch'
+  name: string
+  state: 'ok' | 'warn' | 'fail'
+  detail: string
+}
+
+// The setup check for the session's repo, as the band, the pane and the
+// phone's Cockpit page show it.
+export type SetupReport = {
+  repo: string | null
+  branch: string | null
+  memory: string | null
+  checks: SetupCheck[]
+  checklist: { text: string; done: boolean }[]
+  merges: string[]
+  at: number
+}
+
 declare module 'claude-code' {
   interface PluginState {
     cockpit: {
@@ -51,6 +71,7 @@ declare module 'claude-code' {
       showBody: boolean
       query: string
       tick: number
+      setup: Shaped<SetupReport | null>
     }
   }
 }

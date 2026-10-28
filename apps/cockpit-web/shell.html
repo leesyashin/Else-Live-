@@ -293,6 +293,22 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 @keyframes drawIn { to { stroke-dashoffset: 0; } }
 @keyframes spark { 0% { opacity: 0; transform: rotate(var(--a)) translateY(-34px) scale(0.4); } 30% { opacity: 1; } 100% { opacity: 0; transform: rotate(var(--a)) translateY(-58px) scale(1); } }
 
+/* Setup: what this repo needs, green and red dots */
+.dots { display: inline-flex; gap: 5px; align-items: center; }
+.dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--dot); box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.18); }
+.wbig { font: 700 28px/1.05 var(--display); letter-spacing: -0.01em; }
+.sgroup { display: flex; flex-direction: column; gap: 8px; }
+.sgroup + .sgroup { border-top: 0.5px solid var(--sep); padding-top: 12px; }
+.sgroup > small { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg2); }
+.sline { display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 3px 10px; align-items: baseline; }
+.sline i { width: 9px; height: 9px; border-radius: 50%; background: var(--dot); transform: translateY(-1px); }
+.sline b { font-weight: 600; font-size: 16px; overflow-wrap: anywhere; }
+.sline span { grid-column: 2; font-size: 14px; color: var(--fg2); }
+.todo { display: flex; gap: 10px; font-size: 15px; align-items: baseline; }
+.todo i { flex: none; font-style: normal; color: var(--fg3); }
+.todo.done { color: var(--fg2); }
+.todo.done i { color: var(--loaded); }
+
 .pill { min-height: 34px; padding: 0 14px; border-radius: 17px; background: var(--fill); color: var(--accent); font-weight: 600; font-size: 15px; text-transform: none; letter-spacing: 0; transition: transform 0.2s var(--spring); }
 .pill:active { transform: scale(0.94); }
 
@@ -490,6 +506,9 @@ summary small { color: var(--fg3); font-size: 13px; }
   const TICKET = { c1: '#fbfbfd', c2: '#e2e2e8', g: 'rgba(196, 212, 255, 0.7)', pat: 'guilloche' }
   const MERGE = { c1: '#2e2a3a', c2: '#100d18', g: 'rgba(163, 92, 247, 0.42)', pat: 'branches' }
   const MERGE_HOLD_MS = 1200
+  const SETUP = { c1: '#1d3b30', c2: '#0a1712', g: 'rgba(48, 209, 88, 0.34)', pat: 'pins' }
+  const SETUP_ICON = '<path d="M4 7h10M4 12h7M4 17h10"/><path d="M15.5 11.5l2 2 3.5-4"/>'
+  const STATE_DOT = { ok: '#30d158', warn: '#ffd60a', fail: '#ff453a' }
   const MERGE_ICON = '<circle cx="6" cy="5" r="2.2"/><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="12" r="2.2"/><path d="M6 7.2v9.6M6 7.2c0 4 3.5 4.8 9.8 4.8"/>'
   const ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
   const REC_ICON = '<path d="M12 4v16M4 12h16"/>'
@@ -546,6 +565,15 @@ summary small { color: var(--fg3); font-size: 13px; }
       for (let i = 0; i < 9; i++) {
         const x = 120 + i * 30, y = 36 + i * 9
         body += `<path d="M${x - 140} ${y} C ${x - 40} ${y}, ${x} 196, ${x + 70} 196"/>`
+      }
+      fade = 'fade-r'
+    } else if (kind === 'pins') {
+      // Rows of status pins, a few lit green.
+      for (let y = 22; y < 250; y += 22) {
+        for (let x = 150; x < 410; x += 22) {
+          const lit = (x * 7 + y * 3) % 5 === 0
+          body += `<circle cx="${x}" cy="${y}" r="${lit ? 3.2 : 2.2}" fill="${lit ? 'rgba(48, 209, 88, 0.55)' : 'rgba(255, 255, 255, 0.16)'}" stroke="none"/>`
+        }
       }
       fade = 'fade-r'
     } else if (kind === 'guilloche') {
@@ -636,6 +664,27 @@ summary small { color: var(--fg3); font-size: 13px; }
   }
   const ciWord = d => ({ success: 'Alle Checks grün', failure: 'Rot', pending: 'Läuft', none: 'Keine Checks eingerichtet' })[d.ci]
   const shortSha = sha => (sha ? sha.slice(0, 7) : '')
+
+  // --- Setup: the Cockpit mod checks the repo against its memory file and writes cockpit/setup ---
+  const setup = { data: null, error: null }
+  const GROUPS = ['Memory', 'Connectors', 'Skills', 'Branch']
+  function cleanSetup(d) {
+    if (!d || !Array.isArray(d.checks)) return null
+    const str = v => (typeof v === 'string' ? v : '')
+    return {
+      repo: str(d.repo) || null, branch: str(d.branch) || null, memory: str(d.memory) || null,
+      checks: d.checks.filter(c => c && GROUPS.includes(c.group) && ['ok', 'warn', 'fail'].includes(c.state))
+        .map(c => ({ group: c.group, name: str(c.name), state: c.state, detail: str(c.detail) })).slice(0, 40),
+      checklist: Array.isArray(d.checklist) ? d.checklist.filter(i => i && typeof i.text === 'string').map(i => ({ text: i.text, done: i.done === true })).slice(0, 30) : [],
+      merges: Array.isArray(d.merges) ? d.merges.filter(m => typeof m === 'string').slice(0, 5) : [],
+      at: typeof d.at === 'number' ? d.at : 0,
+    }
+  }
+  const RANK = { ok: 0, warn: 1, fail: 2 }
+  function groupState(d, group) {
+    const mine = d.checks.filter(c => c.group === group)
+    return mine.length ? mine.reduce((a, b) => (RANK[b.state] > RANK[a.state] ? b : a)).state : null
+  }
 
   const store = {
     get(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v) } catch { return fallback } },
@@ -730,6 +779,7 @@ summary small { color: var(--fg3); font-size: 13px; }
   const cards = [
     { id: 'session', kind: 'session', title: 'Diese Session' },
     { id: 'merge', kind: 'merge', title: 'Merge' },
+    { id: 'setup', kind: 'setup', title: 'Setup' },
     ...CATS.map(c => ({ id: c.id, kind: 'cat', title: c.id })),
     { id: 'rec', kind: 'rec', title: 'Empfohlen' },
   ]
@@ -757,6 +807,24 @@ summary small { color: var(--fg3); font-size: 13px; }
           <div class="wcount"><small>Dateien</small><b>${d.files ?? '–'}</b></div></div>
         <div class="wbottom"><div style="min-width:0"><small class="mstat" style="--dot:${st.dot}"><i></i>${esc(st.short)}</small><p>${esc(d.title)}</p></div>
           <span class="glyph">${glyph}</span></div>`
+    }
+    if (card.kind === 'setup') {
+      const d = setup.data
+      if (!d) {
+        return `${pattern('pins')}<div class="wtop"><div><small>Setup</small><b>Noch nicht geprüft</b></div></div>
+          <div class="wbottom"><div><small>Wartet</small><p>Die Cockpit-Mod prüft das Repo beim Start der Session.</p></div>
+            <span class="glyph">${svg(SETUP_ICON)}</span></div>`
+      }
+      const good = d.checks.filter(c => c.state === 'ok').length
+      const worst = d.checks.reduce((w, c) => (RANK[c.state] > RANK[w] ? c.state : w), 'ok')
+      const dots = ['Connectors', 'Skills', 'Branch'].map(g => groupState(d, g)).filter(Boolean)
+        .map(st => `<i style="--dot:${STATE_DOT[st]}"></i>`).join('')
+      return `${pattern('pins')}<div class="wtop"><div style="min-width:0"><small>Setup · ${esc(d.repo || 'kein Repo')}</small>
+            <div class="wbig">${worst === 'ok' ? 'Alles bereit' : `${good} von ${d.checks.length}`}</div></div>
+          <div class="wcount"><small>Stand</small><span class="dots">${dots}</span></div></div>
+        <div class="wbottom"><div style="min-width:0"><small>${esc(d.branch && d.branch !== 'HEAD' ? d.branch : 'kein Branch')}</small>
+            <p>${esc(worst === 'ok' ? 'Connectors, Skills und Branch passen.' : d.checks.filter(c => c.state !== 'ok').map(c => c.name).join(' · '))}</p></div>
+          <span class="glyph">${worst === 'ok' ? CHECK : svg(SETUP_ICON)}</span></div>`
     }
     if (card.kind === 'rec') {
       return `${pattern('guilloche')}<span class="notch l"></span><span class="notch r"></span><span class="perf"></span>
@@ -792,6 +860,7 @@ summary small { color: var(--fg3); font-size: 13px; }
       return `${ctxRow}${TIP('Tippen öffnet den Skill')}${group('Zuletzt geladen', items.length, rows)}`
     }
     if (card.kind === 'merge') return mergeDetail()
+    if (card.kind === 'setup') return setupDetail()
     if (card.kind === 'rec') {
       return `${TIP('Halten: Claude installiert · Tippen: Details')}${group('Für deinen Stil', recommended.length, recommended.map(recRow).join(''))}`
     }
@@ -858,10 +927,26 @@ summary small { color: var(--fg3); font-size: 13px; }
       ${actions(d)}`
   }
 
+  function setupDetail() {
+    const d = setup.data
+    const recheck = `<div class="links-row"><button class="text-btn" data-setup-refresh>Neu prüfen lassen</button></div>`
+    if (!d) return `<p class="empty">${esc(setup.error ? 'Die Daten der Seite sind gerade nicht lesbar.' : 'Noch kein Ergebnis. Die Cockpit-Mod prüft beim Start der Session, ob Connectors, Skills und Branch passen.')}</p>${recheck}`
+    const LABEL = { Memory: 'Memory', Connectors: 'Connectors', Skills: 'Skills', Branch: 'Branch' }
+    const groups = GROUPS.map(g => {
+      const mine = d.checks.filter(c => c.group === g)
+      if (!mine.length) return ''
+      return `<div class="sgroup"><small>${LABEL[g]}</small>${mine.map(c => `<div class="sline" style="--dot:${STATE_DOT[c.state]}"><i></i><b>${esc(c.name)}</b><span>${esc(c.detail)}</span></div>`).join('')}</div>`
+    }).join('')
+    const todo = d.checklist.length ? `<div class="preview"><h3>Checkliste</h3>${d.checklist.map(i => `<div class="todo${i.done ? ' done' : ''}"><i>${i.done ? '✓' : '○'}</i><span>${esc(i.text)}</span></div>`).join('')}</div>` : ''
+    const merges = d.merges.length ? `<div class="preview"><h3>Letzte Merges</h3>${d.merges.map(m => `<div class="todo"><i>·</i><span>${esc(m)}</span></div>`).join('')}</div>` : ''
+    return `${TIP(`${d.repo || 'Kein Repo'} · geprüft ${d.at ? ago(d.at) : '–'}`)}
+      <div class="preview">${groups}</div>${todo}${merges}${recheck}`
+  }
+
   function buildWallet() {
     const wallet = $('wallet')
     wallet.innerHTML = cards.map((card, i) => {
-      const look = card.kind === 'session' ? SESSION : card.kind === 'merge' ? MERGE : card.kind === 'rec' ? TICKET : CAT[card.id]
+      const look = card.kind === 'session' ? SESSION : card.kind === 'merge' ? MERGE : card.kind === 'setup' ? SETUP : card.kind === 'rec' ? TICKET : CAT[card.id]
       return `<button class="wcard${card.kind === 'rec' ? ' ticket' : ''}" data-card="${card.id}" style="${colors(look)};z-index:${i + 1}" aria-expanded="false"></button>`
     }).join('') + '<div class="detail" id="detail"></div>'
     refreshCards()
@@ -1398,6 +1483,11 @@ summary small { color: var(--fg3); font-size: 13px; }
     if (sent) island('Angefragt', 'Claude trägt den aktuellen Stand ein')
   }
 
+  async function refreshSetup(el) {
+    const sent = await sendToClaude(`Cockpit · Setup prüfen\n${setup.data?.repo || ctx.repo || ''}`.trim(), el)
+    if (sent) island('Angefragt', 'Die Mod prüft das Setup neu')
+  }
+
   async function copyCommand(name, task) {
     const text = `/${name}${task ? ' ' + task : ''}`
     try { await navigator.clipboard.writeText(text); island('Befehl kopiert', 'Im Chat einfügen und senden') }
@@ -1478,6 +1568,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     }
     if (t.dataset.copy) return copyCommand(t.dataset.copy, '')
     if (t.hasAttribute('data-pr-refresh')) return refreshPr(t)
+    if (t.hasAttribute('data-setup-refresh')) return refreshSetup(t)
     if (t.dataset.hold?.startsWith('merge:')) return island('Gedrückt halten', 'Erst nach 1,2 s Halten wird gemergt', 'warn')
     if (t.dataset.start) {
       t.disabled = true
@@ -1549,6 +1640,11 @@ summary small { color: var(--fg3); font-size: 13px; }
       }
       render()
     }, () => { pr.error = 'no_data'; render() })
+    db.doc('cockpit/setup').onSnapshot(snap => {
+      setup.data = snap.exists ? cleanSetup(snap.data()) : null
+      setup.error = null
+      render()
+    }, () => { setup.error = 'no_data'; render() })
     db.doc('cockpit/status').onSnapshot(snap => {
       const data = snap.exists ? snap.data() : null
       const loaded = Array.isArray(data?.loaded) ? data.loaded.filter(u => u && typeof u.skill === 'string' && typeof u.at === 'number') : []

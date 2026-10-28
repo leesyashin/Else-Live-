@@ -11,6 +11,8 @@ Was die Seite zeigt:
 
 - **Merge-Karte** direkt unter der Session: der offene PR des Branches mit Ziel-Branch groß, CI-Status, Konflikten und Dateien. Der Knopf ist gesperrt, solange CI rot ist oder läuft und solange es Konflikte gibt. **1,2 s gedrückt halten** schickt `Cockpit · Merge` an Claude. Claude prüft noch einmal, merged per Squash, löscht den Branch und trägt das Ergebnis ein. Dann zeichnet die Karte ein Häkchen.
 
+- **Setup-Karte:** Ist das Repo bereit? Grüne, gelbe und rote Punkte für Connectors, Skills und Branch, dazu die Checkliste und die letzten Merges aus dem Memory des Repos. Die Daten schreibt die Cockpit-Mod beim Start der Session.
+
 Wie „Starten“ funktioniert:
 1. Die Seite schickt den Auftrag per „Send to Claude“ als Kommentar an die Session.
 2. Claude startet den Skill und antwortet im Kommentar.
@@ -22,6 +24,7 @@ Daten, die Claude in die Datenbank der Seite schreibt (Sammlung `cockpit`):
 | --- | --- |
 | `status` | `{ loaded: [{ skill, at }], session, updatedAt }` |
 | `context` | schreibt die Mod, siehe oben |
+| `setup` | schreibt die Mod: `{ repo, branch, memory, checks: [{ group: Memory\|Connectors\|Skills\|Branch, name, state: ok\|warn\|fail, detail }], checklist: [{ text, done }], merges: [string], at }` |
 | `pr` | `{ repo, number, title, url, head, base, draft, state: open\|merged\|closed, ci: success\|failure\|pending\|none, checks: [{ name, state }], mergeable: true\|false\|null, files, additions, deletions, updatedAt, merge?: { state: running\|done\|failed, at, sha, branchDeleted, message } }` |
 
 `mergeable: null` heißt „GitHub prüft noch“ und sperrt den Knopf ebenso wie Konflikte.

@@ -89,7 +89,25 @@ Ursprünglicher Plan:
   1. Der erste Druck macht den Knopf scharf, ein Ring läuft 2 s.
   2. Ein zweiter Druck innerhalb dieser Zeit merged. Ohne zweiten Druck fällt der Knopf zurück.
 
-### Phase 4: Memory & Setup-Check
+### Phase 4: Memory & Setup-Check (umgesetzt)
+
+- **Memory:** eine Datei pro Repo in `mods/cockpit/memory/<repo>.md`, Format in `mods/cockpit/memory/README.md`. Kopf mit `base`, `branch`, `connectors`, `optional` und `skills`, dazu eine Checkliste und die letzten Merges. Die Dateien liegen in der Mod, damit sie mit jeder Installation in jedem Repo ankommen.
+- **Mod prüft selbst:**
+  - Beim Session-Start nach 4 s, dann nach Zügen höchstens einmal pro Minute.
+  - Connectors: an den MCP-Werkzeugnamen der Session (`mcp__<server>__…`) erkannt.
+  - Skills: aus der Skill-Liste der Session.
+  - Branch: per `git rev-parse`. Arbeiten auf `base` ist rot, ein losgelöster Stand gelb.
+  - Ein fehlender Pflicht-Connector oder Skill ist rot, ein optionaler gelb.
+- **Anzeige:**
+  - Leiste: drei Punkte (Connectors, Skills, Branch) und „Setup“.
+  - Panel: Abschnitt „Setup“ mit jeder Prüfung und den offenen Punkten der Checkliste.
+  - Als Text: `/cockpit setup`.
+  - Werkzeug `check_setup` für Claude.
+- **Handy-Seite:** Wallet-Karte „Setup“ mit „n von m“ oder „Alles bereit“ und den drei Punkten. Geöffnet zeigt sie jede Prüfung, die Checkliste und die letzten Merges. Die Mod schreibt `cockpit/setup`, aber nur bei Änderungen.
+- **Memory nach dem Merge:** Claude trägt jeden Merge vom Handy unter `## Merges` ein (siehe Ablauf „Cockpit · Merge“).
+- **Noch offen:** Aus einem anderen Repo heraus braucht der Merge-Eintrag Schreibzugriff auf Else-Live-. Bis dahin trägt ihn die nächste Session in Else-Live- nach.
+
+Ursprünglicher Plan:
 
 - Memory-Dateien liegen in Else-Live- und enthalten pro Repo:
   - eine Setup-Checkliste
@@ -127,11 +145,11 @@ Ursprünglicher Plan:
 
 ## Offene Punkte / Risiken
 
-- **Memory zurückschreiben:** Eine Session in einem anderen Repo braucht Schreibzugriff auf Else-Live-. Ob das ohne Rückfrage geht, wird in Phase 4 geprüft.
+- **Memory zurückschreiben:** Eine Session in einem anderen Repo braucht Schreibzugriff auf Else-Live- (per `add_repo` mit `push`). Lesen klappt ohne, weil die Memory-Dateien mit der Mod kommen.
 - **Chats untereinander:** Cloud-Sessions brauchen evtl. einmal deine Freigabe, bevor sie andere Sessions erreichen dürfen.
 - **Mod-Name:** offen.
 
-## Übergabe: Stand und nächste Schritte (28.10.2026, nach Phase 3)
+## Übergabe: Stand und nächste Schritte (28.10.2026, nach Phase 4)
 
 Für die nächste Session: Hier steht, was es gibt, wie es zusammenspielt und wie es weitergeht.
 
@@ -158,10 +176,12 @@ Die Handy-Seite zeigt:
   - `Cockpit · Skill installieren` + neue Zeile + `<Titel> von <Autor>: <Befehl>`
   - `Cockpit · Merge` + neue Zeile + `<owner/repo> #<Nummer>: <head> → <base>`
   - `Cockpit · PR prüfen` + neue Zeile + `<owner/repo>`
+  - `Cockpit · Setup prüfen` + neue Zeile + `<repo>`
 - **Claude → Seite:** über die Datenbank der Seite (Werkzeug `ArtifactData`):
   - `cockpit/status` mit `{ loaded: [{ skill, at }], session, updatedAt }`. Schreibt derzeit Claude von Hand, nachdem ein Skill geladen wurde.
   - `cockpit/pr` mit dem offenen PR des Branches, Felder siehe `apps/cockpit-web/README.md`. Schreibt Claude nach jedem Push, PR-Ereignis und Merge.
-  - `cockpit/context` mit `{ sessionId, repo, used, max, threshold, costUsd, limits[], at }`. Schreibt die Mod automatisch nach jedem Schritt (Hook `turn.complete`, Einstellung `cockpitUrl`). Das Werkzeug `mcp__cockpit__sync_context` löst es sofort aus.
+  - `cockpit/context` mit `{ sessionId, repo, used, max, threshold, costUsd, limits[], at }`.
+  - `cockpit/setup` mit `{ repo, branch, memory, checks[], checklist[], merges[], at }`. Schreibt die Mod beim Start und nach Änderungen. Schreibt die Mod automatisch nach jedem Schritt (Hook `turn.complete`, Einstellung `cockpitUrl`). Das Werkzeug `mcp__cockpit__sync_context` löst es sofort aus.
 
 ### So übernimmt eine neue Session
 
@@ -175,10 +195,12 @@ Die Handy-Seite zeigt:
    1. Den PR live prüfen (GitHub-Werkzeuge): offen, Head unverändert, CI grün auf dem aktuellen Commit, keine Konflikte. Die Seite ist nur der Wunsch, nicht der Beweis.
    2. `cockpit/pr` auf `merge: { state: 'running', at }` setzen.
    3. Ist der PR ein Entwurf, ihn freigeben. Dann per Squash mergen und den Branch löschen (`git push origin --delete <branch>`).
-   4. `cockpit/pr` mit `state: 'merged'`, `merge: { state: 'done', at, sha, branchDeleted }` schreiben. Geht etwas nicht: `merge: { state: 'failed', at, message }` mit einem kurzen Grund auf Deutsch.
-   5. Im Thread antworten und ihn auflösen.
-5. **Auftrag „Cockpit · PR prüfen“:** PR des aktuellen Branches lesen und `cockpit/pr` neu schreiben, danach im Thread antworten.
-6. **Seite neu bauen:** wie in `apps/cockpit-web/README.md` beschrieben. Die Skill-Daten liefert `build_data.py` aus der jeweiligen Session.
+   4. `cockpit/pr` mit `state: 'merged'`, `merge: { state: 'done', at, sha, branchDeleted }` schreiben.
+   5. Eine Zeile `- JJJJ-MM-TT · #<Nummer> <Titel>` oben unter `## Merges` in `mods/cockpit/memory/<repo>.md` eintragen und mit nach `main` bringen. Geht etwas nicht: `merge: { state: 'failed', at, message }` mit einem kurzen Grund auf Deutsch.
+   6. Im Thread antworten und ihn auflösen.
+5. **Auftrag „Cockpit · Setup prüfen“:** das Werkzeug `mcp__cockpit__check_setup` aufrufen (ohne geladene Mod: `/cockpit setup`). Danach im Thread antworten.
+6. **Auftrag „Cockpit · PR prüfen“:** PR des aktuellen Branches lesen und `cockpit/pr` neu schreiben, danach im Thread antworten.
+7. **Seite neu bauen:** wie in `apps/cockpit-web/README.md` beschrieben. Die Skill-Daten liefert `build_data.py` aus der jeweiligen Session.
 
 ### Nächste Schritte, in dieser Reihenfolge
 
@@ -186,9 +208,9 @@ Die Handy-Seite zeigt:
 2. **Phase 3 fertigstellen:**
    - `cockpit/pr` automatisch: Die Mod schreibt den PR nach jedem Push selbst, statt dass Claude es von Hand tut.
    - Merge-Knopf auch in der Mod (Desktop-Panel, zwei Stufen wie oben).
-3. **Phase 4, Memory und Setup-Check:**
-   - Memory-Dateien je Repo in Else-Live- (z. B. `memory/<repo>.md`) mit Setup-Checkliste und Connector-Bedarf
-   - auf der Seite als Wallet-Karte „Setup“ mit grünen und roten Punkten
+3. **Phase 4 abrunden:**
+   - Memory-Dateien für weitere Repos anlegen, sobald dort gearbeitet wird.
+   - Merge-Einträge aus anderen Repos zurück nach Else-Live- schreiben (Schreibzugriff klären).
 4. **Phase 5, Chat-Teamwork:**
    - Ein Lead-Chat verteilt Aufgaben (`create_session`, `send_message`).
    - Der Status steht im Dokument `cockpit/team` und erscheint auf der Seite als Avatare.

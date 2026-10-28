@@ -1,7 +1,7 @@
 {
   "name": "cockpit",
-  "version": "0.1.0",
-  "description": "Cockpit: Skill-Launcher mit Status, Infokarten, Referenzen und Zeitstrahl – Leiste über der Eingabe plus Seitenpanel.",
+  "version": "0.2.0",
+  "description": "Cockpit: Skill-Launcher, Kontext-Ring und Setup-Check pro Repo – Leiste über der Eingabe plus Seitenpanel.",
   "types": "./types/index.d.ts",
   "userConfig": {
     "cockpitUrl": {

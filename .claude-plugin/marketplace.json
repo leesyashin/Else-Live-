@@ -10,7 +10,7 @@
     {
       "name": "cockpit",
       "source": "./mods/cockpit",
-      "description": "Skill-Launcher mit Status, Infokarten, Referenzen und Zeitstrahl."
+      "description": "Skill-Launcher, Kontext-Ring, Setup-Check pro Repo und Abgleich mit der Handy-Seite."
     }
   ]
 }

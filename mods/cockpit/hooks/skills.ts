@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import type { SkillDetail, SkillFile, SkillRow, SkillSummary, SkillUse } from '../types'
+import type { SetupReport, SkillDetail, SkillFile, SkillRow, SkillSummary, SkillUse } from '../types'
 import { CATALOG, catalogFor } from './catalog'
 import type { CatalogEntry } from './catalog'
 
@@ -22,6 +22,7 @@ const selected = atom({ plugin: 'cockpit', key: 'selected' } as const, null)
 const showBody = atom({ plugin: 'cockpit', key: 'showBody' } as const, false)
 const query = atom({ plugin: 'cockpit', key: 'query' } as const, '')
 const tick = atom({ plugin: 'cockpit', key: 'tick' } as const, 0)
+const setup = atom({ plugin: 'cockpit', key: 'setup' } as const, null, { shape: 'setup-1' })
 
 // --- Views a drawing reads (each read subscribes it to that value) ----------
 
@@ -59,6 +60,18 @@ export async function cardView($: $) {
   await read($, tick)
 
   return { rows, used, favs, card, isBodyOpen, now }
+}
+
+export function setupView($: $): Promise<SetupReport | null> {
+  return read($, setup)
+}
+
+export function skillRows($: $): Promise<SkillRow[]> {
+  return read($, skills)
+}
+
+export function saveSetup($: $, report: SetupReport): Promise<SetupReport | null> {
+  return update($, setup, () => report)
 }
 
 export function selectedSkill($: $): Promise<string | null> {
