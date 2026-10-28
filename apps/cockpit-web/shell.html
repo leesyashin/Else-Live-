@@ -1845,7 +1845,8 @@ summary small { color: var(--fg3); font-size: 13px; }
       team.goal = d && typeof d.goal === 'string' ? { goal: d.goal, startedAt: typeof d.startedAt === 'number' ? d.startedAt : 0 } : null
       render()
     }, () => { team.error = 'no_data'; render() })
-    db.collection('cockpit/team/members').onSnapshot(snap => {
+    // A view without collections still gets everything else below.
+    if (typeof db.collection === 'function') db.collection('cockpit/team/members').onSnapshot(snap => {
       const before = new Map(team.members.map(m => [m.id, m]))
       team.members = snap.docs.map(doc => cleanMember(doc.id, doc.data())).filter(Boolean)
       team.error = null
