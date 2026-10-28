@@ -401,7 +401,14 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .mrow:active { background: var(--surface-2); }
 .mrow + .mrow::before { content: ""; position: absolute; top: 0; left: 68px; right: 0; border-top: 0.5px solid var(--sep); }
 .mrow .stext span { -webkit-line-clamp: 1; }
-.srow { color: inherit; text-decoration: none; }
+.srow { padding: 0; }
+.srow .slink { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; padding: 12px 4px 12px 14px; color: inherit; text-decoration: none; }
+.srow.leaving { opacity: 0.45; transition: opacity 0.3s; }
+.sarch { flex: none; align-self: stretch; min-width: 48px; padding: 0 14px; display: grid; place-items: center; color: var(--fg3); font-size: 13px; font-weight: 600; transition: color 0.2s, background-color 0.2s; }
+.sarch svg { width: 20px; height: 20px; }
+.sarch.armed { color: #fff; background: #ff453a; }
+.secondary.arch { color: #ff453a; }
+.secondary.arch.armed { color: #fff; background: #ff453a; }
 .srow + .srow::before { left: 40px; }
 .sdot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--st); box-shadow: 0 0 0 4px color-mix(in srgb, var(--st) 22%, transparent); }
 .mstate { flex: none; font-size: 13px; font-weight: 600; color: var(--st); }
@@ -922,6 +929,35 @@ summary small { color: var(--fg3); font-size: 13px; }
   // --- Sessions: every session's mod writes cockpit/sessions, the current ones with their repo ---
   const sessions = { rows: [], at: 0, error: null }
   const NO_REPO = 'Ohne Repo'
+  const ARCHIVE_ICON = '<rect x="3.5" y="4.5" width="17" height="4.5" rx="1.5"/><path d="M5.5 9v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V9M10 13h4"/>'
+  // Archiving is two taps: the first arms the button, the second sends the order.
+  // Sent sessions stay dimmed until the mod's next list no longer has them.
+  const archive = { armed: null, timer: 0, pending: new Set() }
+  function archiveButton(ids, label) {
+    if (!ids.length) return ''
+    const key = ids.join(',')
+    if (ids.every(id => archive.pending.has(id))) return `<button class="secondary" disabled>Wird archiviert …</button>`
+    return `<button class="secondary arch${archive.armed === key ? ' armed' : ''}" data-archive="${esc(key)}">${esc(archive.armed === key ? 'Zum Bestätigen nochmal tippen' : label)}</button>`
+  }
+  async function archiveTap(key, el) {
+    if (archive.armed !== key) {
+      archive.armed = key
+      clearTimeout(archive.timer)
+      archive.timer = setTimeout(() => { archive.armed = null; render(); refreshSheet() }, 4000)
+      navigator.vibrate?.(8)
+      render(); refreshSheet()
+      return
+    }
+    clearTimeout(archive.timer)
+    archive.armed = null
+    const ids = key.split(',').filter(id => /^session_[A-Za-z0-9]+$/.test(id))
+    const sent = await sendToClaude(`Cockpit · Archivieren\n${ids.join('\n')}`, el)
+    if (sent) {
+      ids.forEach(id => archive.pending.add(id))
+      island('Wird archiviert', ids.length === 1 ? 'Claude archiviert die Session' : `Claude archiviert ${ids.length} Sessions`, 'busy', { ...SESSIONS_LOOK, mono: 'A' })
+    }
+    render(); refreshSheet()
+  }
   function cleanSession(r) {
     if (!r || typeof r.id !== 'string' || typeof r.url !== 'string' || !/^https:\/\/claude\.ai\//.test(r.url)) return null
     return {
@@ -1290,11 +1326,14 @@ summary small { color: var(--fg3); font-size: 13px; }
     let i = 0
     const html = groups.map(g => group(g.repo, g.rows.length, g.rows.map(r => {
       const look = SESSION_LOOK[r.state]
-      return `<a class="mrow srow" href="${esc(r.url)}" target="_blank" rel="noopener" style="--i:${i++};--st:${look.st}">
-        <span class="sdot" aria-hidden="true"></span><span class="stext"><b>${esc(r.title)}</b><span>${esc(r.note || (r.updatedAt ? ago(r.updatedAt) : ''))}</span></span>
-        <span class="trail"><span class="mstate">${esc(look.word)}</span>${CHEV}</span></a>`
+      const leaving = archive.pending.has(r.id)
+      return `<div class="mrow srow${leaving ? ' leaving' : ''}" style="--i:${i++};--st:${look.st}">
+        <a class="slink" href="${esc(r.url)}" target="_blank" rel="noopener">
+          <span class="sdot" aria-hidden="true"></span><span class="stext"><b>${esc(r.title)}</b><span>${esc(leaving ? 'Wird archiviert …' : r.note || (r.updatedAt ? ago(r.updatedAt) : ''))}</span></span>
+          <span class="trail"><span class="mstate">${esc(look.word)}</span>${CHEV}</span></a>
+        ${leaving ? '' : `<button class="sarch${archive.armed === r.id ? ' armed' : ''}" data-archive="${esc(r.id)}" aria-label="${esc(`${r.title} archivieren`)}">${archive.armed === r.id ? 'Archivieren?' : svg(ARCHIVE_ICON)}</button>`}</div>`
     }).join(''))).join('')
-    return `${TIP(`Tippen öffnet die Session${sessions.at ? ` · Stand ${ago(sessions.at)}` : ''}`)}${html}`
+    return `${TIP(`Tippen öffnet · rechts archivieren${sessions.at ? ` · Stand ${ago(sessions.at)}` : ''}`)}${html}`
   }
 
   function teamDetail() {
@@ -1308,7 +1347,7 @@ summary small { color: var(--fg3); font-size: 13px; }
         <span class="trail"><span class="mstate">${esc(MEMBER_LOOK[m.state].word)}</span>${CHEV}</span></button>`).join('')
     return `${TIP('Tippen öffnet den Chat')}
       ${team.goal?.goal ? `<div class="preview"><small class="label" style="margin:0"><span>Aufgabe</span></small><p class="goal">${esc(team.goal.goal)}</p></div>` : ''}
-      <div class="glist">${rows}</div>${start}`
+      <div class="glist">${rows}</div>${start}${archiveButton(ms.map(m => m.id), 'Team archivieren')}`
   }
 
   // Alerts are kept by chat, so a live update never replays one. Each arrives on a spring in a
@@ -2004,7 +2043,8 @@ summary small { color: var(--fg3); font-size: 13px; }
         ${m.branch ? `<div class="kv"><span>Branch</span><span><code>${esc(m.branch)}</code></span></div>` : ''}
         ${m.pr ? `<div class="kv"><span>PR</span><span>#${m.pr}</span></div>` : ''}
         <div class="kv"><span>Chat</span><span>${m.url ? `<a href="${esc(m.url)}" target="_blank" rel="noopener" style="color:var(--accent)">Verlauf öffnen ↗</a>` : '–'}</span></div>
-      </div>`
+      </div>
+      ${archiveButton([m.id], 'Chat archivieren')}`
   }
 
   async function renderSheet() {
@@ -2639,6 +2679,7 @@ summary small { color: var(--fg3); font-size: 13px; }
           return sent
         } }, t)
     }
+    if (t.dataset.archive) return archiveTap(t.dataset.archive, t)
     if (t.dataset.member) return openSheet({ member: t.dataset.member })
     if (t.dataset.hold?.startsWith('merge:')) return island('Gedrückt halten', 'Erst nach 1,2 s Halten wird gemergt', 'warn')
     if (t.dataset.start) {
@@ -2767,6 +2808,7 @@ summary small { color: var(--fg3); font-size: 13px; }
       // The list may be older than the day it covers: drop what has gone stale since.
       const fresh = r => r.state === 'working' || Date.now() - r.updatedAt < 24 * 3600 * 1000
       sessions.rows = Array.isArray(d?.rows) ? d.rows.map(cleanSession).filter(r => r && fresh(r)) : []
+      for (const id of [...archive.pending]) if (!sessions.rows.some(r => r.id === id) && !team.members.some(m => m.id === id)) archive.pending.delete(id)
       sessions.at = typeof d?.at === 'number' ? d.at : 0
       sessions.error = null
       render()

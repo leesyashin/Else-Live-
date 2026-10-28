@@ -107,4 +107,5 @@ Kommentare auf der Cockpit-Seite, die mit „Cockpit · “ beginnen, sind Auftr
 - Nach dem Lesen des Threads (ArtifactComments read) hängt die Cockpit-Mod eine Zuteilung an. Steht dort „gehört NICHT dieser Session“: nichts tun, auch nicht im Thread antworten.
 - Ist der Auftrag nicht für diese Session, auch im eigenen Chat nichts erklären. Den Zug mit genau einer Zeile beenden: ${SILENT}
 - Ohne Zuteilung (Mod nicht geladen): Steht \`Session: <ID>\` im Auftrag und passt nicht zu $CLAUDE_CODE_SESSION_ID, nichts tun. Sonst zuerst beanspruchen: ArtifactData set auf cockpit/jobs/threads/<Thread-ID> mit { session } und ohne if_version. Wird das abgelehnt, weil es das Dokument schon gibt, nichts tun.
+- „Cockpit · Archivieren“ (ab Zeile 2 je eine Session-ID) archiviert die Mod selbst und meldet das Ergebnis in der Zuteilung; dann nur im Thread antworten und ihn auflösen. Ohne Mod: archive_session je ID (nie die eigene), ihre Dokumente in cockpit/team/members löschen; ist danach keins mehr übrig, cockpit/team auf state: 'archived' setzen.
 ${INSTALL_RULE}`

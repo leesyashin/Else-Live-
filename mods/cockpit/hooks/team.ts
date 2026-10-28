@@ -56,6 +56,64 @@ async function prState($: $, repo: string, number: number): Promise<{ isOpen: bo
   return { isOpen: pr.state === 'open', isMerged: pr.merged === true }
 }
 
+type Self = { session: string; sessionUrl?: string }
+
+// Archives each session but this one (a chat never archives itself mid-turn).
+async function archiveAll($: $, ids: string[], self: Self): Promise<{ archived: string[]; kept: string[] }> {
+  const archived: string[] = []
+  const kept: string[] = []
+  for (const id of ids) {
+    if (`https://claude.ai/code/${id}` === self.sessionUrl || id === self.session) {
+      kept.push(id)
+      continue
+    }
+    const result = await $.mcp.call(SERVER, 'archive_session', { session_id: id }).catch(() => ({ isError: true }))
+    if (result.isError) kept.push(id)
+    else archived.push(id)
+  }
+
+  return { archived, kept }
+}
+
+// The session IDs an order "Cockpit · Archivieren" names, one per line.
+export function archiveTargets(text: string): string[] {
+  const ids = text.split('\n').slice(1).map(line => line.trim()).filter(line => /^session_[A-Za-z0-9]+$/.test(line))
+
+  return [...new Set(ids)]
+}
+
+// An order from the phone: archive these sessions, drop their team cards, and
+// close the team once its last chat is gone.
+export async function archiveSessions($: $, url: string, ids: string[]): Promise<string> {
+  const self = await sessionOf($)
+  const { archived, kept } = await archiveAll($, ids, self)
+  if (url && archived.length) {
+    const members = docsIn((await artifactData($, { url, collection: MEMBERS, action: 'list' })).text).map(memberOf)
+    const gone = members.filter(member => archived.includes(member.id))
+    const team = docsIn((await artifactData($, { url, collection: 'cockpit', doc_id: TEAM_DOC, action: 'get' })).text)[0]
+    const closesTeam = team && team.data.state !== 'archived' && gone.length > 0 && gone.length === members.length
+    if (gone.length) {
+      await artifactData($, {
+        url,
+        action: 'batch',
+        writes: [
+          ...gone.map(member => ({ op: 'delete', collection: MEMBERS, doc_id: member.id, if_version: member.version })),
+          ...(closesTeam
+            ? [{ op: 'update', collection: 'cockpit', doc_id: TEAM_DOC, if_version: team.version, data: { state: 'archived', archivedAt: await $.clock.now(), archived } }]
+            : []),
+        ],
+      })
+    }
+  }
+  const running = kept.filter(id => `https://claude.ai/code/${id}` === self.sessionUrl || id === self.session)
+  const failed = kept.filter(id => !running.includes(id))
+  const parts = [`${archived.length} archiviert`]
+  if (running.length) parts.push('diese Session selbst nicht (sie läuft gerade)')
+  if (failed.length) parts.push(`nicht archiviert: ${failed.join(', ')}`)
+
+  return parts.join(' · ')
+}
+
 let busy = false
 
 // Returns what happened, for the log and the tests; quiet when there is nothing to do.
@@ -96,19 +154,7 @@ export async function tidyTeam($: $, url: string): Promise<string> {
     })
     if (claim.deny || claim.isError || !/committed/i.test(claim.text ?? '')) return 'eine andere Session räumt auf'
 
-    const archived: string[] = []
-    const kept: string[] = []
-    for (const member of members) {
-      // A chat never archives itself mid-turn; the lead's own chat stays too.
-      const isSelf = `https://claude.ai/code/${member.id}` === self.sessionUrl || member.id === self.session
-      if (isSelf) {
-        kept.push(member.id)
-        continue
-      }
-      const result = await $.mcp.call(SERVER, 'archive_session', { session_id: member.id }).catch(() => ({ isError: true }))
-      if (result.isError) kept.push(member.id)
-      else archived.push(member.id)
-    }
+    const { archived, kept } = await archiveAll($, members.map(member => member.id), self)
     const now = await $.clock.now()
     await artifactData($, {
       url,

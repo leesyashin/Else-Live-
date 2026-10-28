@@ -182,7 +182,7 @@ Für die nächste Session: Hier steht, was es gibt, wie es zusammenspielt und wi
 
 | Teil | Ort | Zweck |
 | --- | --- | --- |
-| Mod „cockpit“ | `mods/cockpit` | Skill-Launcher (Leiste, Panel, `/cockpit` als Text), Kontext-Ring in der Leiste, Sessions nach Repo, Aufräumen fertiger Teams, Abgleich mit der Handy-Seite. 31 Tests. |
+| Mod „cockpit“ | `mods/cockpit` | Skill-Launcher (Leiste, Panel, `/cockpit` als Text), Kontext-Ring in der Leiste, Sessions nach Repo, Aufräumen und Archivieren von Teams und Sessions, Abgleich mit der Handy-Seite. 32 Tests. |
 | Handy-Seite | `apps/cockpit-web` (Quelltext), live: https://claude.ai/artifact/3mAJQLuy66EZ9EoNiqAgT8 | Das Cockpit auf dem Handy, siehe unten. |
 | Marketplace | `.claude-plugin/marketplace.json` | `/plugin install cockpit --marketplace leesyashin/Else-Live-` |
 | Design-Entwürfe | https://claude.ai/artifact/5EBWMLf4CEbFLtgNSRfi5Q | Fünf Richtungen; gewählt wurden Wallet (3) und Suche mit Vorschlägen (4). |
@@ -205,6 +205,7 @@ Die Handy-Seite zeigt:
   - `Cockpit · PR prüfen` + neue Zeile + `<owner/repo>` + `Session:`-Zeile
   - `Cockpit · Setup prüfen` + neue Zeile + `<repo>` + `Session:`-Zeile
   - `Cockpit · Team` + neue Zeile + `<Aufgabe>` + `Session:`-Zeile
+  - `Cockpit · Archivieren` + je Zeile eine Session-ID (ohne `Session:`-Zeile: die erste Session, die ihn beansprucht, führt ihn aus)
   - `Cockpit · Antwort` + neue Zeile + `<Session-ID>` + neue Zeile + `<Antwort>` + `Session:`-Zeile des Leads
 - **Nur eine Session handelt:** Alle beobachtenden Sessions werden geweckt. Die Mod hängt nach jedem `ArtifactComments read` der Seite eine Zuteilung an: Nennt der Auftrag eine andere Session, gehört er ihr. Sonst legt die Mod `cockpit/jobs/threads/<Thread-ID>` ohne `if_version` an; das gelingt nur der ersten Session. Dieselben Regeln stehen über die Mod im Systemprompt jeder Session, in jedem Repo.
 - **Claude → Seite:** über die Datenbank der Seite (Werkzeug `ArtifactData`):
@@ -250,6 +251,7 @@ Die Handy-Seite zeigt:
    6. Danach: Meldet ein Team-Chat Fehler oder hängt er, mit `get_session` und `list_events` nachsehen und `state` auf `failed` setzen. Sind alle fertig, `cockpit/team.state` auf `done` setzen und die PRs zusammenfassen. Fasst der Lead die Teile in einen eigenen PR zusammen, dessen Nummer als `pr` in `cockpit/team` eintragen.
    7. **Aufräumen (macht die Mod):** Sind alle Team-Chats `done` und ist kein Team-PR mehr offen (gemergt oder in den PR des Leads übernommen und geschlossen; steht `pr` in `cockpit/team`, muss der gemergt sein), archiviert die erste Session, die `cockpit/jobs/threads/team-<startedAt>` anlegt, die Team-Chats (`archive_session`, nie sich selbst), löscht ihre Dokumente in `cockpit/team/members` und setzt `cockpit/team` auf `state: 'archived'` mit `archivedAt`. Die Team-Karte bleibt und zeigt „Kein Team“ mit dem letzten Ziel. Geprüft wird alle 3 Minuten. Ohne Mod dasselbe von Hand.
 7. **Auftrag „Cockpit · Antwort“:** Zeile 2 ist die Session-ID des Team-Chats, der Rest die Antwort. Mit `send_message` an diese Session schicken („Antwort des Nutzers auf deine Frage: …“), im Thread kurz bestätigen und ihn auflösen.
+7a. **Auftrag „Cockpit · Archivieren“:** Mit Mod archiviert die Mod die genannten Sessions selbst (nie die eigene), löscht ihre Karten in `cockpit/team/members` und setzt `cockpit/team` auf `archived`, wenn kein Team-Chat übrig ist. Claude antwortet dann nur im Thread mit dem Ergebnis und löst ihn auf. Ohne Mod dasselbe von Hand mit `archive_session`.
 8. **Auftrag „Cockpit · PR prüfen“:** das Werkzeug `mcp__cockpit__sync_pr` aufrufen (ohne Mod: PR lesen und `cockpit/pr` von Hand schreiben). Danach im Thread antworten.
 9. **Seite neu bauen:** wie in `apps/cockpit-web/README.md` beschrieben. Die Skill-Daten liefert `build_data.py` aus der jeweiligen Session.
 

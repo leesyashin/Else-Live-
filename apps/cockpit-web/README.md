@@ -16,7 +16,7 @@ Was die Seite zeigt:
 
 - **Team-Karte:** die Chats, auf die Claude eine größere Aufgabe verteilt hat, als Avatare mit Status. „Aufgabe verteilen“ schickt `Cockpit · Team`. Hat ein Chat eine Frage oder einen Konflikt, erscheint oben ein Hinweis mit „Antworten“.
 
-- **Sessions-Karte:** alle aktuellen Sessions (letzte 24 h, ohne archivierte), nach Repo gruppiert, mit Status. Tippen öffnet die Session. Die Liste schreibt die Cockpit-Mod jeder Session (Dokument `cockpit/sessions`).
+- **Sessions-Karte:** alle aktuellen Sessions (letzte 24 h, ohne archivierte), nach Repo gruppiert, mit Status. Tippen öffnet die Session. Der Knopf rechts archiviert sie (zweimal tippen), ebenso „Team archivieren“ in der Team-Karte und „Chat archivieren“ im Blatt eines Team-Chats. Gesendet wird `Cockpit · Archivieren` mit den Session-IDs. Die Liste schreibt die Cockpit-Mod jeder Session (Dokument `cockpit/sessions`).
 
 Jeder Auftrag nennt die Session, für die er gedacht ist (`Session: <ID>`, die Session, die zuletzt `cockpit/context` geschrieben hat). Nur „Skill installieren“ geht ohne Namen raus: Dort übernimmt die erste Session, die `cockpit/jobs/threads/<Thread-ID>` anlegt. Installiert wird immer global (`mods/cockpit/skills`), nie nur in einer Session.
 

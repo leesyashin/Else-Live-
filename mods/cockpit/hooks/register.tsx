@@ -36,7 +36,7 @@ import { DOT, groupRows, sessionsText, sessionsView, stateLabel, syncSessions } 
 import { syncPr, syncStatus, touchesPr } from './pr'
 import { COLOR, groupStates, setupText, syncSetup } from './setup'
 import { syncContext } from './sync'
-import { tidyTeam } from './team'
+import { archiveSessions, archiveTargets, tidyTeam } from './team'
 
 type $ = EngineInterface
 
@@ -71,6 +71,9 @@ function contextRing(share: number, color: string): string {
 <circle cx="9" cy="9" r="${r}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-dasharray="${len.toFixed(2)} ${len.toFixed(2)}" stroke-dashoffset="${off}" transform="rotate(-90 9 9)"/>
 </svg>`
 }
+
+// Orders to archive this module already carried out, so a second read of the thread does nothing.
+const archivedThreads = new Set<string>()
 
 // The phone's Cockpit page; set from the mod's settings when it registers.
 let pageUrl = ''
@@ -287,8 +290,19 @@ export const register: Register = (on, options) => {
       const orders = openOrders(result.text ?? '')
       if (!orders.length) return result
       const verdicts = await Promise.all(orders.map(order => judge($, cockpitUrl, order)))
+      // Archiving is done by the mod itself; Claude only answers the thread.
+      const done: string[] = []
+      for (const verdict of verdicts) {
+        if (verdict.mine !== 'mine' || verdict.kind !== 'Archivieren' || archivedThreads.has(verdict.thread)) continue
+        archivedThreads.add(verdict.thread)
+        const order = orders.find(one => one.thread === verdict.thread)!
+        const outcome = await archiveSessions($, cockpitUrl, archiveTargets(order.text)).catch(error => `fehlgeschlagen: ${String(error)}`)
+        done.push(`- Thread ${verdict.thread}: Die Mod hat die Sessions schon archiviert (${outcome}). Nicht selbst archivieren; im Thread kurz das Ergebnis melden und ihn auflösen.`)
+        void syncSessions($, cockpitUrl, true).catch(() => undefined)
+      }
+      const note = done.length ? `${verdictNote(verdicts)}\n\nCockpit-Mod, Archivieren:\n${done.join('\n')}` : verdictNote(verdicts)
 
-      return { ...result, context: [...(result.context ?? []), verdictNote(verdicts)] }
+      return { ...result, context: [...(result.context ?? []), note] }
     } catch {
       return result
     }

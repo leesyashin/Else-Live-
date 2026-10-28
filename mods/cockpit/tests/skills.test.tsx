@@ -859,3 +859,22 @@ test('a team chat still at work keeps the team', async ($, on) => {
   await clock.advance(8000)
   expect(archived).toEqual([])
 })
+
+test('an order to archive from the page is carried out by the mod, never on itself', async ($, on) => {
+  const { clock, read } = commentsWorld(on, thread('t-arch', ['Cockpit · Archivieren', 'session_m1', 'session_test', 'kein-id']))
+  const archived: string[] = []
+  on('mcp.call', (_, e) => {
+    if (e.tool === 'archive_session') archived.push(String(e.args.session_id))
+    return { value: { content: [{ type: 'text', text: '{"ccr":{"data":[]}}' }], isError: false } }
+  })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(2000)
+
+  const note = await read($)
+  expect(archived).toEqual(['session_m1'])
+  expect(note).toContain('Thread t-arch („Archivieren“): gehört DIESER Session.')
+  expect(note).toContain('Die Mod hat die Sessions schon archiviert (1 archiviert · diese Session selbst nicht (sie läuft gerade))')
+  // Read again: nothing is archived twice.
+  await read($)
+  expect(archived).toEqual(['session_m1'])
+})

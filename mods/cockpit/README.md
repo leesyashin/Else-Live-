@@ -71,6 +71,7 @@ Eine Mod für Claude Code, die zeigt, welche Skills du hast, ob Claude sie sieht
 - Sind alle Team-Chats fertig und ist kein Team-PR mehr offen (gemergt oder in den PR des Leads übernommen), archiviert die Mod die Team-Chats und löscht ihre Karten auf der Seite. Steht im Dokument `cockpit/team` ein `pr`, muss der gemergt sein.
 - Nur eine Session räumt auf: die erste, die `cockpit/jobs/threads/team-<startedAt>` anlegt. Ihren eigenen Chat archiviert sie nie.
 - Die Team-Karte bleibt und zeigt „Kein Team“ mit dem letzten Ziel. Die archivierten Chats verschwinden aus der Sessions-Liste.
+- **Von Hand auf der Seite:** Archiv-Knopf rechts an jeder Session, „Team archivieren“ in der Team-Karte und „Chat archivieren“ im Blatt eines Team-Chats, jeweils mit zweitem Tipp zum Bestätigen. Die Seite schickt `Cockpit · Archivieren` mit den Session-IDs; die Mod der Session, die den Auftrag zuerst beansprucht, archiviert sie selbst und räumt die Team-Karten auf.
 
 ## Zur Cockpit-Seite
 
