@@ -699,3 +699,30 @@ test('the rules for orders reach the system prompt in every repo', async ($, on)
   expect(sections.at(-1)).toMatchObject({ id: 'cockpit:orders', scope: 'session' })
   expect(sections.at(-1)!.text).toContain('cockpit/jobs/threads/<Thread-ID>')
 })
+
+// --- One tap to the page --------------------------------------------------------------
+
+test('/seite opens the Cockpit page and leaves its link', async ($, on) => {
+  const { clock } = world(on)
+  const opened: unknown[] = []
+  const onTool = on as unknown as (event: string, matcher: object, hook: (_: unknown, e: Record<string, unknown>) => unknown) => void
+  onTool('tool.call', { tool: 'Artifact' }, (_, input) => {
+    opened.push(input.url)
+    return { result: '', text: 'Opened.' }
+  })
+  await $.session.start({ cwd: '/', surface: 'mobile', isInteractive: true })
+  await clock.advance(2000)
+
+  const answer = await $.command.run({ command: 'seite', args: '' })
+  expect(String((answer as { text?: string }).text)).toBe(`Cockpit-Seite geöffnet. [Cockpit-Seite öffnen ↗](${PAGE})`)
+  expect(opened).toEqual([PAGE])
+
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({
+      plugin: 'cockpit', component: 'CommandOutput', requestId: 'seite', surface,
+      props: { command: 'seite', args: '', isErrored: false, text: '', bodyColumns: 40, scroll: { offset: 0, bodyRows: 10 }, view: {} },
+    } as never)
+    expect(await ui.find({ type: 'Link', props: { href: PAGE } })).toBeDefined()
+    await ui.unmount()
+  }
+})
