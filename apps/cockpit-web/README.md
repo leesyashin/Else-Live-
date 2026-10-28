@@ -3,9 +3,10 @@
 Die Mod in `mods/cockpit` zeichnet nur dort, wo eine Oberfläche Mods darstellt: in der Desktop-App und im Terminal. Die Claude-App auf dem Handy zeigt bei Cloud-Sessions keine Mod-Oberfläche. Für das Handy gibt es deshalb diese Seite als Artifact.
 
 Was die Seite zeigt:
-- alle Skills der Session, farbig nach Kategorie
-- Status: geladen, verfügbar, empfohlen
-- Infokarten mit SKILL.md und Referenzdateien
+- oben eine Suche („Was willst du tun?“) mit Vorschlägen und Schnellbegriffen
+- darunter die Bereiche als Kartenstapel wie in Apple Wallet: Diese Session, sechs Kategorien, Empfohlen
+- eine geöffnete Karte zeigt ihre Skills als Karten
+- **gedrückt halten** lädt einen Skill, **tippen** öffnet ihn als Pass mit SKILL.md und Referenzdateien
 
 Wie „Starten“ funktioniert:
 1. Die Seite schickt den Auftrag per „Send to Claude“ als Kommentar an die Session.

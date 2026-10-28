@@ -1,50 +1,41 @@
 <title>Cockpit</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
-/* Layout: iOS inset-grouped lists on a grouped ground; a skill opens as a sheet that slides up from the bottom. */
+/* Layout: search and suggestions on top, the skill areas below as a Wallet stack; an opened card shows its skills as hold-to-load cards. */
 :root {
   --bg: #f2f2f7;
-  --cell: #ffffff;
-  --cell-press: #e5e5ea;
+  --surface: #ffffff;
+  --surface-2: #e9e9ee;
   --fg: #1c1c1e;
   --fg2: #6c6c70;
   --fg3: #aeaeb2;
-  --sep: rgba(60, 60, 67, 0.16);
+  --sep: rgba(60, 60, 67, 0.14);
   --fill: rgba(118, 118, 128, 0.12);
   --accent: #007aff;
-  --on-accent: #ffffff;
   --loaded: #34c759;
   --warn: #ff9500;
   --scrim: rgba(0, 0, 0, 0.32);
-  --island: #000000;
-  --on-island: #ffffff;
-  --c-design: #af52de;
-  --c-code: #007aff;
-  --c-daten: #30b0c7;
-  --c-business: #ff9500;
-  --c-personal: #5856d6;
-  --c-more: #8e8e93;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 14px 32px -14px rgba(0, 0, 0, 0.38);
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --rounded: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
-  --radius: 12px;
   --spring: cubic-bezier(0.32, 0.72, 0, 1);
-  --bounce: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --bounce: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --card-h: 214px;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #000000; --cell: #1c1c1e; --cell-press: #2c2c2e; --fg: #f5f5f7; --fg2: #98989f; --fg3: #636366;
-    --sep: rgba(84, 84, 88, 0.55); --fill: rgba(118, 118, 128, 0.24); --accent: #0a84ff; --on-accent: #ffffff;
-    --loaded: #30d158; --warn: #ff9f0a; --scrim: rgba(0, 0, 0, 0.55); --island: #000000; --on-island: #ffffff;
-    --c-design: #bf5af2; --c-code: #0a84ff; --c-daten: #40c8e0; --c-business: #ff9f0a; --c-personal: #5e5ce6; --c-more: #8e8e93;
+    --bg: #000000; --surface: #1c1c1e; --surface-2: #2c2c2e; --fg: #f5f5f7; --fg2: #98989f; --fg3: #636366;
+    --sep: rgba(84, 84, 88, 0.5); --fill: rgba(118, 118, 128, 0.24); --accent: #0a84ff; --loaded: #30d158; --warn: #ff9f0a;
+    --scrim: rgba(0, 0, 0, 0.6); --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 16px 34px -14px rgba(0, 0, 0, 0.9);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #000000; --cell: #1c1c1e; --cell-press: #2c2c2e; --fg: #f5f5f7; --fg2: #98989f; --fg3: #636366;
-  --sep: rgba(84, 84, 88, 0.55); --fill: rgba(118, 118, 128, 0.24); --accent: #0a84ff; --on-accent: #ffffff;
-  --loaded: #30d158; --warn: #ff9f0a; --scrim: rgba(0, 0, 0, 0.55); --island: #000000; --on-island: #ffffff;
-  --c-design: #bf5af2; --c-code: #0a84ff; --c-daten: #40c8e0; --c-business: #ff9f0a; --c-personal: #5e5ce6; --c-more: #8e8e93;
+  --bg: #000000; --surface: #1c1c1e; --surface-2: #2c2c2e; --fg: #f5f5f7; --fg2: #98989f; --fg3: #636366;
+  --sep: rgba(84, 84, 88, 0.5); --fill: rgba(118, 118, 128, 0.24); --accent: #0a84ff; --loaded: #30d158; --warn: #ff9f0a;
+  --scrim: rgba(0, 0, 0, 0.6); --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 16px 34px -14px rgba(0, 0, 0, 0.9);
   color-scheme: dark;
 }
 
@@ -53,152 +44,210 @@ body {
   background: var(--bg); color: var(--fg); font: 17px/1.35 var(--font);
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
-  padding-block: 8px 48px;
+  padding-block: 8px 56px;
   -webkit-font-smoothing: antialiased;
 }
 body.locked { overflow: hidden; }
-main { max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
-button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
-:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; border-radius: 8px; }
+main { max-width: 440px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; border-radius: 10px; }
+[data-hold] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 
-/* Large title */
-.top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding-top: 12px; }
+/* Header */
+.top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding-top: 14px; }
 .top h1 { font: 700 34px/1.1 var(--display); letter-spacing: 0.01em; margin: 0; }
 .top p { margin: 4px 0 0; color: var(--fg2); font-size: 15px; }
 .link-state { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--fg2); background: var(--fill); padding: 6px 10px; border-radius: 999px; white-space: nowrap; }
 .link-state i { width: 8px; height: 8px; border-radius: 50%; background: var(--fg3); }
 .link-state.on i { background: var(--loaded); }
 
-/* Overview */
-.overview { background: var(--cell); border-radius: 16px; padding: 18px 16px 14px; display: flex; flex-direction: column; gap: 16px; }
-.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.stat b { font: 700 28px/1 var(--display); font-variant-numeric: tabular-nums; }
-.stat span { font-size: 13px; color: var(--fg2); display: inline-flex; align-items: center; gap: 6px; }
-.stat.loaded b { color: var(--loaded); }
-.stat.rec b { color: var(--c-design); }
-.bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; gap: 2px; background: var(--fill); }
-.bar i { display: block; height: 100%; transform-origin: left; animation: grow 0.7s var(--spring) both; }
-@keyframes grow { from { transform: scaleX(0); } }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; background: var(--fill); font-size: 15px; transition: transform 0.2s var(--spring), background-color 0.25s, color 0.25s; }
-.chip:active { transform: scale(0.95); }
-.chip i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
-.chip small { color: var(--fg2); font-size: 13px; font-variant-numeric: tabular-nums; }
-.chip[aria-pressed="true"] { background: var(--c, var(--fg)); color: #fff; }
-.chip[aria-pressed="true"] i { background: #fff; }
-.chip[aria-pressed="true"] small { color: rgba(255, 255, 255, 0.8); }
-.chip.all { --c: var(--fg); }
-.chip.all[aria-pressed="true"] { color: var(--bg); }
-.chip.all[aria-pressed="true"] small { color: var(--bg); opacity: 0.75; }
-
-/* Search */
-.search { position: relative; margin-top: -12px; }
-.search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 17px; height: 17px; color: var(--fg2); pointer-events: none; }
-.search input { width: 100%; font: inherit; color: var(--fg); background: var(--fill); border: 0; border-radius: 10px; padding: 9px 12px 9px 34px; }
+/* Search (Spotlight) */
+.search { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 14px; border-radius: 16px; background: var(--surface); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04); }
+.search svg { flex: none; width: 19px; height: 19px; color: var(--fg2); }
+.search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font: inherit; font-size: 18px; color: var(--fg); }
 .search input::placeholder { color: var(--fg2); }
+.search input::-webkit-search-cancel-button { display: none; }
+.clear { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--fg3); color: var(--surface); display: grid; place-items: center; font-size: 13px; font-weight: 700; }
 
-/* Grouped lists */
-.group { display: flex; flex-direction: column; gap: 6px; }
-.group > h2 { font: 400 13px/1.3 var(--font); text-transform: uppercase; letter-spacing: 0.04em; color: var(--fg2); margin: 0 16px; display: flex; justify-content: space-between; }
-.group > p.foot { margin: 0 16px; font-size: 13px; color: var(--fg2); }
-.cells { background: var(--cell); border-radius: var(--radius); overflow: hidden; }
-.row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 10px 12px 10px 14px; position: relative; transition: background-color 0.2s; min-height: 58px; }
-.row:active { background: var(--cell-press); }
-.row + .row::before { content: ""; position: absolute; top: 0; right: 0; left: 58px; border-top: 0.5px solid var(--sep); }
-.tile { flex: none; width: 32px; height: 32px; border-radius: 8px; background: var(--c); color: #fff; display: grid; place-items: center; position: relative; }
-.tile svg { width: 19px; height: 19px; }
-.tile.hollow { background: transparent; color: var(--c); box-shadow: inset 0 0 0 1.5px var(--c); }
-.tile .live { position: absolute; right: -3px; bottom: -3px; width: 12px; height: 12px; border-radius: 50%; background: var(--loaded); box-shadow: 0 0 0 2px var(--cell); }
-.tile .live::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--loaded); animation: breathe 1.8s var(--spring) infinite; }
-@keyframes breathe { from { transform: scale(1); opacity: 0.8; } to { transform: scale(2.4); opacity: 0; } }
-.text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.text b { font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.text span { font-size: 14px; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.trail { flex: none; display: flex; align-items: center; gap: 8px; color: var(--fg3); font-size: 15px; }
-.trail svg { width: 8px; height: 13px; }
-.pill { font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 999px; }
-.pill.loaded { background: color-mix(in srgb, var(--loaded) 18%, transparent); color: var(--loaded); }
-.pill.pending { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
-.pill.rec { background: color-mix(in srgb, var(--c-design) 16%, transparent); color: var(--c-design); }
-.star { color: var(--warn); font-size: 14px; }
-.empty { padding: 16px; color: var(--fg2); font-size: 15px; text-align: center; }
-.time { font-variant-numeric: tabular-nums; }
+.label { margin: 0 4px; font: 600 13px/1.2 var(--font); letter-spacing: 0.03em; color: var(--fg2); text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.block { display: flex; flex-direction: column; gap: 10px; }
+.suggest { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.app { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; transition: transform 0.3s var(--bounce); }
+.app:active { transform: scale(0.92); }
+.app span:last-child { max-width: 100%; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
+.icon { position: relative; width: 60px; height: 60px; border-radius: 15px; display: grid; place-items: center; color: #fff; background: linear-gradient(160deg, var(--c1), var(--c2)); box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.35), 0 2px 6px -2px rgba(0, 0, 0, 0.3); }
+.icon svg { width: 28px; height: 28px; }
+.icon .live { position: absolute; top: -4px; right: -4px; width: 16px; height: 16px; border-radius: 50%; background: var(--loaded); border: 2.5px solid var(--bg); }
+.chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 38px; padding: 0 14px; border-radius: 19px; background: var(--surface); font-size: 15px; transition: transform 0.25s var(--spring); }
+.chip:active { transform: scale(0.95); }
+.chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--c1); }
+
+/* Wallet */
+.wallet { position: relative; isolation: isolate; transition: height 0.6s var(--spring); }
+.wcard {
+  position: absolute; left: 0; right: 0; top: 0; height: var(--card-h); border-radius: 18px; overflow: hidden; color: #fff;
+  background: linear-gradient(155deg, var(--c1) 0%, var(--c2) 100%);
+  box-shadow: var(--shadow), inset 0 0.5px 0 rgba(255, 255, 255, 0.35), inset 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+  transition: transform 0.62s var(--spring), box-shadow 0.4s; will-change: transform;
+  display: flex; flex-direction: column; justify-content: space-between; padding: 15px 20px 18px; width: 100%;
+}
+.wcard::before { content: ""; position: absolute; inset: 0; background: linear-gradient(118deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 34%, rgba(255, 255, 255, 0) 52%); pointer-events: none; }
+.wcard::after { content: ""; position: absolute; inset: 0; opacity: 0.09; mix-blend-mode: overlay; pointer-events: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+.wcard > * { position: relative; z-index: 1; }
+.wcard:active { transition-duration: 0.18s; }
+.wcard.ticket { color: #1c1c1e; }
+.wcard.ticket::before { background: linear-gradient(118deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 45%); }
+.wcard.ticket .notch { position: absolute; top: 132px; width: 22px; height: 22px; border-radius: 50%; background: var(--bg); z-index: 2; }
+.wcard.ticket .notch.l { left: -11px; } .wcard.ticket .notch.r { right: -11px; }
+.wcard.ticket .perf { position: absolute; left: 18px; right: 18px; top: 142px; border-top: 1.5px dashed rgba(28, 28, 30, 0.22); z-index: 1; }
+.wtop { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; min-height: 30px; }
+.wtop small, .wbottom small { display: block; font-size: 10.5px; font-weight: 600; letter-spacing: 0.09em; opacity: 0.72; text-transform: uppercase; }
+.wtop b { display: block; font: 600 21px/1.15 var(--display); letter-spacing: 0.005em; }
+.wcount { text-align: right; }
+.wcount b { font: 600 24px/1.1 var(--display); font-variant-numeric: tabular-nums; }
+.wbottom { display: flex; justify-content: space-between; align-items: flex-end; gap: 14px; }
+.wbottom p { margin: 2px 0 0; font-size: 14px; opacity: 0.92; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.glyph { flex: none; width: 40px; height: 40px; border-radius: 50%; background: rgba(255, 255, 255, 0.16); display: grid; place-items: center; box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.25); }
+.ticket .glyph { background: rgba(28, 28, 30, 0.07); box-shadow: inset 0 0 0 0.5px rgba(28, 28, 30, 0.12); }
+.glyph svg { width: 20px; height: 20px; }
+.pulse { position: relative; width: 10px; height: 10px; border-radius: 50%; background: var(--loaded); }
+.pulse::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--loaded); animation: breathe 1.8s var(--spring) infinite; }
+@keyframes breathe { from { transform: scale(1); opacity: 0.85; } to { transform: scale(2.6); opacity: 0; } }
+
+.detail { position: absolute; left: 0; right: 0; z-index: 30; opacity: 0; transform: translateY(14px); pointer-events: none; transition: opacity 0.35s, transform 0.55s var(--spring); display: flex; flex-direction: column; gap: 10px; }
+.detail.show { opacity: 1; transform: none; pointer-events: auto; transition-delay: 0.12s; }
+.hint { margin: 0 4px; font-size: 13px; color: var(--fg2); }
+
+/* Skill cards: hold to load */
+.scard {
+  position: relative; overflow: hidden; width: 100%; min-height: 72px; border-radius: 16px; background: var(--surface);
+  display: flex; align-items: center; gap: 14px; padding: 12px 14px;
+  transition: transform 0.35s var(--spring), box-shadow 0.3s;
+}
+.scard .fill { position: absolute; inset: 0; background: var(--c1); opacity: 0.16; transform: scaleX(0); transform-origin: left; pointer-events: none; }
+.scard.holding { transform: scale(0.975); }
+.scard.holding .fill { transform: scaleX(1); transition: transform var(--hold, 650ms) linear; }
+.scard.fired { animation: fired 0.6s var(--bounce); }
+.scard.fired .fill { transform: scaleX(1); background: var(--loaded); opacity: 0.18; transition: opacity 0.9s 0.4s; }
+@keyframes fired { 0% { transform: scale(0.975); } 45% { transform: scale(1.02); } 100% { transform: scale(1); } }
+.stile { flex: none; position: relative; width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; color: #fff; background: linear-gradient(160deg, var(--c1), var(--c2)); box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.35); }
+.stile svg { width: 22px; height: 22px; }
+.stile.hollow { background: transparent; color: var(--c2); box-shadow: inset 0 0 0 1.5px var(--c1); }
+.stile .live { position: absolute; top: -4px; right: -4px; width: 14px; height: 14px; border-radius: 50%; background: var(--loaded); border: 2.5px solid var(--surface); }
+.stext { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.stext b { font-weight: 600; font-size: 16.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stext span { font-size: 14px; color: var(--fg2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sstate { position: relative; flex: none; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; }
+.sstate.loaded { color: var(--loaded); }
+.sstate.pending { color: var(--accent); }
+.sstate.star { color: var(--warn); font-size: 14px; }
+.ring { position: absolute; right: 12px; top: 50%; width: 30px; height: 30px; margin-top: -15px; opacity: 0; transition: opacity 0.15s; }
+.ring circle { fill: none; stroke: var(--c1); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 82; stroke-dashoffset: 82; transform: rotate(-90deg); transform-origin: center; }
+.scard.holding .ring { opacity: 1; }
+.scard.holding .ring circle { stroke-dashoffset: 0; transition: stroke-dashoffset var(--hold, 650ms) linear; }
+.scard.holding .sstate { opacity: 0; }
+
+/* Results */
+.best { position: relative; overflow: hidden; border-radius: 18px; color: #fff; background: linear-gradient(155deg, var(--c1), var(--c2)); box-shadow: var(--shadow); padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; width: 100%; transition: transform 0.35s var(--spring); }
+.best::before { content: ""; position: absolute; inset: 0; background: linear-gradient(118deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0) 50%); pointer-events: none; }
+.best > * { position: relative; }
+.best .fill { position: absolute; inset: 0; background: #fff; opacity: 0.14; transform: scaleX(0); transform-origin: left; pointer-events: none; }
+.best.holding { transform: scale(0.98); }
+.best.holding .fill { transform: scaleX(1); transition: transform var(--hold, 650ms) linear; }
+.best.fired { animation: fired 0.6s var(--bounce); }
+.best h3 { margin: 0; font: 700 26px/1.1 var(--display); overflow-wrap: anywhere; }
+.best p { margin: 0; font-size: 15.5px; line-height: 1.4; opacity: 0.94; }
+.best small { font-size: 10.5px; font-weight: 600; letter-spacing: 0.09em; opacity: 0.75; text-transform: uppercase; }
+.best .hold-hint { font-size: 13px; opacity: 0.8; }
+.list { display: flex; flex-direction: column; gap: 8px; }
+.empty { padding: 18px; border-radius: 16px; background: var(--surface); color: var(--fg2); font-size: 15px; text-align: center; }
+
+.pill { min-height: 34px; padding: 0 14px; border-radius: 17px; background: var(--fill); color: var(--accent); font-weight: 600; font-size: 15px; text-transform: none; letter-spacing: 0; transition: transform 0.2s var(--spring); }
+.pill:active { transform: scale(0.94); }
 
 /* Sheet */
 .scrim { position: fixed; inset: 0; background: var(--scrim); opacity: 0; transition: opacity 0.35s; z-index: 30; }
 .scrim.open { opacity: 1; }
 .sheet {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 31; max-height: calc(100% - 44px - env(safe-area-inset-top, 0px));
-  background: var(--bg); border-radius: 14px 14px 0 0; display: flex; flex-direction: column;
-  transform: translateY(105%); transition: transform 0.5s var(--spring);
-  max-width: 720px; margin: 0 auto; box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.18);
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 31; max-height: calc(100% - 40px - env(safe-area-inset-top, 0px));
+  background: var(--bg); border-radius: 22px 22px 0 0; display: flex; flex-direction: column; overflow: hidden;
+  transform: translateY(105%); transition: transform 0.55s var(--spring);
+  max-width: 560px; margin: 0 auto; box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.22);
 }
 .sheet.open { transform: translateY(0); }
 .sheet.dragging { transition: none; }
-.grab { padding: 8px 0 4px; display: grid; place-items: center; touch-action: none; cursor: grab; }
-.grab i { width: 36px; height: 5px; border-radius: 3px; background: var(--fg3); opacity: 0.6; }
-.sheet-head { display: flex; align-items: center; gap: 14px; padding: 6px max(16px, env(safe-area-inset-right, 0px)) 14px max(16px, env(safe-area-inset-left, 0px)); touch-action: none; }
-.sheet-head .tile { width: 56px; height: 56px; border-radius: 14px; }
-.sheet-head .tile svg { width: 30px; height: 30px; }
-.sheet-head h2 { font: 700 22px/1.2 var(--display); margin: 0; overflow-wrap: anywhere; text-wrap: balance; }
-.sheet-head p { margin: 3px 0 0; color: var(--fg2); font-size: 14px; }
-.sheet-head .text { gap: 0; }
-.icon-btn { flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--fill); display: grid; place-items: center; color: var(--fg2); font-size: 17px; transition: transform 0.2s var(--spring); }
-.icon-btn:active { transform: scale(0.9); }
-.icon-btn.fav[aria-pressed="true"] { color: var(--warn); }
-.sheet-body { overflow-y: auto; overscroll-behavior: contain; padding: 0 max(16px, env(safe-area-inset-right, 0px)) calc(28px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 22px; }
-.card { background: var(--cell); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.pass { position: relative; overflow: hidden; color: #fff; background: linear-gradient(155deg, var(--c1), var(--c2)); padding: 10px max(20px, env(safe-area-inset-right, 0px)) 20px max(20px, env(safe-area-inset-left, 0px)); touch-action: none; display: flex; flex-direction: column; gap: 14px; }
+.pass::before { content: ""; position: absolute; inset: 0; background: linear-gradient(118deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 50%); pointer-events: none; }
+.pass > * { position: relative; }
+.pass.light { color: #1c1c1e; }
+.grab { align-self: center; width: 36px; height: 5px; border-radius: 3px; background: currentColor; opacity: 0.45; }
+.pass-head { display: flex; align-items: center; gap: 12px; }
+.pass-head .txt { flex: 1; min-width: 0; }
+.pass-head small { font-size: 10.5px; font-weight: 600; letter-spacing: 0.09em; opacity: 0.75; text-transform: uppercase; }
+.pass-head h2 { margin: 2px 0 0; font: 700 26px/1.12 var(--display); overflow-wrap: anywhere; }
+.round { flex: none; width: 34px; height: 34px; border-radius: 50%; background: rgba(255, 255, 255, 0.2); color: inherit; display: grid; place-items: center; font-size: 16px; transition: transform 0.2s var(--spring); }
+.pass.light .round { background: rgba(28, 28, 30, 0.08); }
+.round:active { transform: scale(0.9); }
+.round[aria-pressed="true"] { color: #ffd60a; }
+.pass.light .round[aria-pressed="true"] { color: var(--warn); }
+.pass-status { display: inline-flex; align-self: flex-start; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; padding: 5px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.2); }
+.pass.light .pass-status { background: rgba(28, 28, 30, 0.08); }
+.pass-status i { width: 8px; height: 8px; border-radius: 50%; background: var(--dot, rgba(255, 255, 255, 0.8)); }
+.sheet-body { overflow-y: auto; overscroll-behavior: contain; padding: 18px max(16px, env(safe-area-inset-right, 0px)) calc(28px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 20px; }
+.card { background: var(--surface); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
 .card p { margin: 0; }
 .lead { font-size: 17px; }
 .muted { color: var(--fg2); font-size: 15px; }
-.status-line { display: flex; align-items: center; gap: 8px; font-size: 15px; }
-.status-line i { width: 10px; height: 10px; border-radius: 50%; background: var(--c, var(--fg3)); flex: none; }
-textarea { width: 100%; font: inherit; color: var(--fg); background: var(--fill); border: 0; border-radius: 10px; padding: 10px 12px; resize: vertical; min-height: 76px; }
+textarea { width: 100%; font: inherit; color: var(--fg); background: var(--fill); border: 0; border-radius: 12px; padding: 11px 13px; resize: vertical; min-height: 74px; }
 textarea::placeholder { color: var(--fg2); }
-.primary { width: 100%; background: var(--accent); color: var(--on-accent); font-weight: 600; padding: 14px; border-radius: 12px; transition: transform 0.18s var(--spring), opacity 0.2s; }
+.primary { width: 100%; background: var(--fg); color: var(--bg); font-weight: 600; padding: 15px; border-radius: 14px; text-align: center; transition: transform 0.18s var(--spring), opacity 0.2s; }
 .primary:active { transform: scale(0.97); }
-.primary[disabled] { opacity: 0.45; cursor: default; transform: none; }
-.secondary { width: 100%; background: var(--fill); color: var(--accent); font-weight: 600; padding: 12px; border-radius: 12px; transition: transform 0.18s var(--spring); }
+.primary[disabled] { opacity: 0.4; cursor: default; transform: none; }
+.secondary { width: 100%; background: var(--fill); color: var(--accent); font-weight: 600; padding: 12px; border-radius: 14px; text-align: center; transition: transform 0.18s var(--spring); }
 .secondary:active { transform: scale(0.97); }
-.hint { font-size: 13px; color: var(--fg2); }
+.small { font-size: 13px; color: var(--fg2); }
 .kv { display: flex; justify-content: space-between; gap: 12px; font-size: 15px; }
 .kv + .kv { border-top: 0.5px solid var(--sep); padding-top: 10px; }
 .kv span:first-child { color: var(--fg2); }
 .kv span:last-child { text-align: right; min-width: 0; overflow-wrap: anywhere; }
-.kv code, .card code { font: 14px var(--mono); }
+code { font: 14px var(--mono); }
 ul.rules { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
 .links { display: flex; flex-direction: column; gap: 8px; }
 .links a { color: var(--accent); text-decoration: none; }
+.cells { background: var(--surface); border-radius: 14px; overflow: hidden; }
 details + details > summary { border-top: 0.5px solid var(--sep); }
 summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 16px; cursor: pointer; }
 summary::-webkit-details-marker { display: none; }
-summary .trail svg { transition: transform 0.25s var(--spring); }
-details[open] summary .trail svg { transform: rotate(90deg); }
+summary .chev { flex: none; width: 8px; height: 13px; color: var(--fg3); transition: transform 0.25s var(--spring); }
+details[open] summary .chev { transform: rotate(90deg); }
 summary span { min-width: 0; overflow-wrap: anywhere; }
+summary small { color: var(--fg3); font-size: 13px; }
 .doc { padding: 4px 16px 16px; font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
 .doc h1, .doc h2, .doc h3, .doc h4 { font-family: var(--display); line-height: 1.25; margin: 18px 0 6px; text-wrap: balance; }
 .doc h1 { font-size: 21px; } .doc h2 { font-size: 19px; } .doc h3, .doc h4 { font-size: 17px; }
 .doc p { margin: 8px 0; }
 .doc ul, .doc ol { padding-left: 22px; margin: 8px 0; }
-.doc code { font: 13.5px var(--mono); background: var(--fill); padding: 1px 5px; border-radius: 5px; }
+.doc code { font-size: 13.5px; background: var(--fill); padding: 1px 5px; border-radius: 5px; }
 .doc pre { background: var(--fill); border-radius: 10px; padding: 10px 12px; overflow-x: auto; }
 .doc pre code { background: none; padding: 0; font-size: 12.5px; }
 .doc blockquote { margin: 8px 0; padding-left: 12px; border-left: 3px solid var(--sep); color: var(--fg2); }
 .doc a { color: var(--accent); }
-.doc .table { overflow-x: auto; }
 
-/* Dynamic Island toast */
+/* Dynamic Island */
 .island {
   position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 50%; z-index: 50;
   transform: translateX(-50%) scale(0.55); opacity: 0; pointer-events: none;
-  background: var(--island); color: var(--on-island); border-radius: 999px; padding: 10px 18px 10px 12px;
-  display: flex; align-items: center; gap: 10px; max-width: calc(100% - 32px); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+  background: #000; color: #fff; border-radius: 999px; padding: 10px 18px 10px 12px;
+  display: flex; align-items: center; gap: 10px; max-width: calc(100% - 32px); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
   transition: transform 0.45s var(--bounce), opacity 0.25s;
 }
 .island.show { transform: translateX(-50%) scale(1); opacity: 1; }
-.island i { width: 26px; height: 26px; border-radius: 50%; background: var(--loaded); display: grid; place-items: center; flex: none; color: #fff; font-style: normal; font-size: 14px; }
+.island i { width: 26px; height: 26px; border-radius: 50%; background: var(--loaded); display: grid; place-items: center; flex: none; color: #fff; font-style: normal; font-size: 14px; font-weight: 700; }
 .island.warn i { background: var(--warn); }
+.island.busy i { background: var(--accent); }
 .island b { font-weight: 600; font-size: 15px; display: block; }
 .island span { font-size: 13px; opacity: 0.75; display: block; }
 
@@ -216,32 +265,30 @@ summary span { min-width: 0; overflow-wrap: anywhere; }
     <span class="link-state" id="link"><i></i><span>Verbinde …</span></span>
   </header>
 
-  <section class="overview" aria-label="Übersicht">
-    <div class="stats">
-      <div class="stat loaded"><b id="n-loaded">0</b><span>geladen</span></div>
-      <div class="stat"><b id="n-total">0</b><span>verfügbar</span></div>
-      <div class="stat rec"><b id="n-rec">0</b><span>empfohlen</span></div>
-    </div>
-    <div class="bar" id="bar" aria-hidden="true"></div>
-    <div class="chips" id="chips" role="toolbar" aria-label="Kategorie"></div>
-  </section>
-
   <label class="search">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
-    <input id="q" type="search" placeholder="Skill suchen" autocomplete="off" aria-label="Skill suchen">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+    <input id="q" type="search" placeholder="Was willst du tun?" autocomplete="off" aria-label="Skill suchen">
+    <button class="clear" id="clear" aria-label="Suche leeren" hidden>✕</button>
   </label>
 
-  <div id="lists" style="display:flex;flex-direction:column;gap:28px"></div>
+  <div id="home" style="display:flex;flex-direction:column;gap:22px">
+    <section class="block" aria-label="Vorschläge">
+      <h2 class="label"><span>Vorschläge</span></h2>
+      <div class="suggest" id="suggest"></div>
+      <div class="chips" id="chips"></div>
+    </section>
+    <section class="block" aria-label="Bereiche">
+      <h2 class="label"><span>Bereiche</span><button class="pill" id="done" hidden>Fertig</button></h2>
+      <div class="wallet" id="wallet"></div>
+    </section>
+  </div>
 
-  <section class="group">
-    <p class="foot">„Starten“ schickt den Auftrag als Kommentar an Claude in deiner Session. Claude startet den Skill und antwortet im Kommentar. Der grüne Punkt zeigt, was in dieser Session wirklich geladen wurde.</p>
-  </section>
+  <section class="block" id="results" hidden aria-live="polite"></section>
 </main>
 
 <div class="scrim" id="scrim" hidden></div>
 <section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden>
-  <div class="grab" id="grab"><i></i></div>
-  <div class="sheet-head" id="sheet-head"></div>
+  <div class="pass" id="pass"></div>
   <div class="sheet-body" id="sheet-body"></div>
 </section>
 
@@ -251,40 +298,55 @@ summary span { min-width: 0; overflow-wrap: anywhere; }
 <script>
 (() => {
   const DATA = JSON.parse(document.getElementById('index').textContent)
+  const HOLD_MS = 650
   const CATS = [
-    { id: 'Design', color: 'var(--c-design)', icon: '<path d="M4 20l4-1 10.5-10.5a2.1 2.1 0 0 0-3-3L5 16l-1 4z"/><path d="M14 7l3 3"/>' },
-    { id: 'Code', color: 'var(--c-code)', icon: '<path d="M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/>' },
-    { id: 'Daten', color: 'var(--c-daten)', icon: '<path d="M5 20V12M10 20V6M15 20v-9M20 20V9"/>' },
-    { id: 'Business', color: 'var(--c-business)', icon: '<rect x="3.5" y="7.5" width="17" height="12" rx="2.5"/><path d="M9 7.5V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.5M3.5 13h17"/>' },
-    { id: 'Persönlich', color: 'var(--c-personal)', icon: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>' },
-    { id: 'Weitere', color: 'var(--c-more)', icon: '<circle cx="6" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="18" cy="12" r="1.3"/>' },
+    { id: 'Design', c1: '#9d5ce0', c2: '#55259a', icon: '<path d="M4 20l4-1 10.5-10.5a2.1 2.1 0 0 0-3-3L5 16l-1 4z"/><path d="M14 7l3 3"/>' },
+    { id: 'Code', c1: '#3384f2', c2: '#0b3d99', icon: '<path d="M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/>' },
+    { id: 'Daten', c1: '#22a8bb', c2: '#095866', icon: '<path d="M5 20V12M10 20V6M15 20v-9M20 20V9"/>' },
+    { id: 'Business', c1: '#ea8f24', c2: '#954600', icon: '<rect x="3.5" y="7.5" width="17" height="12" rx="2.5"/><path d="M9 7.5V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.5M3.5 13h17"/>' },
+    { id: 'Persönlich', c1: '#6d66ea', c2: '#2b2789', icon: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>' },
+    { id: 'Weitere', c1: '#7d7d85', c2: '#3a3a41', icon: '<circle cx="6" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="18" cy="12" r="1.3"/>' },
   ]
   const CAT = Object.fromEntries(CATS.map(c => [c.id, c]))
-  const CHEVRON = '<svg viewBox="0 0 8 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 1.5 6.5 6.5 1.5 11.5"/></svg>'
+  const SESSION = { c1: '#3a3a3e', c2: '#151517' }
+  const TICKET = { c1: '#fbfbfd', c2: '#e2e2e8' }
+  const REC_ICON = '<path d="M12 4v16M4 12h16"/>'
+  const CHEV = '<svg class="chev" viewBox="0 0 8 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 1.5 6.5 6.5 1.5 11.5"/></svg>'
+  const TRIES = [
+    { label: 'Präsentation', q: 'präsentation', cat: 'Business' },
+    { label: 'Video', q: 'video', cat: 'Persönlich' },
+    { label: 'Recherche', q: 'recherche', cat: 'Business' },
+    { label: 'Barrierefreiheit', q: 'barriere', cat: 'Design' },
+    { label: 'Fehler finden', q: 'fehler', cat: 'Code' },
+    { label: 'Excel', q: 'excel', cat: 'Daten' },
+  ]
   const $ = id => document.getElementById(id)
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+  const svg = (paths, cls = '') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`
+  const colors = o => `--c1:${o.c1};--c2:${o.c2}`
+  const short = name => name.split(':').pop()
 
   const store = {
     get(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v) } catch { return fallback } },
     set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)) } catch {} },
   }
-
-  const state = {
-    filter: store.get('cockpit.filter', 'Alle'),
-    query: '',
-    favorites: new Set(store.get('cockpit.favorites', [])),
-    loaded: [],          // [{ skill, at }] from the session, newest last
-    pending: new Map(),  // skill -> sent at (ms)
-    canSend: 'unknown',
-    open: null,
-  }
-  const details = { promise: null }
   const use = name => (window.claude && typeof window.claude.use === 'function')
     ? window.claude.use(name).catch(() => null)
     : Promise.resolve(null)
 
-  const tile = (cat, hollow, live) =>
-    `<span class="tile${hollow ? ' hollow' : ''}" style="--c:${CAT[cat].color}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${CAT[cat].icon}</svg>${live ? '<span class="live"></span>' : ''}</span>`
+  const state = {
+    query: '',
+    open: null,
+    favorites: new Set(store.get('cockpit.favorites', [])),
+    loaded: [],
+    pending: new Map(),
+    canSend: 'unknown',
+    sheet: null,
+  }
+  const installed = new Set(DATA.skills.map(s => s.short))
+  const recommended = DATA.recommended.filter(r => !installed.has(r.id))
+  const loadedSet = () => new Set(state.loaded.map(u => u.skill))
+  const skillByName = name => DATA.skills.find(s => s.name === name)
 
   function ago(at) {
     const minutes = Math.floor((Date.now() - at) / 60000)
@@ -294,85 +356,236 @@ summary span { min-width: 0; overflow-wrap: anywhere; }
     return hours < 24 ? `vor ${hours} Std` : new Date(at).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })
   }
 
-  const loadedSet = () => new Set(state.loaded.map(use => use.skill))
-  const installedIds = new Set(DATA.skills.map(s => s.short))
-  const recommended = DATA.recommended.filter(r => !installedIds.has(r.id))
+  // --- Skill cards ---------------------------------------------------------------
+  const RING = '<svg class="ring" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="13"/></svg>'
 
-  function matches(skill) {
-    const q = state.query.trim().toLowerCase()
-    if (!q) return true
-    return [skill.name, skill.summary, skill.description].some(t => String(t).toLowerCase().includes(q))
-  }
-
-  function skillRow(skill, live) {
+  function skillCard(skill) {
+    const cat = CAT[skill.category]
+    const live = loadedSet().has(skill.name)
     const pending = state.pending.has(skill.name) && !live
-    const badge = live ? '<span class="pill loaded">Geladen</span>' : pending ? '<span class="pill pending">Startet …</span>' : ''
-    const star = state.favorites.has(skill.name) ? '<span class="star" aria-label="Favorit">★</span>' : ''
-    return `<button class="row" data-skill="${esc(skill.name)}">${tile(skill.category, false, live)}
-      <span class="text"><b>${esc(skill.short)}</b><span>${esc(skill.summary)}</span></span>
-      <span class="trail">${star}${badge}${CHEVRON}</span></button>`
+    const st = live ? '<span class="sstate loaded">GELADEN</span>'
+      : pending ? '<span class="sstate pending">LÄDT …</span>'
+      : state.favorites.has(skill.name) ? '<span class="sstate star">★</span>' : ''
+    return `<button class="scard" style="${colors(cat)}" data-hold="${esc(skill.name)}" data-skill="${esc(skill.name)}"
+        aria-label="${esc(skill.short)}: ${esc(skill.summary)}. Tippen für Details, gedrückt halten zum Laden.">
+      <span class="fill"></span>
+      <span class="stile">${svg(cat.icon)}${live ? '<span class="live"></span>' : ''}</span>
+      <span class="stext"><b>${esc(skill.short)}</b><span>${esc(skill.summary)}</span></span>
+      ${st}${RING}</button>`
   }
 
-  function recRow(rec) {
-    return `<button class="row" data-rec="${esc(rec.id)}">${tile('Design', true, false)}
-      <span class="text"><b>${esc(rec.title)}</b><span>${esc(rec.author)} · ${esc(rec.summary)}</span></span>
-      <span class="trail"><span class="pill rec">Empfohlen</span>${CHEVRON}</span></button>`
+  function recCard(rec) {
+    return `<button class="scard" style="${colors(CAT.Design)}" data-hold="rec:${esc(rec.id)}" data-rec="${esc(rec.id)}"
+        aria-label="${esc(rec.title)} von ${esc(rec.author)}. Tippen für Details, gedrückt halten zum Installieren.">
+      <span class="fill"></span>
+      <span class="stile hollow">${svg(CAT.Design.icon)}</span>
+      <span class="stext"><b>${esc(rec.title)}</b><span>${esc(rec.author)} · ${esc(rec.summary)}</span></span>
+      ${RING}</button>`
   }
 
-  function renderOverview() {
+  // --- Suggestions -----------------------------------------------------------------
+  function suggestions() {
+    const picks = []
+    const add = name => { if (!picks.includes(name) && skillByName(name)) picks.push(name) }
+    ;[...state.loaded].reverse().forEach(u => add(u.skill))
+    state.favorites.forEach(add)
+    ;['anthropic-skills:berater', 'anthropic-skills:coworker', 'anthropic-skills:deep-research', 'anthropic-skills:coach'].forEach(add)
+    return picks.slice(0, 4).map(skillByName)
+  }
+
+  function renderSuggest() {
     const live = loadedSet()
-    $('n-loaded').textContent = live.size
-    $('n-total').textContent = DATA.skills.length
-    $('n-rec').textContent = recommended.length
-    const total = DATA.skills.length
-    $('bar').innerHTML = CATS.map((c, i) => {
-      const n = DATA.skills.filter(s => s.category === c.id).length
-      return n ? `<i style="flex:${n};background:${c.color};animation-delay:${i * 60}ms" title="${c.id}: ${n}"></i>` : ''
-    }).join('')
-    const chip = (id, label, color, count) =>
-      `<button class="chip${id === 'Alle' ? ' all' : ''}" data-filter="${esc(id)}" aria-pressed="${state.filter === id}" style="--c:${color}"><i></i>${esc(label)} <small>${count}</small></button>`
-    $('chips').innerHTML = chip('Alle', 'Alle', 'var(--fg)', total) +
-      CATS.map(c => chip(c.id, c.id, c.color, DATA.skills.filter(s => s.category === c.id).length + (c.id === 'Design' ? recommended.length : 0))).join('')
-    $('subtitle').textContent = live.size
-      ? `${live.size} ${live.size === 1 ? 'Skill' : 'Skills'} in dieser Session geladen`
-      : `${total} Skills bereit · noch keiner geladen`
+    $('suggest').innerHTML = suggestions().map(s => `<button class="app" data-hold="${esc(s.name)}" data-skill="${esc(s.name)}" aria-label="${esc(s.short)}">
+      <span class="icon" style="${colors(CAT[s.category])}">${svg(CAT[s.category].icon)}${live.has(s.name) ? '<span class="live"></span>' : ''}</span>
+      <span>${esc(s.short)}</span></button>`).join('')
+    $('chips').innerHTML = TRIES.map(t => `<button class="chip" data-try="${esc(t.q)}" style="${colors(CAT[t.cat])}"><i></i>${esc(t.label)}</button>`).join('')
   }
 
-  function renderLists() {
+  // --- Wallet ----------------------------------------------------------------------
+  const PEEK = 60
+  const cards = [
+    { id: 'session', kind: 'session', title: 'Diese Session' },
+    ...CATS.map(c => ({ id: c.id, kind: 'cat', title: c.id })),
+    { id: 'rec', kind: 'rec', title: 'Empfohlen' },
+  ]
+
+  function cardHtml(card) {
     const live = loadedSet()
-    const filtered = DATA.skills.filter(s => (state.filter === 'Alle' || s.category === state.filter) && matches(s))
+    if (card.kind === 'session') {
+      const recent = uniqueLoaded().slice(0, 3).map(u => short(u.skill))
+      return `<div class="wtop"><div><small>Cockpit</small><b>Diese Session</b></div>
+          <div class="wcount"><small>Geladen</small><b>${live.size}</b></div></div>
+        <div class="wbottom"><div><small>Zuletzt</small><p>${esc(recent.join(' · ') || 'Noch kein Skill geladen')}</p></div>
+          <span class="glyph"><span class="pulse"></span></span></div>`
+    }
+    if (card.kind === 'rec') {
+      return `<span class="notch l"></span><span class="notch r"></span><span class="perf"></span>
+        <div class="wtop"><div><small>Für deinen Stil</small><b>Empfohlen</b></div>
+          <div class="wcount"><small>Design</small><b>${recommended.length}</b></div></div>
+        <div class="wbottom"><div><small>Nicht installiert</small><p>${esc(recommended.map(r => r.title).join(' · '))}</p></div>
+          <span class="glyph">${svg(REC_ICON)}</span></div>`
+    }
+    const members = DATA.skills.filter(s => s.category === card.id)
+    const loadedHere = members.filter(s => live.has(s.name)).length
+    const names = members.slice(0, 4).map(s => s.short).join(' · ')
+    return `<div class="wtop"><div><small>Cockpit</small><b>${esc(card.title)}</b></div>
+        <div class="wcount"><small>Skills</small><b>${members.length}</b></div></div>
+      <div class="wbottom"><div><small>${loadedHere ? `${loadedHere} geladen` : 'Bereit'}</small><p>${esc(names)}${members.length > 4 ? ' …' : ''}</p></div>
+        <span class="glyph">${svg(CAT[card.id].icon)}</span></div>`
+  }
+
+  function uniqueLoaded() {
+    const seen = new Set()
+    return [...state.loaded].reverse().filter(u => !seen.has(u.skill) && seen.add(u.skill))
+  }
+
+  function detailHtml(card) {
+    if (card.kind === 'session') {
+      const items = uniqueLoaded()
+      if (!items.length) return '<p class="empty">Noch kein Skill geladen. Halte eine Skill-Karte gedrückt, um ihn zu laden.</p>'
+      return `<p class="hint">Zuletzt geladen</p><div class="list">${items.map(u => {
+        const s = skillByName(u.skill)
+        return s ? skillCard(s) : ''
+      }).join('')}</div>`
+    }
+    if (card.kind === 'rec') {
+      return `<p class="hint">Gedrückt halten: Claude installiert den Skill. Tippen: Regeln und Referenzen.</p>
+        <div class="list">${recommended.map(recCard).join('')}</div>`
+    }
+    const live = loadedSet()
+    const members = DATA.skills.filter(s => s.category === card.id).sort((a, b) =>
+      (live.has(b.name) - live.has(a.name)) || (state.favorites.has(b.name) - state.favorites.has(a.name)) || a.short.localeCompare(b.short))
+    return `<p class="hint">Gedrückt halten lädt den Skill. Tippen zeigt Details.</p>
+      <div class="list">${members.map(skillCard).join('')}</div>`
+  }
+
+  function buildWallet() {
+    const wallet = $('wallet')
+    wallet.innerHTML = cards.map((card, i) => {
+      const look = card.kind === 'session' ? SESSION : card.kind === 'rec' ? TICKET : CAT[card.id]
+      return `<button class="wcard${card.kind === 'rec' ? ' ticket' : ''}" data-card="${card.id}" style="${colors(look)};z-index:${i + 1}" aria-expanded="false"></button>`
+    }).join('') + '<div class="detail" id="detail"></div>'
+    refreshCards()
+    layout(false)
+  }
+
+  function refreshCards() {
+    for (const card of cards) {
+      const el = document.querySelector(`[data-card="${card.id}"]`)
+      el.innerHTML = cardHtml(card)
+      el.setAttribute('aria-label', `${card.title}${state.open === card.id ? ', geöffnet' : ''}`)
+    }
+  }
+
+  function layout(animate = true) {
+    const wallet = $('wallet'), detail = $('detail')
+    const cardH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-h')) || 214
+    const openIndex = cards.findIndex(c => c.id === state.open)
+    if (!animate) wallet.querySelectorAll('.wcard').forEach(el => { el.style.transition = 'none' })
+    if (openIndex < 0) {
+      cards.forEach((card, i) => {
+        const el = wallet.querySelector(`[data-card="${card.id}"]`)
+        el.style.transform = `translate3d(0, ${i * PEEK}px, 0)`
+        el.style.zIndex = i + 1
+        el.setAttribute('aria-expanded', 'false')
+      })
+      detail.classList.remove('show')
+      wallet.style.height = `${(cards.length - 1) * PEEK + cardH}px`
+      $('done').hidden = true
+    } else {
+      const top = cardH + 16
+      detail.style.top = `${top}px`
+      detail.classList.add('show')
+      const detailH = detail.offsetHeight
+      const stackTop = top + detailH + 28
+      let rank = 0
+      cards.forEach((card, i) => {
+        const el = wallet.querySelector(`[data-card="${card.id}"]`)
+        if (i === openIndex) {
+          el.style.transform = 'translate3d(0, 0, 0)'
+          el.style.zIndex = 40
+          el.setAttribute('aria-expanded', 'true')
+        } else {
+          el.style.transform = `translate3d(0, ${stackTop + rank * 12}px, 0) scale(${0.96 + rank * 0.006})`
+          el.style.zIndex = rank + 1
+          el.setAttribute('aria-expanded', 'false')
+          rank += 1
+        }
+      })
+      wallet.style.height = `${stackTop + (rank - 1) * 12 + PEEK + 8}px`
+      $('done').hidden = false
+    }
+    if (!animate) requestAnimationFrame(() => wallet.querySelectorAll('.wcard').forEach(el => { el.style.transition = '' }))
+  }
+
+  function openCard(id) {
+    const closing = state.open === id
+    state.open = closing ? null : id
+    $('detail').innerHTML = state.open ? detailHtml(cards.find(c => c.id === state.open)) : ''
+    refreshCards()
+    layout()
+    if (state.open) {
+      const y = $('wallet').getBoundingClientRect().top + window.scrollY - 70
+      if (window.scrollY > y || y - window.scrollY > window.innerHeight * 0.45) window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' })
+    }
+  }
+
+  // --- Search results --------------------------------------------------------------
+  function score(skill, q) {
+    const n = skill.short.toLowerCase()
+    if (n === q) return 100
+    if (n.startsWith(q)) return 80
+    if (n.includes(q)) return 60
+    if (skill.summary.toLowerCase().includes(q)) return 40
+    if (skill.category.toLowerCase().includes(q)) return 30
+    if (skill.description.toLowerCase().includes(q)) return 20
+    return 0
+  }
+
+  function renderResults() {
+    const q = state.query.trim().toLowerCase()
+    const searching = q.length > 0
+    $('home').hidden = searching
+    $('results').hidden = !searching
+    $('clear').hidden = !searching
+    if (!searching) return
+    const hits = DATA.skills.map(s => ({ s, p: score(s, q) })).filter(h => h.p > 0).sort((a, b) => b.p - a.p || a.s.short.localeCompare(b.s.short)).map(h => h.s)
+    const recs = recommended.filter(r => [r.title, r.author, r.summary].some(t => t.toLowerCase().includes(q)))
+    if (!hits.length && !recs.length) {
+      $('results').innerHTML = `<p class="empty">Kein Skill passt zu „${esc(state.query)}“. Versuch es mit einem anderen Wort.</p>`
+      return
+    }
     const parts = []
-
-    if (state.loaded.length && state.filter === 'Alle' && !state.query) {
-      const seen = new Set()
-      const timeline = [...state.loaded].reverse().filter(u => !seen.has(u.skill) && seen.add(u.skill)).slice(0, 8)
-      const rows = timeline.map(use => {
-        const skill = DATA.skills.find(s => s.name === use.skill)
-        const cat = skill ? skill.category : 'Weitere'
-        return `<button class="row" ${skill ? `data-skill="${esc(skill.name)}"` : 'disabled'}>${tile(cat, false, true)}
-          <span class="text"><b>${esc(skill ? skill.short : use.skill)}</b><span class="time">${esc(ago(use.at))}</span></span>
-          <span class="trail">${CHEVRON}</span></button>`
-      }).join('')
-      parts.push(`<section class="group"><h2><span>Zuletzt geladen</span></h2><div class="cells">${rows}</div></section>`)
+    if (hits.length) {
+      const best = hits[0], cat = CAT[best.category], live = loadedSet().has(best.name)
+      parts.push(`<h2 class="label"><span>Bester Treffer</span></h2>
+        <button class="best" style="${colors(cat)}" data-hold="${esc(best.name)}" data-skill="${esc(best.name)}" aria-label="${esc(best.short)}. Tippen für Details, gedrückt halten zum Laden.">
+          <span class="fill"></span>
+          <small>${esc(best.category)} · ${live ? 'geladen' : 'bereit'}</small>
+          <h3>${esc(best.short)}</h3>
+          <p>${esc(best.summary)}</p>
+          <span class="hold-hint">Gedrückt halten zum Laden</span>
+        </button>`)
     }
-
-    const favs = filtered.filter(s => state.favorites.has(s.name))
-    if (favs.length) parts.push(`<section class="group"><h2><span>Favoriten</span></h2><div class="cells">${favs.map(s => skillRow(s, live.has(s.name))).join('')}</div></section>`)
-
-    for (const c of CATS) {
-      const members = filtered.filter(s => s.category === c.id && !state.favorites.has(s.name))
-      const recs = c.id === 'Design' && (state.filter === 'Alle' || state.filter === 'Design')
-        ? recommended.filter(r => !state.query || [r.title, r.author, r.summary].some(t => t.toLowerCase().includes(state.query.trim().toLowerCase())))
-        : []
-      if (!members.length && !recs.length) continue
-      parts.push(`<section class="group"><h2><span>${esc(c.id)}</span><span>${members.length}</span></h2><div class="cells">${members.map(s => skillRow(s, live.has(s.name))).join('')}${recs.map(recRow).join('')}</div></section>`)
+    const rest = hits.slice(1, 12)
+    if (rest.length || recs.length) {
+      parts.push(`<h2 class="label"><span>Weitere Treffer</span><span>${hits.length - 1 + recs.length}</span></h2>
+        <div class="list">${rest.map(skillCard).join('')}${recs.map(recCard).join('')}</div>`)
     }
-
-    if (!parts.length) parts.push(`<div class="cells"><p class="empty">Kein Skill passt zu „${esc(state.query)}“.</p></div>`)
-    $('lists').innerHTML = parts.join('')
+    $('results').innerHTML = parts.join('')
   }
 
-  function render() { renderOverview(); renderLists(); refreshSheet() }
+  function render() {
+    const live = loadedSet()
+    $('subtitle').textContent = live.size
+      ? `${live.size} ${live.size === 1 ? 'Skill' : 'Skills'} geladen · ${DATA.skills.length} bereit`
+      : `${DATA.skills.length} Skills bereit`
+    renderSuggest()
+    refreshCards()
+    if (state.open) { $('detail').innerHTML = detailHtml(cards.find(c => c.id === state.open)); layout() }
+    renderResults()
+    refreshSheet()
+  }
 
   // --- Markdown, kept small and safe: everything is escaped first ----------------
   function inline(text) {
@@ -388,7 +601,7 @@ summary span { min-width: 0; overflow-wrap: anywhere; }
     let list = null, para = [], fence = null, table = []
     const flushPara = () => { if (para.length) { out.push(`<p>${inline(para.join(' '))}</p>`); para = [] } }
     const flushList = () => { if (list) { out.push(`<${list.tag}>${list.items.map(i => `<li>${inline(i)}</li>`).join('')}</${list.tag}>`); list = null } }
-    const flushTable = () => { if (table.length) { out.push(`<div class="table"><pre><code>${esc(table.join('\n'))}</code></pre></div>`); table = [] } }
+    const flushTable = () => { if (table.length) { out.push(`<pre><code>${esc(table.join('\n'))}</code></pre>`); table = [] } }
     const flush = () => { flushPara(); flushList(); flushTable() }
     for (const line of lines) {
       if (fence) {
@@ -418,13 +631,13 @@ summary span { min-width: 0; overflow-wrap: anywhere; }
     return out.join('')
   }
 
-  // --- Sheet ----------------------------------------------------------------------
+  // --- Sheet (a skill as a pass) ---------------------------------------------------
+  const details = { promise: null }
   function loadDetails() {
     details.promise ??= fetch('skills.json').then(r => r.ok ? r.json() : {}).catch(() => ({}))
     return details.promise
   }
-
-  function sendAvailable() { return state.canSend === 'available' }
+  const sendAvailable = () => state.canSend === 'available'
   function sendReason() {
     return {
       writers_only: 'Nur Bearbeiter dieser Seite können Claude Aufträge schicken.',
@@ -435,43 +648,40 @@ summary span { min-width: 0; overflow-wrap: anywhere; }
     }[state.canSend] || 'Aufträge an Claude sind gerade nicht möglich.'
   }
 
-  // A refresh while the sheet is open (status, connection, favorite) touches
-  // only the live parts, so an opened SKILL.md and a typed task stay as they are.
+  function skillStatus(skill) {
+    const live = loadedSet().has(skill.name)
+    const uses = state.loaded.filter(u => u.skill === skill.name)
+    if (live) return { dot: '#30d158', t: `Geladen · ${uses.length}× · ${ago(uses[uses.length - 1].at)}` }
+    if (state.pending.has(skill.name)) return { dot: '#64d2ff', t: 'Wird geladen …' }
+    return { dot: 'rgba(255,255,255,.85)', t: 'Bereit' }
+  }
+
   function refreshSheet() {
-    const open = state.open
+    const open = state.sheet
     if (!open) return
     const go = $('go'), hint = $('go-hint')
     if (go) go.disabled = !sendAvailable()
     if (hint) { hint.hidden = sendAvailable(); hint.textContent = sendReason() }
     if (!open.skill) return
-    const skill = DATA.skills.find(s => s.name === open.skill)
+    const skill = skillByName(open.skill)
     const st = skillStatus(skill)
-    const line = $('sheet-status')
-    if (line) { line.style.setProperty('--c', st.c); line.querySelector('span').textContent = st.t }
-    const fav = $('sheet-head').querySelector('[data-fav]')
+    const pill = $('pass-status')
+    if (pill) { pill.style.setProperty('--dot', st.dot); pill.querySelector('span').textContent = st.t }
+    const fav = $('pass').querySelector('[data-fav]')
     if (fav) { const on = state.favorites.has(skill.name); fav.setAttribute('aria-pressed', on); fav.textContent = on ? '★' : '☆' }
-    const t = $('sheet-head').querySelector('.tile')
-    if (t && loadedSet().has(skill.name) && !t.querySelector('.live')) t.insertAdjacentHTML('beforeend', '<span class="live"></span>')
-  }
-
-  function skillStatus(skill) {
-    const live = loadedSet().has(skill.name)
-    const uses = state.loaded.filter(u => u.skill === skill.name)
-    const pending = state.pending.has(skill.name) && !live
-    return live
-      ? { c: 'var(--loaded)', t: `In dieser Session geladen · ${uses.length}× · zuletzt ${ago(uses[uses.length - 1].at)}` }
-      : pending ? { c: 'var(--accent)', t: 'Auftrag ist bei Claude, der Skill startet gleich' }
-      : { c: 'var(--fg3)', t: 'Verfügbar · Claude sieht ihn und kann ihn selbst wählen' }
   }
 
   async function renderSheet() {
-    const open = state.open
-    if (!open) return
-    const head = $('sheet-head'), body = $('sheet-body')
+    const open = state.sheet
+    const pass = $('pass'), body = $('sheet-body')
     if (open.rec) {
       const rec = DATA.recommended.find(r => r.id === open.rec)
-      head.innerHTML = `${tile('Design', true, false)}<div class="text"><h2 id="sheet-title">${esc(rec.title)}</h2><p>${esc(rec.author)} · nicht installiert</p></div>
-        <button class="icon-btn" data-close aria-label="Schließen">✕</button>`
+      pass.className = 'pass light'
+      pass.style.cssText = colors(TICKET)
+      pass.innerHTML = `<span class="grab"></span>
+        <div class="pass-head"><div class="txt"><small>Empfohlen · ${esc(rec.author)}</small><h2 id="sheet-title">${esc(rec.title)}</h2></div>
+          <button class="round" data-close aria-label="Schließen">✕</button></div>
+        <span class="pass-status" style="--dot:#ff9f0a"><i></i><span>Nicht installiert</span></span>`
       body.innerHTML = `
         <div class="card"><p class="lead">${esc(rec.summary)}</p></div>
         <div class="card"><b>Was er tut</b><ul class="rules">${rec.rules.map(r => `<li>${esc(r)}</li>`).join('')}</ul></div>
@@ -481,30 +691,31 @@ summary span { min-width: 0; overflow-wrap: anywhere; }
         <div class="card"><div class="kv"><span>Installation</span><span><code>${esc(rec.install)}</code></span></div></div>
         <div style="display:flex;flex-direction:column;gap:8px">
           <button class="primary" id="go" data-install="${esc(rec.id)}" ${sendAvailable() ? '' : 'disabled'}>Von Claude installieren lassen</button>
-          <p class="hint" id="go-hint" ${sendAvailable() ? 'hidden' : ''}>${esc(sendReason())}</p>
+          <p class="small" id="go-hint" ${sendAvailable() ? 'hidden' : ''}>${esc(sendReason())}</p>
         </div>`
       return
     }
-
-    const skill = DATA.skills.find(s => s.name === open.skill)
-    const live = loadedSet().has(skill.name)
+    const skill = skillByName(open.skill)
+    const cat = CAT[skill.category]
+    const st = skillStatus(skill)
     const fav = state.favorites.has(skill.name)
-    const status = skillStatus(skill)
-    head.innerHTML = `${tile(skill.category, false, live)}<div class="text"><h2 id="sheet-title">${esc(skill.short)}</h2><p>${esc(skill.category)} · ${esc(skill.source)}</p></div>
-      <button class="icon-btn fav" data-fav="${esc(skill.name)}" aria-pressed="${fav}" aria-label="Favorit">${fav ? '★' : '☆'}</button>
-      <button class="icon-btn" data-close aria-label="Schließen">✕</button>`
-
+    pass.className = 'pass'
+    pass.style.cssText = colors(cat)
+    pass.innerHTML = `<span class="grab"></span>
+      <div class="pass-head"><div class="txt"><small>${esc(skill.category)} · ${esc(skill.source)}</small><h2 id="sheet-title">${esc(skill.short)}</h2></div>
+        <button class="round" data-fav="${esc(skill.name)}" aria-pressed="${fav}" aria-label="Favorit">${fav ? '★' : '☆'}</button>
+        <button class="round" data-close aria-label="Schließen">✕</button></div>
+      <span class="pass-status" id="pass-status" style="--dot:${st.dot}"><i></i><span>${esc(st.t)}</span></span>`
     body.innerHTML = `
       <div class="card">
-        <div class="status-line" id="sheet-status" style="--c:${status.c}"><i></i><span>${esc(status.t)}</span></div>
         <p class="lead">${esc(skill.summary)}</p>
         ${skill.description ? `<p class="muted">${esc(skill.description)}</p>` : ''}
       </div>
       <div class="card">
-        <label for="task" class="hint">Aufgabe für den Skill (optional)</label>
+        <label for="task" class="small">Aufgabe für den Skill (optional)</label>
         <textarea id="task" maxlength="3000" placeholder="Zum Beispiel: Prüf die Startseite von Else-Live-"></textarea>
         <button class="primary" id="go" data-start="${esc(skill.name)}" ${sendAvailable() ? '' : 'disabled'}>Starten</button>
-        <p class="hint" id="go-hint" ${sendAvailable() ? 'hidden' : ''}>${esc(sendReason())}</p>
+        <p class="small" id="go-hint" ${sendAvailable() ? 'hidden' : ''}>${esc(sendReason())}</p>
         <button class="secondary" data-copy="${esc(skill.name)}">Befehl kopieren</button>
       </div>
       <div class="card">
@@ -513,16 +724,15 @@ summary span { min-width: 0; overflow-wrap: anywhere; }
         <div class="kv"><span>Dateien</span><span>${skill.hasFiles ? `Anleitung${skill.fileCount ? ` + ${skill.fileCount} Referenzen` : ''}` : 'eingebaut, keine Dateien'}</span></div>
       </div>
       <div id="docs">${skill.hasFiles ? '<div class="card"><p class="muted">Lade Anleitung …</p></div>' : ''}</div>`
-
     if (skill.hasFiles) {
       const all = await loadDetails()
-      if (state.open !== open) return
+      if (state.sheet !== open) return
       const d = all[skill.name]
       const docs = $('docs')
       if (!d) { docs.innerHTML = '<div class="card"><p class="muted">Die Anleitung konnte nicht geladen werden.</p></div>'; return }
-      docs.innerHTML = `<section class="group"><h2><span>Anleitung &amp; Referenzen</span></h2><div class="cells">
-        <details><summary><span>SKILL.md · was Claude liest</span><span class="trail">${CHEVRON}</span></summary><div class="doc">${markdown(d.body)}</div></details>
-        ${d.files.map(f => `<details><summary><span>${esc(f.label)}</span><span class="trail">${f.text === undefined ? `<small>${f.kind === 'other' ? 'Datei' : 'zu groß'}</small>` : ''}${CHEVRON}</span></summary>
+      docs.innerHTML = `<section class="block"><h2 class="label"><span>Anleitung &amp; Referenzen</span></h2><div class="cells">
+        <details><summary><span>SKILL.md · was Claude liest</span>${CHEV}</summary><div class="doc">${markdown(d.body)}</div></details>
+        ${d.files.map(f => `<details><summary><span>${esc(f.label)}</span>${f.text === undefined ? `<small>${f.kind === 'other' ? 'Datei' : 'zu groß'}</small>` : ''}${CHEV}</summary>
           <div class="doc">${f.text === undefined ? `<p class="muted">${esc(f.label)} · ${Math.round(f.size / 1024)} KB, hier nicht darstellbar.</p>` : f.kind === 'text' && /\.md$/i.test(f.label) ? markdown(f.text) : `<pre><code>${esc(f.text)}</code></pre>`}</div></details>`).join('')}
       </div></section>`
     }
@@ -531,59 +741,56 @@ summary span { min-width: 0; overflow-wrap: anywhere; }
   let lastFocus = null
   function openSheet(target) {
     lastFocus = document.activeElement
-    state.open = target
+    state.sheet = target
     const sheet = $('sheet'), scrim = $('scrim')
     sheet.hidden = false; scrim.hidden = false
     document.body.classList.add('locked')
     renderSheet()
     $('sheet-body').scrollTop = 0
     requestAnimationFrame(() => requestAnimationFrame(() => { sheet.classList.add('open'); scrim.classList.add('open') }))
-    setTimeout(() => sheet.querySelector('[data-close]')?.focus({ preventScroll: true }), 350)
+    setTimeout(() => $('pass').querySelector('[data-close]')?.focus({ preventScroll: true }), 380)
   }
   function closeSheet() {
     const sheet = $('sheet'), scrim = $('scrim')
     sheet.style.transform = ''
     sheet.classList.remove('open', 'dragging'); scrim.classList.remove('open')
     document.body.classList.remove('locked')
-    state.open = null
-    setTimeout(() => { if (!state.open) { sheet.hidden = true; scrim.hidden = true } }, 500)
+    state.sheet = null
+    setTimeout(() => { if (!state.sheet) { sheet.hidden = true; scrim.hidden = true } }, 550)
     lastFocus?.focus?.({ preventScroll: true })
   }
 
-  // Drag the sheet down by its grabber or header to dismiss it.
+  // Drag the pass down to dismiss the sheet.
   ;(() => {
     let startY = 0, lastY = 0, lastT = 0, velocity = 0, dragging = false
-    const sheet = $('sheet')
-    const down = e => {
+    const sheet = $('sheet'), pass = $('pass')
+    pass.addEventListener('pointerdown', e => {
       if (e.target.closest('button')) return
       dragging = true; startY = lastY = e.clientY; lastT = performance.now(); velocity = 0
-      sheet.classList.add('dragging'); e.currentTarget.setPointerCapture?.(e.pointerId)
-    }
-    const move = e => {
+      sheet.classList.add('dragging'); pass.setPointerCapture?.(e.pointerId)
+    })
+    pass.addEventListener('pointermove', e => {
       if (!dragging) return
       const now = performance.now()
       velocity = (e.clientY - lastY) / Math.max(1, now - lastT); lastY = e.clientY; lastT = now
-      const dy = Math.max(0, e.clientY - startY)
-      sheet.style.transform = `translateY(${dy < 0 ? dy / 3 : dy}px)`
-    }
+      const dy = e.clientY - startY
+      sheet.style.transform = `translateY(${dy < 0 ? dy / 4 : dy}px)`
+    })
     const up = () => {
       if (!dragging) return
       dragging = false; sheet.classList.remove('dragging')
-      const dy = lastY - startY
-      if (dy > 120 || velocity > 0.6) closeSheet(); else sheet.style.transform = ''
+      if (lastY - startY > 110 || velocity > 0.6) closeSheet(); else sheet.style.transform = ''
     }
-    for (const el of [$('grab'), $('sheet-head')]) {
-      el.addEventListener('pointerdown', down); el.addEventListener('pointermove', move)
-      el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up)
-    }
+    pass.addEventListener('pointerup', up); pass.addEventListener('pointercancel', up)
   })()
 
-  // --- Dynamic Island -------------------------------------------------------------
+  // --- Dynamic Island --------------------------------------------------------------
   let islandTimer = 0
-  function island(title, detail, warn = false) {
+  function island(title, detail, mood = 'ok') {
     const el = $('island')
-    el.classList.toggle('warn', warn)
-    el.querySelector('i').textContent = warn ? '!' : '✓'
+    el.classList.toggle('warn', mood === 'warn')
+    el.classList.toggle('busy', mood === 'busy')
+    el.querySelector('i').textContent = mood === 'warn' ? '!' : mood === 'busy' ? '↑' : '✓'
     el.querySelector('b').textContent = title
     el.querySelector('span').textContent = detail || ''
     el.classList.add('show')
@@ -591,10 +798,10 @@ summary span { min-width: 0; overflow-wrap: anywhere; }
     islandTimer = setTimeout(() => el.classList.remove('show'), 3200)
   }
 
-  // --- Talking to Claude --------------------------------------------------------
+  // --- Talking to Claude -----------------------------------------------------------
   let comments = null
   async function refreshLink() {
-    if (!comments) { state.canSend = 'none' }
+    if (!comments) state.canSend = 'none'
     else { try { state.canSend = await comments.canSendToClaude() } catch { state.canSend = 'off' } }
     const link = $('link')
     link.classList.toggle('on', state.canSend === 'available')
@@ -603,7 +810,7 @@ summary span { min-width: 0; overflow-wrap: anywhere; }
   }
 
   async function sendToClaude(text, anchorEl) {
-    if (!comments || !sendAvailable()) { island('Nicht gesendet', sendReason(), true); return false }
+    if (!comments || !sendAvailable()) { island('Nicht gesendet', sendReason(), 'warn'); return false }
     try {
       const anchor = await comments.anchorFor(anchorEl)
       await comments.sendToClaude({ anchor, text })
@@ -616,24 +823,82 @@ summary span { min-width: 0; overflow-wrap: anywhere; }
         claude_unavailable: 'Gerade hört keine Claude-Session zu.',
         rate_limited: 'Kurz warten, dann noch einmal.',
       }[code] || 'Etwas ist schiefgegangen. Versuch es gleich noch einmal.'
-      island('Nicht gesendet', why, true)
+      island('Nicht gesendet', why, 'warn')
       if (code === 'forbidden' || code === 'claude_unavailable') refreshLink()
       return false
     }
   }
 
+  async function loadSkill(name, task, el) {
+    const sent = await sendToClaude(`Cockpit · Skill laden\n/${name}${task ? ' ' + task : ''}`, el)
+    if (!sent) return false
+    state.pending.set(name, Date.now())
+    island('An Claude geschickt', `${short(name)} wird geladen`, 'busy')
+    render()
+    return true
+  }
+
+  async function installRec(id, el) {
+    const rec = DATA.recommended.find(r => r.id === id)
+    const sent = await sendToClaude(`Cockpit · Skill installieren\n${rec.title} von ${rec.author}: ${rec.install}`, el)
+    if (sent) island('An Claude geschickt', `${rec.title} wird installiert`, 'busy')
+    return sent
+  }
+
   async function copyCommand(name, task) {
     const text = `/${name}${task ? ' ' + task : ''}`
     try { await navigator.clipboard.writeText(text); island('Befehl kopiert', 'Im Chat einfügen und senden') }
-    catch { island('Kopieren ging nicht', text, true) }
+    catch { island('Kopieren ging nicht', text, 'warn') }
   }
 
-  // --- Events ---------------------------------------------------------------------
+  // --- Hold to load ----------------------------------------------------------------
+  let hold = null, swallowClick = false
+  document.documentElement.style.setProperty('--hold', `${HOLD_MS}ms`)
+  function cancelHold() {
+    if (!hold) return
+    clearTimeout(hold.timer)
+    hold.el.classList.remove('holding')
+    hold = null
+  }
+  document.addEventListener('pointerdown', e => {
+    swallowClick = false
+    const el = e.target.closest('[data-hold]')
+    if (!el || (e.pointerType === 'mouse' && e.button !== 0)) return
+    cancelHold()
+    hold = { el, x: e.clientX, y: e.clientY, timer: 0 }
+    el.classList.add('holding')
+    hold.timer = setTimeout(async () => {
+      const target = hold && hold.el
+      if (!target) return
+      hold = null
+      swallowClick = true
+      target.classList.remove('holding')
+      target.classList.add('fired')
+      setTimeout(() => target.classList.remove('fired'), 1300)
+      navigator.vibrate?.(12)
+      const key = target.dataset.hold
+      if (key.startsWith('rec:')) await installRec(key.slice(4), target)
+      else if (loadedSet().has(key)) island('Schon geladen', `${short(key)} läuft in dieser Session`)
+      else await loadSkill(key, '', target)
+    }, HOLD_MS)
+  })
+  document.addEventListener('pointermove', e => {
+    if (hold && Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 10) cancelHold()
+  }, { passive: true })
+  document.addEventListener('pointerup', cancelHold)
+  document.addEventListener('pointercancel', cancelHold)
+  document.addEventListener('contextmenu', e => { if (e.target.closest('[data-hold]')) e.preventDefault() })
+
+  // --- Events ----------------------------------------------------------------------
   document.addEventListener('click', async e => {
+    if (swallowClick) { swallowClick = false; e.preventDefault(); return }
     const t = e.target.closest('button, .scrim')
     if (!t) return
     if (t.id === 'scrim' || t.hasAttribute('data-close')) return closeSheet()
-    if (t.dataset.filter) { state.filter = t.dataset.filter; store.set('cockpit.filter', state.filter); render(); return }
+    if (t.id === 'done') return openCard(state.open)
+    if (t.id === 'clear') { $('q').value = ''; state.query = ''; renderResults(); $('q').focus(); return }
+    if (t.dataset.card) return openCard(t.dataset.card)
+    if (t.dataset.try) { $('q').value = t.dataset.try; state.query = t.dataset.try; renderResults(); return }
     if (t.dataset.skill) return openSheet({ skill: t.dataset.skill })
     if (t.dataset.rec) return openSheet({ rec: t.dataset.rec })
     if (t.dataset.fav) {
@@ -644,33 +909,26 @@ summary span { min-width: 0; overflow-wrap: anywhere; }
     }
     if (t.dataset.copy) return copyCommand(t.dataset.copy, ($('task')?.value || '').trim())
     if (t.dataset.start) {
-      const name = t.dataset.start
-      const task = ($('task')?.value || '').trim()
       t.disabled = true
-      const sent = await sendToClaude(`Cockpit · Skill starten\n/${name}${task ? ' ' + task : ''}`, t)
+      await loadSkill(t.dataset.start, ($('task')?.value || '').trim(), t)
       t.disabled = !sendAvailable()
-      if (sent) {
-        state.pending.set(name, Date.now())
-        island('An Claude geschickt', `${name.split(':').pop()} startet gleich`)
-        render()
-      }
       return
     }
     if (t.dataset.install) {
-      const rec = DATA.recommended.find(r => r.id === t.dataset.install)
       t.disabled = true
-      const sent = await sendToClaude(`Cockpit · Skill installieren\n${rec.title} von ${rec.author}: ${rec.install}`, t)
+      await installRec(t.dataset.install, t)
       t.disabled = !sendAvailable()
-      if (sent) island('An Claude geschickt', `${rec.title} wird installiert`)
     }
   })
-  $('q').addEventListener('input', e => { state.query = e.target.value; renderLists() })
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.open) closeSheet() })
+  $('q').addEventListener('input', e => { state.query = e.target.value; renderResults() })
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.sheet) closeSheet() })
+  window.addEventListener('resize', () => layout(false))
   setInterval(() => { if (state.loaded.length) render() }, 60000)
 
+  buildWallet()
   render()
 
-  // --- Live status from the session (written by Claude) ---------------------------
+  // --- Live status from the session (written by Claude) ----------------------------
   ;(async () => {
     const db = await use('db')
     if (!db) return
@@ -683,7 +941,7 @@ summary span { min-width: 0; overflow-wrap: anywhere; }
         if (state.loaded.some(u => u.skill === name && u.at >= at - 60000)) state.pending.delete(name)
       }
       const fresh = state.loaded.filter(u => !before.has(u.skill))
-      if (before.size && fresh.length) island('Skill geladen', fresh.map(u => u.skill.split(':').pop()).join(', '))
+      if (before.size && fresh.length) island('Skill geladen', fresh.map(u => short(u.skill)).join(', '))
       render()
     }, () => {})
   })()
