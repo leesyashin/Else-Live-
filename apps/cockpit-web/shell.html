@@ -1123,7 +1123,7 @@ summary small { color: var(--fg3); font-size: 13px; }
       const ms = team.members
       if (!ms.length) {
         return `${pattern('orbits')}<div class="wtop"><div><small>Team</small><b>Kein Team</b></div></div>
-          <div class="wbottom"><div><small>Bereit</small><p>Gib Claude eine größere Aufgabe, es verteilt sie auf mehrere Chats.</p></div>
+          <div class="wbottom"><div style="min-width:0"><small>${team.archivedAt ? `Zuletzt archiviert · ${esc(ago(team.archivedAt))}` : 'Bereit'}</small><p>${esc(team.archivedAt && team.goal?.goal ? team.goal.goal : 'Gib Claude eine größere Aufgabe, es verteilt sie auf mehrere Chats.')}</p></div>
             <span class="glyph">${svg(TEAM_ICON)}</span></div>`
       }
       const count = st => ms.filter(m => m.state === st).length
@@ -1300,7 +1300,7 @@ summary small { color: var(--fg3); font-size: 13px; }
   function teamDetail() {
     const ms = team.members
     const start = `<button class="primary" data-team-new>${ms.length ? 'Neue Aufgabe verteilen' : 'Aufgabe verteilen'}</button>`
-    if (!ms.length) return `<p class="empty">${esc(team.error ? 'Die Daten der Seite sind gerade nicht lesbar.' : 'Noch kein Team. Beschreib eine größere Aufgabe: Claude zerlegt sie und verteilt die Teile auf eigene Chats in diesem Repo.')}</p>${start}`
+    if (!ms.length) return `<p class="empty">${esc(team.error ? 'Die Daten der Seite sind gerade nicht lesbar.' : team.archivedAt ? `Das letzte Team ist fertig, gemergt und archiviert${team.goal?.goal ? ` („${team.goal.goal}“)` : ''}. Gib Claude die nächste größere Aufgabe.` : 'Noch kein Team. Beschreib eine größere Aufgabe: Claude zerlegt sie und verteilt die Teile auf eigene Chats in diesem Repo.')}</p>${start}`
     const order = { question: 0, conflict: 1, working: 2, waiting: 3, failed: 4, done: 5 }
     const sorted = [...ms].sort((a, b) => order[a.state] - order[b.state] || a.name.localeCompare(b.name))
     const rows = sorted.map((m, i) => `<button class="mrow" data-member="${esc(m.id)}" style="--i:${i};--st:${MEMBER_LOOK[m.state].st}">
@@ -2742,6 +2742,7 @@ summary small { color: var(--fg3); font-size: 13px; }
       const d = snap.exists ? snap.data() : null
       team.goal = d && typeof d.goal === 'string' ? { goal: d.goal, startedAt: typeof d.startedAt === 'number' ? d.startedAt : 0 } : null
       team.lead = d && d.lead && typeof d.lead.sessionId === 'string' ? d.lead.sessionId : null
+      team.archivedAt = d && d.state === 'archived' && typeof d.archivedAt === 'number' ? d.archivedAt : null
       render()
     }, () => { team.error = 'no_data'; render() })
     // A view without collections still gets everything else below.

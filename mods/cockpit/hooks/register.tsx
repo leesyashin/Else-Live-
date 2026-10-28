@@ -36,6 +36,7 @@ import { DOT, groupRows, sessionsText, sessionsView, stateLabel, syncSessions } 
 import { syncPr, syncStatus, touchesPr } from './pr'
 import { COLOR, groupStates, setupText, syncSetup } from './setup'
 import { syncContext } from './sync'
+import { tidyTeam } from './team'
 
 type $ = EngineInterface
 
@@ -172,8 +173,13 @@ export const register: Register = (on, options) => {
     $.clock.after(5000, () => void syncStatus($, cockpitUrl).catch(() => undefined))
     $.clock.after(6000, () => void syncPr($, cockpitUrl, true).catch(() => undefined))
     // Other sessions start and finish on their own: look again every few minutes.
-    $.clock.after(7000, () => void syncSessions($, cockpitUrl, true).catch(() => undefined))
-    $.clock.every(180_000, () => void syncSessions($, cockpitUrl, true).catch(() => undefined))
+    // A finished, merged team is archived first, so its chats leave the list in the same round.
+    const sessionsRound = async () => {
+      await tidyTeam($, cockpitUrl).catch(() => undefined)
+      await syncSessions($, cockpitUrl, true).catch(() => undefined)
+    }
+    $.clock.after(7000, () => void sessionsRound())
+    $.clock.every(180_000, () => void sessionsRound())
 
     return next(e)
   })

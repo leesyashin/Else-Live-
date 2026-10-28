@@ -182,7 +182,7 @@ Für die nächste Session: Hier steht, was es gibt, wie es zusammenspielt und wi
 
 | Teil | Ort | Zweck |
 | --- | --- | --- |
-| Mod „cockpit“ | `mods/cockpit` | Skill-Launcher (Leiste, Panel, `/cockpit` als Text), Kontext-Ring in der Leiste, Sessions nach Repo, Abgleich mit der Handy-Seite. 28 Tests. |
+| Mod „cockpit“ | `mods/cockpit` | Skill-Launcher (Leiste, Panel, `/cockpit` als Text), Kontext-Ring in der Leiste, Sessions nach Repo, Aufräumen fertiger Teams, Abgleich mit der Handy-Seite. 31 Tests. |
 | Handy-Seite | `apps/cockpit-web` (Quelltext), live: https://claude.ai/artifact/3mAJQLuy66EZ9EoNiqAgT8 | Das Cockpit auf dem Handy, siehe unten. |
 | Marketplace | `.claude-plugin/marketplace.json` | `/plugin install cockpit --marketplace leesyashin/Else-Live-` |
 | Design-Entwürfe | https://claude.ai/artifact/5EBWMLf4CEbFLtgNSRfi5Q | Fünf Richtungen; gewählt wurden Wallet (3) und Suche mit Vorschlägen (4). |
@@ -247,7 +247,8 @@ Die Handy-Seite zeigt:
    3. `cockpit/team` schreiben: `{ goal, lead: { sessionId, url }, startedAt, state: 'running' }`.
    4. Je Teil `create_session` mit `source_url` des Repos und der ausgefüllten Vorlage aus `mods/cockpit/team/auftrag.md` als `prompt`. Gleich danach das Dokument des Teils anlegen: `cockpit/team/members/<neue Session-ID>` mit `state: 'waiting'`, `name`, `task`, `branch`, `url`.
    5. Im Thread antworten (wer was macht) und ihn auflösen.
-   6. Danach: Meldet ein Team-Chat Fehler oder hängt er, mit `get_session` und `list_events` nachsehen und `state` auf `failed` setzen. Sind alle fertig, `cockpit/team.state` auf `done` setzen und die PRs zusammenfassen.
+   6. Danach: Meldet ein Team-Chat Fehler oder hängt er, mit `get_session` und `list_events` nachsehen und `state` auf `failed` setzen. Sind alle fertig, `cockpit/team.state` auf `done` setzen und die PRs zusammenfassen. Fasst der Lead die Teile in einen eigenen PR zusammen, dessen Nummer als `pr` in `cockpit/team` eintragen.
+   7. **Aufräumen (macht die Mod):** Sind alle Team-Chats `done` und ist kein Team-PR mehr offen (gemergt oder in den PR des Leads übernommen und geschlossen; steht `pr` in `cockpit/team`, muss der gemergt sein), archiviert die erste Session, die `cockpit/jobs/threads/team-<startedAt>` anlegt, die Team-Chats (`archive_session`, nie sich selbst), löscht ihre Dokumente in `cockpit/team/members` und setzt `cockpit/team` auf `state: 'archived'` mit `archivedAt`. Die Team-Karte bleibt und zeigt „Kein Team“ mit dem letzten Ziel. Geprüft wird alle 3 Minuten. Ohne Mod dasselbe von Hand.
 7. **Auftrag „Cockpit · Antwort“:** Zeile 2 ist die Session-ID des Team-Chats, der Rest die Antwort. Mit `send_message` an diese Session schicken („Antwort des Nutzers auf deine Frage: …“), im Thread kurz bestätigen und ihn auflösen.
 8. **Auftrag „Cockpit · PR prüfen“:** das Werkzeug `mcp__cockpit__sync_pr` aufrufen (ohne Mod: PR lesen und `cockpit/pr` von Hand schreiben). Danach im Thread antworten.
 9. **Seite neu bauen:** wie in `apps/cockpit-web/README.md` beschrieben. Die Skill-Daten liefert `build_data.py` aus der jeweiligen Session.

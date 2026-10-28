@@ -41,7 +41,7 @@ Daten, die Claude in die Datenbank der Seite schreibt (Sammlung `cockpit`):
 | `skills` | `{ installed: [{ id, name, title, author, at, pr }] }`: über das Cockpit installierte Skills. Sie verlassen „Empfohlen“ sofort und stehen unter Design. |
 | `jobs/threads/<Thread-ID>` | `{ session, kind, at }`: welche Session einen Auftrag übernommen hat. Nur die erste legt das Dokument an. |
 | `setup` | schreibt die Mod: `{ repo, branch, memory, checks: [{ group: Memory\|Connectors\|Skills\|Branch, name, state: ok\|warn\|fail, detail }], at }` |
-| `team` | schreibt der Lead-Chat: `{ goal, lead, startedAt, state }` |
+| `team` | schreibt der Lead-Chat: `{ goal, lead, startedAt, state, pr? }`; die Mod setzt nach dem Aufräumen `state: archived`, `archivedAt`, `archived` (die archivierten Session-IDs) |
 | `team/members/<Session-ID>` | schreibt jeder Team-Chat selbst: `{ name, task, state: working\|waiting\|question\|conflict\|done\|failed, note, question, branch, pr, url, updatedAt }` |
 | `sessions` | schreibt die Mod: `{ rows: [{ id, title, repo, state: working\|blocked\|review\|failed\|done\|idle, note, updatedAt, url, isSelf }], at, error }`, nur aktuelle Sessions |
 | `pr` | `{ repo, number, title, url, head, base, draft, state: open\|merged\|closed, ci: success\|failure\|pending\|none, checks: [{ name, state }], mergeable: true\|false\|null, files, additions, deletions, updatedAt, session, sessionUrl?, archivedAt?, merge?: { state: running\|done\|failed, at, sha, branchDeleted, message } }` |

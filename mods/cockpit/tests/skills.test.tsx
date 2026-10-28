@@ -802,3 +802,60 @@ test('/sessions lists the current sessions under their repo, each one a link', a
   expect((await pane.find({ key: 'k:Sessions' }))?.text).toContain('4 aktuell · 3 Repos')
   await pane.unmount()
 })
+
+// --- A finished team leaves the page ----------------------------------------------------
+
+function teamWorld(on: On, prState: string, memberState = 'done') {
+  const line = (id: string, data: object, version: number) => JSON.stringify({ id, data, version })
+  const members = ['session_m1', 'session_m2'].map((id, i) =>
+    line(id, { name: `Teil ${i + 1}`, state: memberState, pr: 53 + i, url: `https://claude.ai/code/${id}` }, 3))
+  const { clock, calls } = syncWorld(on, input => {
+    if (input.action === 'get' && input.doc_id === 'team') {
+      return { result: '', text: `=== BEGIN ARTIFACT DB x ===\n${line('team', { goal: 'Smooth', state: 'done', startedAt: 7 }, 2)}\n=== END ARTIFACT DB x ===` }
+    }
+    if (input.action === 'list') return { result: '', text: `=== BEGIN ARTIFACT DB x ===\n${members.join('\n')}\n=== END ARTIFACT DB x ===` }
+    if (input.action === 'set' && input.collection === 'cockpit/jobs/threads') return { result: '', text: 'Database set committed.' }
+    return { result: '', text: 'Database set committed. The document is now at version 1.' }
+  })
+  const archived: string[] = []
+  on('mcp.call', (_, e) => {
+    const text = (body: unknown) => ({ value: { content: [{ type: 'text', text: JSON.stringify(body) }], isError: false } })
+    if (e.tool === 'pull_request_read') return text({ number: e.args.pullNumber, state: prState, merged: false })
+    if (e.tool === 'archive_session') {
+      archived.push(String(e.args.session_id))
+      return text({ ok: true })
+    }
+    if (e.tool === 'get_session') return text({ ccr: { id: e.args.session_id, session_context: { sources: [{ git_repository: { url: 'https://github.com/leesyashin/Else-Live-' } }] } } })
+    return text({ ccr: { data: [] } })
+  })
+  return { clock, calls, archived }
+}
+
+test('a team that is done and merged is archived and its cards cleared', async ($, on) => {
+  const { clock, calls, archived } = teamWorld(on, 'closed')
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(8000)
+
+  expect(archived).toEqual(['session_m1', 'session_m2'])
+  const batch = calls.find(call => call.action === 'batch') as { writes: Record<string, unknown>[] } | undefined
+  expect(batch?.writes).toEqual([
+    { op: 'delete', collection: 'cockpit/team/members', doc_id: 'session_m1', if_version: 3 },
+    { op: 'delete', collection: 'cockpit/team/members', doc_id: 'session_m2', if_version: 3 },
+    expect.objectContaining({ op: 'update', doc_id: 'team', if_version: 2, data: expect.objectContaining({ state: 'archived' }) }),
+  ])
+})
+
+test('a team with a PR still open stays', async ($, on) => {
+  const { clock, archived, calls } = teamWorld(on, 'open')
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(8000)
+  expect(archived).toEqual([])
+  expect(calls.some(call => call.action === 'batch')).toBe(false)
+})
+
+test('a team chat still at work keeps the team', async ($, on) => {
+  const { clock, archived } = teamWorld(on, 'closed', 'working')
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(8000)
+  expect(archived).toEqual([])
+})

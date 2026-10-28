@@ -66,6 +66,12 @@ Eine Mod für Claude Code, die zeigt, welche Skills du hast, ob Claude sie sieht
 - **Wo:** im Panel als Abschnitt „Sessions“, in der Leiste als `⧉ n Sessions`, als `/sessions` (auch auf dem Handy, mit Links) und für Claude als Werkzeug `list_sessions`.
 - Die Liste wird beim Start und alle 3 Minuten neu gelesen und, wenn sie sich geändert hat, ins Dokument `cockpit/sessions` der Cockpit-Seite geschrieben. Dort erscheint sie als Wallet-Karte „Sessions“.
 
+## Fertige Teams räumen sich auf
+
+- Sind alle Team-Chats fertig und ist kein Team-PR mehr offen (gemergt oder in den PR des Leads übernommen), archiviert die Mod die Team-Chats und löscht ihre Karten auf der Seite. Steht im Dokument `cockpit/team` ein `pr`, muss der gemergt sein.
+- Nur eine Session räumt auf: die erste, die `cockpit/jobs/threads/team-<startedAt>` anlegt. Ihren eigenen Chat archiviert sie nie.
+- Die Team-Karte bleibt und zeigt „Kein Team“ mit dem letzten Ziel. Die archivierten Chats verschwinden aus der Sessions-Liste.
+
 ## Zur Cockpit-Seite
 
 - `/seite` öffnet die Cockpit-Seite und zeigt ihren Link als Knopf, in jeder Session, auch auf dem Handy.

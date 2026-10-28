@@ -8,7 +8,7 @@ import { isStopped, writeDoc } from './sync'
 type $ = EngineInterface
 
 // The account's cloud sessions, as the Claude Code Remote connector lists them.
-const SERVER = 'claude-code-remote'
+export const SERVER = 'claude-code-remote'
 const DOC = 'sessions'
 // "Current": not archived and active within the last day, or working right now.
 const CURRENT_MS = 24 * 60 * 60 * 1000
@@ -51,7 +51,7 @@ export function parseAnswer(text: string): Record<string, unknown> | null {
   }
 }
 
-async function ask($: $, tool: string, args: Record<string, unknown>): Promise<Record<string, unknown> | null> {
+export async function ask($: $, tool: string, args: Record<string, unknown>): Promise<Record<string, unknown> | null> {
   const result = await $.mcp.call(SERVER, tool, args)
   const text = result.content.map(block => ('text' in block && typeof block.text === 'string' ? block.text : '')).join('')
   if (result.isError) throw new Error(text.slice(0, 200) || 'Fehler')
