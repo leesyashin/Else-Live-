@@ -142,6 +142,8 @@ Ursprünglicher Plan:
   - nach Zügen höchstens alle 90 s, weil CI sich von selbst ändert
 - **Nur bei Änderungen:** Die Mod schreibt nur, wenn sich etwas geändert hat. Bei derselben PR-Nummer ergänzt sie das Dokument nur (`update`), damit Claudes `merge`-Feld aus dem Merge-Ablauf erhalten bleibt. Eine neue Nummer ersetzt das Dokument.
 - **Werkzeug `sync_pr`:** löst den PR-Abgleich sofort aus, etwa für „Cockpit · PR prüfen“.
+- **Session des PR:** Die Mod schreibt ihre Session-ID (`session`) und in der Cloud den Link (`sessionUrl`) mit in `cockpit/pr`. Der Merge-Knopf nennt diese Session im Auftrag, nur sie merged. Antwortet sie nach 90 s nicht, zeigt die Karte einen Hinweis mit „Session öffnen ↗“.
+- **Gemergt, einmal gezeigt, dann archiviert:** Nach dem Merge zeigt die Karte „Gemergt“ und leuchtet einmal auf. Öffnest du sie, läuft die Merge-Animation (Branch fließt in `main`, Knoten mit Häkchen, Druckwelle, Konfetti). Die Seite setzt dabei `archivedAt` in `cockpit/pr`. Beim Schließen dreht sich die Karte auf ihre leere Seite („Kein offener PR · Zuletzt #n gemergt“). Sie bleibt im Stapel, der nächste PR erscheint darauf.
 
 ## Empfohlene Design-Skills (Recherche 28.10.2026)
 
@@ -199,7 +201,7 @@ Die Handy-Seite zeigt:
 - **Seite → Claude:** Halten oder „Starten“ schickt per `comments.sendToClaude` einen Kommentar an alle Sessions, die die Seite beobachten. Format:
   - `Cockpit · Skill laden` + neue Zeile + `/<skill> [Aufgabe]`
   - `Cockpit · Skill installieren` + neue Zeile + `<Titel> von <Autor>: <Befehl>`
-  - `Cockpit · Merge` + neue Zeile + `<owner/repo> #<Nummer>: <head> → <base>`
+  - `Cockpit · Merge` + neue Zeile + `<owner/repo> #<Nummer>: <head> → <base>` + neue Zeile + `Session: <Session-ID>` (die Session, die den PR in `cockpit/pr` geschrieben hat)
   - `Cockpit · PR prüfen` + neue Zeile + `<owner/repo>`
   - `Cockpit · Setup prüfen` + neue Zeile + `<repo>`
   - `Cockpit · Team` + neue Zeile + `<Aufgabe>`
@@ -220,6 +222,7 @@ Die Handy-Seite zeigt:
    2. Im Kommentar-Thread kurz antworten und ihn auflösen.
    3. Ist die Mod nicht geladen: in `cockpit/status` den Eintrag `{ skill, at }` von Hand ergänzen, mit `if_version`. Mit Mod geschieht das von selbst.
 4. **Auftrag „Cockpit · Merge“:**
+   0. **Nur die Session des PR merged.** Steht eine Zeile `Session: <ID>` im Auftrag, mit `echo $CLAUDE_CODE_SESSION_ID` vergleichen. Passt sie nicht, nichts tun: nicht antworten, nicht auflösen, nichts schreiben. Den Merge übernimmt die genannte Session. Fehlt die Zeile (ältere Seite), gilt der Ablauf für jede Session.
    1. Den PR live prüfen (GitHub-Werkzeuge): offen, Head unverändert, CI grün auf dem aktuellen Commit, keine Konflikte. Die Seite ist nur der Wunsch, nicht der Beweis.
    2. `cockpit/pr` auf `merge: { state: 'running', at }` setzen.
    3. Ist der PR ein Entwurf, ihn freigeben. Dann per Squash mergen und den Branch löschen (`git push origin --delete <branch>`).

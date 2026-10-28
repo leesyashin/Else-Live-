@@ -29,6 +29,9 @@ export type PrCard = {
   additions: number | null
   deletions: number | null
   updatedAt: number
+  // The session that wrote the card; only it merges from the phone.
+  session?: string
+  sessionUrl?: string
 }
 
 let lastAt = 0
@@ -137,8 +140,9 @@ export async function syncPr($: $, url: string, force = false): Promise<string> 
   const now = await $.clock.now()
   if (!force && now - lastAt < MIN_GAP_MS) return 'Gerade erst abgeglichen.'
   lastAt = now
-  const card = await readPr($)
-  if (!card) return 'Dieser Branch hat keinen PR.'
+  const found = await readPr($)
+  if (!found) return 'Dieser Branch hat keinen PR.'
+  const card = { ...found, ...(await sessionOf($)) }
   const { updatedAt: _at, ...content } = card
   const key = JSON.stringify(content)
   if (key === lastSent && !force) return `PR #${card.number} unverändert.`
@@ -155,6 +159,15 @@ export async function syncPr($: $, url: string, force = false): Promise<string> 
   pageNumber = card.number
 
   return `PR #${card.number} abgeglichen: CI ${card.ci}, ${card.mergeable === false ? 'Konflikte' : 'keine Konflikte'}.`
+}
+
+// The page sends `Cockpit · Merge` to every watching session; this names the one
+// that owns the PR. A cloud session also gets its link (cse_… is session_… there).
+export async function sessionOf($: $): Promise<{ session: string; sessionUrl?: string }> {
+  const [session, remote] = await Promise.all([$.session.id(), $.env.get('CLAUDE_CODE_REMOTE_SESSION_ID').catch(() => undefined)])
+  const tail = remote?.match(/^(?:cse|session)_([A-Za-z0-9]+)$/)?.[1]
+
+  return tail ? { session, sessionUrl: `https://claude.ai/code/session_${tail}` } : { session }
 }
 
 // Every skill this session loaded, so the page's session card turns green.
