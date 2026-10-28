@@ -58,6 +58,16 @@ Eine Mod für Claude Code, die zeigt, welche Skills du hast, ob Claude sie sieht
 - **Der PR des Branches** geht ins Dokument `cockpit/pr`, mit CI, Checks, Konflikten und Dateien. Das passiert beim Start, kurz nach jedem `git push` oder jeder PR-Änderung und nach Zügen höchstens alle 90 s. Geschrieben wird nur, wenn sich etwas geändert hat.
 - Das Werkzeug `sync_pr` löst den PR-Abgleich sofort aus.
 
+## Aufträge vom Handy: nur eine Session
+
+- Ein Auftrag von der Cockpit-Seite weckt jede Session, die sie beobachtet. Liest eine Session den Thread (`ArtifactComments read`), hängt die Mod eine Zuteilung an: Nennt der Auftrag eine andere Session (`Session: <ID>`) oder hat eine andere ihn schon beansprucht (`cockpit/jobs/threads/<Thread-ID>`), bleibt diese still.
+- Die Regeln dazu kommen über die Mod in den Systemprompt jeder Session, in jedem Repo.
+
+## Skills, die mit der Mod kommen
+
+- In `skills/` liegen die über das Cockpit installierten Skills, z. B. `apple-design` und `emil-design-eng` von Emil Kowalski (MIT). Sie gelten überall, wo die Mod installiert ist.
+- Im Repo Else-Live- zeigen Links in `.claude/skills/` darauf, so hat jede Cloud-Session dort sie ohne Mod.
+
 ## Installation
 
 In einer Terminal-Session:

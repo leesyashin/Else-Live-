@@ -11,6 +11,8 @@ import sys
 OUT = sys.argv[1]
 SYNCED_PLUGINS = '/root/.claude/plugins/synced/5537b8ca-6826-4499-982d-2a0b8b0ec2d4_4b54b50d-c702-488b-ad59-2a8857b953f3'
 SYNCED_SKILLS = '/root/.claude/skills/synced/5537b8ca-6826-4499-982d-2a0b8b0ec2d4_4b54b50d-c702-488b-ad59-2a8857b953f3'
+# Skills installed through the Cockpit: they ship with the mod and every Else-Live- session.
+GLOBAL_SKILLS = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../mods/cockpit/skills'))
 
 # name (as run), category, source label, German one-liner, description for skills without a file
 SKILLS = [
@@ -124,7 +126,7 @@ RECOMMENDED = [
         'references': [{'label': 'SKILL.md auf GitHub', 'href': 'https://github.com/emilkowalski/skills/blob/main/skills/apple-design/SKILL.md'},
                        {'label': 'Repo emilkowalski/skills', 'href': 'https://github.com/emilkowalski/skills'}],
         'referenceNote': 'Keine Bilder: Textregeln mit konkreten Werten (Spring-Tabelle, Easing-Tokens) und Code-Beispielen.',
-        'install': 'npx skills@latest add emilkowalski/skills',
+        'install': 'github.com/emilkowalski/skills/tree/main/skills/apple-design',
     },
     {
         'id': 'emil-design-eng', 'title': 'emil-design-eng', 'author': 'Emil Kowalski',
@@ -133,7 +135,7 @@ RECOMMENDED = [
                   'Eigene Easing-Kurven als Tokens, reduzierte Bewegung wird beachtet', 'Reviews als Vorher/Nachher-Tabelle'],
         'references': [{'label': 'SKILL.md auf GitHub', 'href': 'https://github.com/emilkowalski/skills/blob/main/skills/emil-design-eng/SKILL.md'}],
         'referenceNote': 'Textregeln mit Werten und Code-Beispielen, dazu ein Performance-Cheatsheet im Repo.',
-        'install': 'npx skills@latest add emilkowalski/skills',
+        'install': 'github.com/emilkowalski/skills/tree/main/skills/emil-design-eng',
     },
     {
         'id': 'frontend-design', 'title': 'frontend-design', 'author': 'Anthropic',
@@ -143,7 +145,7 @@ RECOMMENDED = [
                   'Ein geplanter Bewegungsmoment statt Einblenden überall'],
         'references': [{'label': 'SKILL.md auf GitHub', 'href': 'https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md'}],
         'referenceNote': 'Eine einzige Textdatei. Dein eigenes Briefing hat laut Skill Vorrang.',
-        'install': '/plugin marketplace add anthropics/skills, danach /plugin install example-skills@anthropic-agent-skills',
+        'install': 'github.com/anthropics/skills/tree/main/skills/frontend-design',
     },
     {
         'id': 'make-interfaces-feel-better', 'title': 'make-interfaces-feel-better', 'author': 'Jakub Krehel',
@@ -153,7 +155,7 @@ RECOMMENDED = [
                   'Große Klickflächen, Zurückhaltung bei Bewegung'],
         'references': [{'label': 'Repo auf GitHub', 'href': 'https://github.com/jakubkrehel/make-interfaces-feel-better'}],
         'referenceNote': 'typography.md, surfaces.md, animations.md, icons.md und performance.md neben der SKILL.md.',
-        'install': 'npx skills add jakubkrehel/make-interfaces-feel-better',
+        'install': 'github.com/jakubkrehel/make-interfaces-feel-better/tree/main/skills/make-interfaces-feel-better',
     },
     {
         'id': 'taste-skill', 'title': 'Taste (v2)', 'author': 'Leonxlnx',
@@ -164,7 +166,7 @@ RECOMMENDED = [
         'references': [{'label': 'Repo Leonxlnx/taste-skill', 'href': 'https://github.com/Leonxlnx/taste-skill'},
                        {'label': 'tasteskill.dev', 'href': 'https://tasteskill.dev'}],
         'referenceNote': 'Zum Ansehen: examples/v2 (Screenshots), references/research.md (die Studie), tells.md, motion.md.',
-        'install': '/plugin marketplace add Leonxlnx/taste-skill, danach /plugin install taste-skill@taste-skill',
+        'install': 'github.com/Leonxlnx/taste-skill/tree/main/skills/taste-skill',
         'note': 'Schwer: 30–45 Minuten pro Durchlauf. Das Glas-Verbot widerspricht dem Apple-Look.',
     },
     {
@@ -173,14 +175,14 @@ RECOMMENDED = [
         'rules': ['Karten mit doppeltem Rahmen', 'Federnde Bewegungen', 'Läuft nur, wenn man ihn beim Namen aufruft'],
         'references': [{'label': 'Repo Leonxlnx/taste-skill-classics', 'href': 'https://github.com/Leonxlnx/taste-skill-classics'}],
         'referenceNote': 'Liegt neben minimalist-ui und Taste Version 1 im Classics-Repo.',
-        'install': 'aus github.com/Leonxlnx/taste-skill-classics',
+        'install': 'github.com/Leonxlnx/taste-skill-classics/tree/main/skills/soft-skill',
     },
 ]
 
 
 def find_file(name):
     prefix, _, short = name.rpartition(':')
-    candidates = []
+    candidates = [f'{GLOBAL_SKILLS}/{name}/SKILL.md'] if not prefix else []
     if prefix in ('design', 'data', 'legal', 'marketing', 'productivity'):
         candidates.append(f'{SYNCED_PLUGINS}/{prefix}/skills/{short}/SKILL.md')
     if prefix == 'anthropic-skills':
@@ -228,6 +230,14 @@ def references(folder):
             files.append(item)
     return files[:40]
 
+
+# A recommended skill installed through the Cockpit moves from Empfohlen to Design.
+if os.path.isdir(GLOBAL_SKILLS):
+    for folder in sorted(os.listdir(GLOBAL_SKILLS)):
+        if os.path.isfile(f'{GLOBAL_SKILLS}/{folder}/SKILL.md') and all(name != folder for name, *_ in SKILLS):
+            rec = next((r for r in RECOMMENDED if r['id'] == folder), None)
+            summary = f"{rec['author']}: {rec['summary']}" if rec else 'Über das Cockpit installiert.'
+            SKILLS.append((folder, 'Design', 'Cockpit · in allen Sessions', summary, None))
 
 index, details = [], {}
 for name, category, source, summary, fallback in SKILLS:

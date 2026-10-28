@@ -388,7 +388,7 @@ export async function askToInstall($: $, id: string): Promise<void> {
   const entry = CATALOG.find(one => one.id === id)
   if (!entry) return
   await $.prompt.fill({
-    text: `Installiere bitte den Design-Skill „${entry.title}“ von ${entry.author} (${entry.install}) und sag mir, ob er danach verfügbar ist.`,
+    text: `Installiere bitte den Design-Skill „${entry.title}“ von ${entry.author} global, so wie die Cockpit-Regeln es beschreiben (mods/cockpit/skills und .claude/skills in Else-Live-). Quelle: ${entry.install}`,
     mode: 'replace',
   })
 }
@@ -550,7 +550,7 @@ async function textSkill($: $, name: string, wantsBody: boolean): Promise<string
     const links = entry.references.map(link => `[${link.label}](${link.href})`).join(' · ')
     lines.push(`**Referenzen:** ${entry.referenceNote}\n${links}`)
     if (entry.note) lines.push(`⚠ ${entry.note}`)
-    lines.push(`**Installation:** ${entry.install}`)
+    lines.push(`**Quelle:** ${entry.install} · Claude installiert ihn global (Cockpit-Mod und Else-Live-).`)
   }
 
   if (!isCatalog) {

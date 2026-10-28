@@ -199,19 +199,22 @@ Die Handy-Seite zeigt:
 
 - **Warum eine Seite:** Die Claude-App auf dem Handy zeigt bei Cloud-Sessions keine Mod-Oberfläche. Die Session meldet dort keine Zeichenfläche. Deshalb ist die Handy-Oberfläche eine Artifact-Seite.
 - **Seite → Claude:** Halten oder „Starten“ schickt per `comments.sendToClaude` einen Kommentar an alle Sessions, die die Seite beobachten. Format:
-  - `Cockpit · Skill laden` + neue Zeile + `/<skill> [Aufgabe]`
-  - `Cockpit · Skill installieren` + neue Zeile + `<Titel> von <Autor>: <Befehl>`
+  - `Cockpit · Skill laden` + neue Zeile + `/<skill> [Aufgabe]` + neue Zeile + `Session: <ID>` (die Session, die zuletzt `cockpit/context` geschrieben hat)
+  - `Cockpit · Skill installieren` + neue Zeile + `<name> von <Autor>: <GitHub-Ordner>` (ohne Session-Zeile: die erste Session, die ihn beansprucht, installiert)
   - `Cockpit · Merge` + neue Zeile + `<owner/repo> #<Nummer>: <head> → <base>` + neue Zeile + `Session: <Session-ID>` (die Session, die den PR in `cockpit/pr` geschrieben hat)
-  - `Cockpit · PR prüfen` + neue Zeile + `<owner/repo>`
-  - `Cockpit · Setup prüfen` + neue Zeile + `<repo>`
-  - `Cockpit · Team` + neue Zeile + `<Aufgabe>`
-  - `Cockpit · Antwort` + neue Zeile + `<Session-ID>` + neue Zeile + `<Antwort>`
+  - `Cockpit · PR prüfen` + neue Zeile + `<owner/repo>` + `Session:`-Zeile
+  - `Cockpit · Setup prüfen` + neue Zeile + `<repo>` + `Session:`-Zeile
+  - `Cockpit · Team` + neue Zeile + `<Aufgabe>` + `Session:`-Zeile
+  - `Cockpit · Antwort` + neue Zeile + `<Session-ID>` + neue Zeile + `<Antwort>` + `Session:`-Zeile des Leads
+- **Nur eine Session handelt:** Alle beobachtenden Sessions werden geweckt. Die Mod hängt nach jedem `ArtifactComments read` der Seite eine Zuteilung an: Nennt der Auftrag eine andere Session, gehört er ihr. Sonst legt die Mod `cockpit/jobs/threads/<Thread-ID>` ohne `if_version` an; das gelingt nur der ersten Session. Dieselben Regeln stehen über die Mod im Systemprompt jeder Session, in jedem Repo.
 - **Claude → Seite:** über die Datenbank der Seite (Werkzeug `ArtifactData`):
   - `cockpit/status` mit `{ loaded: [{ skill, at }], session, updatedAt }`. Schreibt die Mod bei jedem geladenen Skill.
   - `cockpit/pr` mit dem offenen PR des Branches, Felder siehe `apps/cockpit-web/README.md`. Schreibt die Mod nach Pushes, PR-Änderungen und regelmäßig nach Zügen. Claude ergänzt nur das Feld `merge` im Merge-Ablauf.
   - `cockpit/context` mit `{ sessionId, repo, used, max, threshold, costUsd, limits[], at }`. Schreibt die Mod automatisch nach jedem Schritt (Hook `turn.complete`, Einstellung `cockpitUrl`). Das Werkzeug `mcp__cockpit__sync_context` löst es sofort aus.
   - `cockpit/team` mit `{ goal, lead, startedAt, state }` (schreibt der Lead) und `cockpit/team/members/<Session-ID>` mit `{ name, task, state, note, question, branch, pr, url, updatedAt }` (schreibt jeder Team-Chat selbst). Werte für `state`: `working`, `waiting`, `question`, `conflict`, `done`, `failed`.
   - `cockpit/setup` mit `{ repo, branch, memory, checks[], at }`. Schreibt die Mod beim Start und nach Änderungen. Das Werkzeug `mcp__cockpit__check_setup` löst es sofort aus.
+  - `cockpit/skills` mit `{ installed: [{ id, name, title, author, at, pr }] }`. Schreibt die Session, die einen Skill installiert. Die Seite nimmt ihn sofort aus „Empfohlen“ und zeigt ihn unter Design.
+  - `cockpit/jobs/threads/<Thread-ID>` mit `{ session, kind, at }`: wer einen Auftrag übernommen hat.
 
 ### So übernimmt eine neue Session
 
@@ -221,6 +224,13 @@ Die Handy-Seite zeigt:
    1. Den Skill mit dem Skill-Werkzeug starten, die Aufgabe als Argument.
    2. Im Kommentar-Thread kurz antworten und ihn auflösen.
    3. Ist die Mod nicht geladen: in `cockpit/status` den Eintrag `{ skill, at }` von Hand ergänzen, mit `if_version`. Mit Mod geschieht das von selbst.
+3a. **Auftrag „Cockpit · Skill installieren“ (immer global):**
+   1. Den Skill-Ordner von GitHub holen (`git clone --depth 1`, `npx` ist gesperrt) und die SKILL.md lesen.
+   2. Nach `mods/cockpit/skills/<name>/` legen (mit LICENSE.txt) und `.claude/skills/<name>` als Link auf `../../mods/cockpit/skills/<name>` anlegen. So kommt er mit der Mod in jedes Repo und in jede Session von Else-Live-.
+   3. Zusätzlich nach `~/.claude/skills/<name>` kopieren, damit er sofort in dieser Session gilt.
+   4. Branch `claude/skill-<name>`, Push, PR als Entwurf. Gemergt wird über die Merge-Karte.
+   5. In `cockpit/skills` unter `installed` `{ id, name, title, author, at, pr }` ergänzen.
+   6. Im Thread antworten (mit PR-Nummer) und ihn auflösen.
 4. **Auftrag „Cockpit · Merge“:**
    0. **Nur die Session des PR merged.** Steht eine Zeile `Session: <ID>` im Auftrag, mit `echo $CLAUDE_CODE_SESSION_ID` vergleichen. Passt sie nicht, nichts tun: nicht antworten, nicht auflösen, nichts schreiben. Den Merge übernimmt die genannte Session. Fehlt die Zeile (ältere Seite), gilt der Ablauf für jede Session.
    1. Den PR live prüfen (GitHub-Werkzeuge): offen, Head unverändert, CI grün auf dem aktuellen Commit, keine Konflikte. Die Seite ist nur der Wunsch, nicht der Beweis.
@@ -255,6 +265,10 @@ Die Handy-Seite zeigt:
    - Der Mod-Name ist offen.
 
 ### Stolpersteine, schon gelöst
+
+- **Drei Sessions auf einen Auftrag (28.10.):** Jeder Kommentar weckt alle Sessions, die die Seite beobachten. Lösung: `Session:`-Zeile in jedem Auftrag mit klarer Ziel-Session, sonst Beanspruchen über `cockpit/jobs/threads/<Thread-ID>` (die Mod erledigt das beim Lesen des Threads).
+- **Skill nur lokal installiert:** `~/.claude/skills` gehört dem Container der Session und verschwindet mit ihr. Global heißt `mods/cockpit/skills` plus Link in `.claude/skills` (Claude Code folgt dem Link, getestet).
+- **„Keine Session hört zu“ beim ersten Halten:** Der Verbindungsstatus wird nur alle 30 s geprüft. Die Seite prüft jetzt vor dem Senden neu und versucht es nach `claude_unavailable` einmal nach 1,5 s erneut. Ein zweites Halten auf einen Skill, der gerade installiert wird, sendet nichts mehr.
 
 - **Gestapelte Wallet-Karten:** Im Browser-Test verdeckt die nächste Karte die vorige. Zum Öffnen den sichtbaren oberen Rand anklicken (`position: { x: 100, y: 22 }`).
 

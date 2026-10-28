@@ -681,7 +681,7 @@ summary small { color: var(--fg3); font-size: 13px; }
   const short = name => name.split(':').pop()
 
   // --- Context: the Cockpit mod writes the session's fill into this page's database ---
-  const ctx = { used: null, max: null, threshold: null, cost: null, limit: null, repo: null, at: 0, error: null }
+  const ctx = { used: null, max: null, threshold: null, cost: null, limit: null, repo: null, at: 0, error: null, session: null }
   const ctxShare = () => (ctx.used != null && ctx.max ? Math.min(1, ctx.used / ctx.max) : null)
   const ctxMark = () => (ctx.threshold && ctx.max ? ctx.threshold / ctx.max : 0.8)
   function ctxLook(p) {
@@ -846,8 +846,27 @@ summary small { color: var(--fg3); font-size: 13px; }
     canSend: 'unknown',
     sheet: null,
   }
-  const installed = new Set(DATA.skills.map(s => s.short))
-  const recommended = DATA.recommended.filter(r => !installed.has(r.id))
+  // Installed through the Cockpit since the page was built: cockpit/skills lists them.
+  // They leave Empfohlen and join Design right away.
+  const INSTALL_PENDING_MS = 15 * 60000
+  const installing = new Map(Object.entries(store.get('cockpit.installing', {})).filter(([, at]) => Date.now() - at < INSTALL_PENDING_MS))
+  let recommended = []
+  function applyInstalled(list) {
+    for (const item of list) {
+      const rec = DATA.recommended.find(r => r.id === item.id)
+      if (DATA.skills.some(s => s.short === item.id)) continue
+      DATA.skills.push({
+        name: item.name || item.id, short: item.id, category: 'Design', source: 'Cockpit · in allen Sessions',
+        summary: rec ? `${rec.author}: ${rec.summary}` : (item.title || item.id), description: item.pr ? `Kommt mit PR #${item.pr} in alle Sessions.` : '',
+        hasFiles: false, fileCount: 0,
+      })
+    }
+    const have = new Set(DATA.skills.map(s => s.short))
+    for (const id of [...installing.keys()]) if (have.has(id)) installing.delete(id)
+    store.set('cockpit.installing', Object.fromEntries(installing))
+    recommended = DATA.recommended.filter(r => !have.has(r.id))
+  }
+  applyInstalled([])
   const loadedSet = () => new Set(state.loaded.map(u => u.skill))
   const skillByName = name => DATA.skills.find(s => s.name === name)
 
@@ -893,7 +912,7 @@ summary small { color: var(--fg3); font-size: 13px; }
         aria-label="${esc(rec.title)} von ${esc(rec.author)}. Tippen für Details, gedrückt halten zum Installieren.">
       <span class="sicon">${ROW_RING}<span class="ripple"></span><span class="tile hollow"><span class="mono">${esc(mono(rec.id))}</span>${OK}</span></span>
       <span class="stext"><b>${esc(rec.title)}</b><span>${esc(rec.author)} · ${esc(rec.summary)}</span></span>
-      <span class="trail"><span class="tag new">Neu</span></span></button>`
+      <span class="trail">${installing.has(rec.id) ? '<span class="spin" role="img" aria-label="Wird installiert"></span>' : '<span class="tag new">Neu</span>'}</span></button>`
   }
 
   const group = (title, count, rows) => rows ? `<h3 class="gtitle"><span>${esc(title)}</span><span>${count}</span></h3><div class="glist">${rows}</div>` : ''
@@ -1602,16 +1621,17 @@ summary small { color: var(--fg3); font-size: 13px; }
       pass.innerHTML = `${pattern('guilloche')}
         <div class="pass-head"><div class="txt"><small>Empfohlen · ${esc(rec.author)}</small><h2 id="sheet-title">${esc(rec.title)}</h2></div>
           <button class="round" data-close aria-label="Schließen">✕</button></div>
-        <span class="pass-status" style="--dot:#ff9f0a"><i></i><span>Nicht installiert</span></span>`
+        <span class="pass-status" style="--dot:${installing.has(rec.id) ? '#64d2ff' : '#ff9f0a'}"><i></i><span>${installing.has(rec.id) ? 'Wird installiert' : 'Nicht installiert'}</span></span>`
       body.innerHTML = `
         <div class="card"><p class="lead">${esc(rec.summary)}</p></div>
         <div class="card"><b>Was er tut</b><ul class="rules">${rec.rules.map(r => `<li>${esc(r)}</li>`).join('')}</ul></div>
         <div class="card"><b>Referenzen</b><p class="muted">${esc(rec.referenceNote)}</p>
           <div class="links">${rec.references.map(l => `<a href="${esc(l.href)}" target="_blank" rel="noopener">${esc(l.label)} ↗</a>`).join('')}</div></div>
         ${rec.note ? `<div class="card"><p class="muted">⚠︎ ${esc(rec.note)}</p></div>` : ''}
-        <div class="card"><div class="kv"><span>Installation</span><span><code>${esc(rec.install)}</code></span></div></div>
+        <div class="card"><div class="kv"><span>Quelle</span><span><code>${esc(rec.install)}</code></span></div>
+          <p class="muted">Claude legt den Skill in die Cockpit-Mod und ins Repo Else-Live-. Nach dem Merge gilt er in allen Sessions.</p></div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          <button class="primary" id="go" data-install="${esc(rec.id)}" ${sendAvailable() ? '' : 'disabled'}>Von Claude installieren lassen</button>
+          <button class="primary" id="go" data-install="${esc(rec.id)}" ${sendAvailable() && !installing.has(rec.id) ? '' : 'disabled'}>${installing.has(rec.id) ? 'Wird installiert …' : 'Von Claude installieren lassen'}</button>
           <p class="small" id="go-hint" ${sendAvailable() ? 'hidden' : ''}>${esc(sendReason())}</p>
         </div>`
       return
@@ -1779,30 +1799,56 @@ summary small { color: var(--fg3); font-size: 13px; }
     refreshSheet()
   }
 
+  // The current session: the one that wrote the context fill last.
+  const currentSession = () => ctx.session || null
+  const withSession = (text, id) => id ? `${text}\nSession: ${id}` : text
+
   async function sendToClaude(text, anchorEl) {
+    // The link is checked every 30 s; a session may have started listening since.
+    if (comments && !sendAvailable()) await refreshLink()
     if (!comments || !sendAvailable()) { island('Nicht gesendet', sendReason(), 'warn'); return false }
-    try {
-      const anchor = await comments.anchorFor(anchorEl)
-      await comments.sendToClaude({ anchor, text })
-      return true
-    } catch (error) {
-      const code = error && error.code
-      const why = {
-        consent_required: 'Erlaube der Seite einmal, in deinem Namen zu kommentieren.',
-        forbidden: 'Kommentieren von der Seite aus ist hier aus.',
-        claude_unavailable: 'Gerade hört keine Claude-Session zu.',
-        rate_limited: 'Kurz warten, dann noch einmal.',
-      }[code] || 'Etwas ist schiefgegangen. Versuch es gleich noch einmal.'
-      island('Nicht gesendet', why, 'warn')
-      if (code === 'forbidden' || code === 'claude_unavailable') refreshLink()
-      return false
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        const anchor = await comments.anchorFor(anchorEl)
+        await comments.sendToClaude({ anchor, text })
+        return true
+      } catch (error) {
+        if (attempt === 0 && error && error.code === 'claude_unavailable') {
+          await new Promise(done => setTimeout(done, 1500))
+          await refreshLink()
+          if (sendAvailable()) continue
+        }
+        return sendFailed(error)
+      }
     }
   }
 
+  function sendFailed(error) {
+    const code = error && error.code
+    const why = {
+      consent_required: 'Erlaube der Seite einmal, in deinem Namen zu kommentieren.',
+      forbidden: 'Kommentieren von der Seite aus ist hier aus.',
+      claude_unavailable: 'Gerade hört keine Claude-Session zu.',
+      rate_limited: 'Kurz warten, dann noch einmal.',
+    }[code] || 'Etwas ist schiefgegangen. Versuch es gleich noch einmal.'
+    island('Nicht gesendet', why, 'warn')
+    if (code === 'forbidden' || code === 'claude_unavailable') refreshLink()
+    return false
+  }
+
   async function loadSkill(name, task, el) {
-    const sent = await sendToClaude(`Cockpit · Skill laden\n/${name}${task ? ' ' + task : ''}`, el)
+    // Loaded into the session you are looking at, not into every listening one.
+    const sent = await sendToClaude(withSession(`Cockpit · Skill laden\n/${name}${task ? ' ' + task : ''}`, currentSession()), el)
     if (!sent) return false
-    state.pending.set(name, Date.now())
+    const at = Date.now()
+    state.pending.set(name, at)
+    // Only the named session loads it; if it does not answer, say so instead of spinning on.
+    setTimeout(() => {
+      if (state.pending.get(name) !== at) return
+      state.pending.delete(name)
+      island('Keine Antwort', `${short(name)} · die Session hört gerade nicht zu. Öffne sie, dann noch einmal.`, 'warn')
+      render()
+    }, NO_ANSWER_MS)
     const skill = skillByName(name)
     island('Wird geladen', `${short(name)} · Claude startet ihn`, 'busy', skill ? { ...CAT[skill.category], mono: mono(name) } : null)
     // Let the row finish its check animation before it turns into "Lädt".
@@ -1812,9 +1858,16 @@ summary small { color: var(--fg3); font-size: 13px; }
 
   async function installRec(id, el) {
     const rec = DATA.recommended.find(r => r.id === id)
-    const sent = await sendToClaude(`Cockpit · Skill installieren\n${rec.title} von ${rec.author}: ${rec.install}`, el)
-    if (sent) island('Wird installiert', `${rec.title} · Claude kümmert sich`, 'busy', { ...CAT.Design, mono: mono(rec.id) })
-    return sent
+    if (installing.has(id)) { island('Wird schon installiert', `${rec.title} · Claude ist dran`, 'busy', { ...CAT.Design, mono: mono(rec.id) }); return false }
+    // No Session line: the first session to claim it installs, the others stay quiet.
+    const sent = await sendToClaude(`Cockpit · Skill installieren\n${rec.id} von ${rec.author}: ${rec.install}`, el)
+    if (!sent) return false
+    installing.set(id, Date.now())
+    store.set('cockpit.installing', Object.fromEntries(installing))
+    island('Wird installiert', `${rec.title} · für alle Sessions`, 'busy', { ...CAT.Design, mono: mono(rec.id) })
+    render()
+    if (state.sheet?.rec === id) renderSheet()
+    return true
   }
 
   async function requestMerge(el) {
@@ -1834,12 +1887,12 @@ summary small { color: var(--fg3); font-size: 13px; }
 
   async function refreshPr(el) {
     const repo = pr.data?.repo || ctx.repo || ''
-    const sent = await sendToClaude(`Cockpit · PR prüfen\n${repo}`.trim(), el)
+    const sent = await sendToClaude(withSession(`Cockpit · PR prüfen\n${repo}`.trim(), pr.data?.session || currentSession()), el)
     if (sent) island('Angefragt', 'Claude trägt den aktuellen Stand ein')
   }
 
   async function refreshSetup(el) {
-    const sent = await sendToClaude(`Cockpit · Setup prüfen\n${setup.data?.repo || ctx.repo || ''}`.trim(), el)
+    const sent = await sendToClaude(withSession(`Cockpit · Setup prüfen\n${setup.data?.repo || ctx.repo || ''}`.trim(), currentSession()), el)
     if (sent) island('Angefragt', 'Die Mod prüft das Setup neu')
   }
 
@@ -1932,7 +1985,7 @@ summary small { color: var(--fg3); font-size: 13px; }
       return openWriter({ title: 'Team', look: TEAM, mono: 'T', button: 'Verteilen', placeholder: 'Welche Aufgabe soll das Team erledigen?',
         foot: 'Claude zerlegt sie und startet eigene Chats.',
         send: async (text, el) => {
-          const sent = await sendToClaude(`Cockpit · Team\n${text}`, el)
+          const sent = await sendToClaude(withSession(`Cockpit · Team\n${text}`, currentSession()), el)
           if (sent) island('Team wird gebildet', 'Claude zerlegt die Aufgabe', 'busy', { ...TEAM, mono: 'T' })
           return sent
         } })
@@ -1943,7 +1996,7 @@ summary small { color: var(--fg3); font-size: 13px; }
       return openWriter({ title: m.name, look: memberColors(m), mono: initials(m.name), button: 'Antworten', placeholder: m.question || 'Deine Antwort',
         foot: 'Claude gibt die Antwort an den Chat weiter.',
         send: async (text, el) => {
-          const sent = await sendToClaude(`Cockpit · Antwort\n${m.id}\n${text}`, el)
+          const sent = await sendToClaude(withSession(`Cockpit · Antwort\n${m.id}\n${text}`, team.lead), el)
           if (sent) island('Antwort gesendet', `${m.name} macht weiter`)
           return sent
         } })
@@ -1996,6 +2049,7 @@ summary small { color: var(--fg3); font-size: 13px; }
       const limits = Array.isArray(d.limits) ? d.limits.filter(l => l && typeof l.percentUsed === 'number') : []
       ctx.limit = limits.find(l => l.kind === 'five_hour') || limits[0] || null
       ctx.repo = typeof d.repo === 'string' ? d.repo : null
+      ctx.session = typeof d.sessionId === 'string' ? d.sessionId : null
       ctx.at = typeof d.at === 'number' ? d.at : 0
       ctx.error = null
       renderContext()
@@ -2032,6 +2086,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     db.doc('cockpit/team').onSnapshot(snap => {
       const d = snap.exists ? snap.data() : null
       team.goal = d && typeof d.goal === 'string' ? { goal: d.goal, startedAt: typeof d.startedAt === 'number' ? d.startedAt : 0 } : null
+      team.lead = d && d.lead && typeof d.lead.sessionId === 'string' ? d.lead.sessionId : null
       render()
     }, () => { team.error = 'no_data'; render() })
     // A view without collections still gets everything else below.
@@ -2051,6 +2106,15 @@ summary small { color: var(--fg3); font-size: 13px; }
       }
       render()
     }, () => { team.error = 'no_data'; render() })
+    db.doc('cockpit/skills').onSnapshot(snap => {
+      const d = snap.exists ? snap.data() : null
+      const list = Array.isArray(d?.installed) ? d.installed.filter(i => i && typeof i.id === 'string') : []
+      const fresh = list.filter(i => installing.has(i.id))
+      applyInstalled(list)
+      if (fresh.length) island('Installiert', `${fresh.map(i => i.id).join(', ')} · jetzt unter Design`)
+      render()
+      if (state.sheet) renderSheet()
+    }, () => {})
     db.doc('cockpit/setup').onSnapshot(snap => {
       setup.data = snap.exists ? cleanSetup(snap.data()) : null
       setup.error = null

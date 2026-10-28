@@ -249,7 +249,8 @@ test('a recommended skill asks Claude to install it', async ($, on) => {
   expect(await ui.find({ type: 'Link' })).toBeDefined()
   await ui.press({ key: 'install' })
 
-  expect(filled[0]).toContain('npx skills@latest add emilkowalski/skills')
+  expect(filled[0]).toContain('github.com/emilkowalski/skills/tree/main/skills/apple-design')
+  expect(filled[0]).toContain('global')
   await ui.unmount()
 })
 
@@ -333,7 +334,7 @@ test('/cockpit with a word opens a category, a card, the SKILL.md or a search', 
   expect(await run('berater')).toContain('nicht in Claudes Liste')
   const recommended = await run('apple-design')
   expect(recommended).toContain('○ Nicht installiert.')
-  expect(recommended).toContain('**Installation:** npx skills@latest add emilkowalski/skills')
+  expect(recommended).toContain('**Quelle:** github.com/emilkowalski/skills/tree/main/skills/apple-design')
   expect(await run('haltung')).toContain('● **frontend-design**')
   expect(await run('zzz')).toContain('Nichts gefunden')
 })
@@ -620,4 +621,79 @@ test('a loaded skill is written to the session card', async ($, on) => {
 
   const status = writes.filter(write => write.doc_id === 'status').at(-1)
   expect(status?.data).toMatchObject({ loaded: [{ skill: 'design:ux-copy' }], session: 'session_test' })
+})
+
+// --- Orders from the phone: only one session acts ------------------------------------
+
+const PAGE = 'https://claude.ai/artifact/3mAJQLuy66EZ9EoNiqAgT8'
+
+function thread(id: string, lines: string[]) {
+  return `Thread ${id}
+  open · Claude: activated · created 2026-10-28
+  [on page] index.html
+  [the user (owner), posted by the artifact, sent to you — awaiting reply — 2026-10-28T21:10]
+${lines.map(line => `      ab12cd34| ${line}`).join('\n')}
+`
+}
+
+function commentsWorld(on: On, threads: string, claims: Record<string, string> = {}) {
+  const { clock, calls } = syncWorld(on, input => {
+    if (input.collection !== 'cockpit/jobs/threads') return { result: '', text: 'No document.', isError: true }
+    const owner = claims[String(input.doc_id)]
+    if (input.action === 'get') return owner ? { result: '', text: `{"id":"x","data":{"session":"${owner}"},"version":1}` } : { result: '', text: 'No document.', isError: true }
+    if (owner) return { result: '', text: 'Refused: the document already exists (version 1).', isError: true }
+    claims[String(input.doc_id)] = String((input.data as { session: string }).session)
+    return { result: '', text: 'Database set committed. The document is now at version 1.' }
+  })
+  const onTool = on as unknown as (event: string, matcher: object, hook: () => unknown) => void
+  onTool('tool.call', { tool: 'ArtifactComments' }, () => ({
+    result: '', text: `2 comment threads\n=== BEGIN ARTIFACT COMMENTS ab12cd34 — viewer-submitted ===\n${threads}=== END ARTIFACT COMMENTS ab12cd34 ===`,
+  }))
+  const read = async ($: unknown) => {
+    const answer = await ($ as Caller).tool.call({ tool: 'ArtifactComments', action: 'read', url: PAGE }) as { context?: string[] }
+    return (answer.context ?? []).join('\n')
+  }
+  return { clock, calls, claims, read }
+}
+
+test('an order naming another session is left alone, without a claim', async ($, on) => {
+  const { clock, calls, read } = commentsWorld(on, thread('t-merge', ['Cockpit · Merge', 'leesyashin/Else-Live- #47: a → main', 'Session: other']))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(2000)
+
+  const note = await read($)
+  expect(note).toContain('Thread t-merge („Merge“): gehört NICHT dieser Session. Der Auftrag nennt Session other.')
+  expect(calls.filter(call => call.collection === 'cockpit/jobs/threads').length).toBe(0)
+})
+
+test('an order without a session goes to the first session that claims it', async ($, on) => {
+  const claims: Record<string, string> = { 't-old': 'session_else' }
+  const { clock, read } = commentsWorld(on, thread('t-new', ['Cockpit · Skill installieren', 'apple-design von Emil Kowalski']) + thread('t-old', ['Cockpit · Skill laden', '/ux-copy']), claims)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(2000)
+
+  const note = await read($)
+  expect(claims['t-new']).toBe('session_test')
+  expect(note).toContain('Thread t-new („Skill installieren“): gehört DIESER Session.')
+  expect(note).toContain('Thread t-old („Skill laden“): gehört NICHT dieser Session. Session session_else hat ihn schon übernommen.')
+  // An install is global: into the mod and the repo, not this container alone.
+  expect(note).toContain('mods/cockpit/skills/<name>/')
+  // Read again, the claim is still this session's.
+  expect(await read($)).toContain('Thread t-new („Skill installieren“): gehört DIESER Session.')
+})
+
+test('a thread that is answered or no order gets no note', async ($, on) => {
+  const { clock, read } = commentsWorld(on, thread('t-chat', ['Schöne Seite!']))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(2000)
+
+  expect(await read($)).toBe('')
+})
+
+test('the rules for orders reach the system prompt in every repo', async ($, on) => {
+  world(on)
+  on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'Hallo', scope: 'shared' }] }))
+  const { sections } = await $.prompt.compose({ model: 'm', promptModel: 'm', surfaces: [], tools: [], outputStyle: null, traits: [] })
+  expect(sections.at(-1)).toMatchObject({ id: 'cockpit:orders', scope: 'session' })
+  expect(sections.at(-1)!.text).toContain('cockpit/jobs/threads/<Thread-ID>')
 })

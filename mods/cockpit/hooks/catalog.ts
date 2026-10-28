@@ -40,7 +40,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     ],
     referenceNote:
       'Keine Bilder: Textregeln mit konkreten Werten (Spring-Tabelle, Easing-Tokens) und Code-Beispielen.',
-    install: 'npx skills@latest add emilkowalski/skills',
+    install: 'github.com/emilkowalski/skills/tree/main/skills/apple-design',
   },
   {
     id: 'emil-design-eng',
@@ -62,7 +62,7 @@ export const CATALOG: readonly CatalogEntry[] = [
       { label: 'Repo emilkowalski/skills', href: 'https://github.com/emilkowalski/skills' },
     ],
     referenceNote: 'Textregeln mit Werten und Code-Beispielen, dazu ein Performance-Cheatsheet im Repo.',
-    install: 'npx skills@latest add emilkowalski/skills',
+    install: 'github.com/emilkowalski/skills/tree/main/skills/emil-design-eng',
   },
   {
     id: 'frontend-design',
@@ -85,7 +85,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     ],
     referenceNote: 'Eine einzige Textdatei. Dein Briefing („minimal, Apple-artig“) hat laut Skill Vorrang.',
     install:
-      '/plugin marketplace add anthropics/skills, danach /plugin install example-skills@anthropic-agent-skills',
+      'github.com/anthropics/skills/tree/main/skills/frontend-design',
   },
   {
     id: 'make-interfaces-feel-better',
@@ -107,7 +107,7 @@ export const CATALOG: readonly CatalogEntry[] = [
       },
     ],
     referenceNote: 'typography.md, surfaces.md, animations.md, icons.md und performance.md neben der SKILL.md.',
-    install: 'npx skills add jakubkrehel/make-interfaces-feel-better',
+    install: 'github.com/jakubkrehel/make-interfaces-feel-better/tree/main/skills/make-interfaces-feel-better',
   },
   {
     id: 'design-taste-frontend',
@@ -127,7 +127,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     ],
     referenceNote:
       'Zum Ansehen: examples/v2/*.webp (Screenshots), references/research.md (die Studie), tells.md, motion.md.',
-    install: '/plugin marketplace add Leonxlnx/taste-skill, danach /plugin install taste-skill@taste-skill',
+    install: 'github.com/Leonxlnx/taste-skill/tree/main/skills/taste-skill',
     note: 'Schwer: 30–45 Minuten pro Durchlauf. Das Glas-Verbot widerspricht dem Apple-Look, nicht dauerhaft neben apple-design nutzen.',
   },
   {
@@ -141,7 +141,7 @@ export const CATALOG: readonly CatalogEntry[] = [
       { label: 'Repo Leonxlnx/taste-skill-classics', href: 'https://github.com/Leonxlnx/taste-skill-classics' },
     ],
     referenceNote: 'Liegt neben minimalist-ui und der Taste-Version 1 im Classics-Repo.',
-    install: 'aus github.com/Leonxlnx/taste-skill-classics',
+    install: 'github.com/Leonxlnx/taste-skill-classics/tree/main/skills/soft-skill',
   },
 ]
 
