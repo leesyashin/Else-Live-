@@ -114,7 +114,20 @@ Ursprünglicher Plan:
   - die benötigten Connectors
 - Beim Session-Start zeigt die Leiste grüne und rote Punkte: Connectors verbunden? Skills da? Richtiger Branch?
 
-### Phase 5: Chat-Teamwork
+### Phase 5: Chat-Teamwork (auf der Handy-Seite umgesetzt)
+
+- **Handy-Seite:** Wallet-Karte „Team“ mit Avataren, „n/m fertig“ und einer Zeile wie „2 arbeiten · 1 Frage“.
+  - Geöffnet zeigt sie die Aufgabe und je Chat eine Zeile mit Avatar, letztem Stand und Status.
+  - Antippen öffnet das Blatt des Chats: Auftrag, letzter Stand, Branch, PR und „Verlauf öffnen ↗“.
+  - Der Ring um den Avatar zeigt den Status: blau und drehend heißt arbeitet, grau wartet, orange Frage, rot Konflikt, grün mit Häkchen fertig.
+- **Aufgabe verteilen:** Ein Knopf öffnet die Eingabe oben am Bildschirm und schickt `Cockpit · Team` an den Lead-Chat.
+- **Pop-up nur bei Frage oder Konflikt:** Die Insel erscheint mit Vibration, oben auf der Seite steht ein Hinweis mit „Antworten“. Die Antwort geht als `Cockpit · Antwort` an den Lead, der sie mit `send_message` weitergibt. Ist ein Chat fertig, erscheint nur eine kurze Insel.
+- **Daten:** `cockpit/team` hält die Aufgabe und den Lead. Jeder Team-Chat schreibt sein eigenes Dokument `cockpit/team/members/<Session-ID>`, so überschreibt keiner den anderen. Die Vorlage für den Auftrag an einen Team-Chat liegt in `mods/cockpit/team/auftrag.md`.
+- **Noch offen:**
+  - Avatare auch in der Mod (Leiste und Panel auf dem Desktop).
+  - Ein echter Lauf mit mehreren Chats steht aus. Dabei zeigt sich, ob Cloud-Sessions einmal deine Freigabe brauchen, um andere Sessions zu erreichen.
+
+Ursprünglicher Plan:
 
 - Der Lead-Chat zerlegt eine Aufgabe und verteilt die Teile an andere Chats im selben Repo.
 - Das Panel zeigt kleine Avatare mit Status: arbeitet, wartet, fertig. Ein Klick öffnet den Verlauf.
@@ -149,7 +162,7 @@ Ursprünglicher Plan:
 - **Chats untereinander:** Cloud-Sessions brauchen evtl. einmal deine Freigabe, bevor sie andere Sessions erreichen dürfen.
 - **Mod-Name:** offen.
 
-## Übergabe: Stand und nächste Schritte (28.10.2026, nach Phase 4)
+## Übergabe: Stand und nächste Schritte (28.10.2026, nach Phase 5)
 
 Für die nächste Session: Hier steht, was es gibt, wie es zusammenspielt und wie es weitergeht.
 
@@ -177,10 +190,13 @@ Die Handy-Seite zeigt:
   - `Cockpit · Merge` + neue Zeile + `<owner/repo> #<Nummer>: <head> → <base>`
   - `Cockpit · PR prüfen` + neue Zeile + `<owner/repo>`
   - `Cockpit · Setup prüfen` + neue Zeile + `<repo>`
+  - `Cockpit · Team` + neue Zeile + `<Aufgabe>`
+  - `Cockpit · Antwort` + neue Zeile + `<Session-ID>` + neue Zeile + `<Antwort>`
 - **Claude → Seite:** über die Datenbank der Seite (Werkzeug `ArtifactData`):
   - `cockpit/status` mit `{ loaded: [{ skill, at }], session, updatedAt }`. Schreibt derzeit Claude von Hand, nachdem ein Skill geladen wurde.
   - `cockpit/pr` mit dem offenen PR des Branches, Felder siehe `apps/cockpit-web/README.md`. Schreibt Claude nach jedem Push, PR-Ereignis und Merge.
   - `cockpit/context` mit `{ sessionId, repo, used, max, threshold, costUsd, limits[], at }`. Schreibt die Mod automatisch nach jedem Schritt (Hook `turn.complete`, Einstellung `cockpitUrl`). Das Werkzeug `mcp__cockpit__sync_context` löst es sofort aus.
+  - `cockpit/team` mit `{ goal, lead, startedAt, state }` (schreibt der Lead) und `cockpit/team/members/<Session-ID>` mit `{ name, task, state, note, question, branch, pr, url, updatedAt }` (schreibt jeder Team-Chat selbst). Werte für `state`: `working`, `waiting`, `question`, `conflict`, `done`, `failed`.
   - `cockpit/setup` mit `{ repo, branch, memory, checks[], at }`. Schreibt die Mod beim Start und nach Änderungen. Das Werkzeug `mcp__cockpit__check_setup` löst es sofort aus.
 
 ### So übernimmt eine neue Session
@@ -199,8 +215,16 @@ Die Handy-Seite zeigt:
    5. Eine Zeile `- JJJJ-MM-TT · #<Nummer> <Titel>` oben unter `## Merges` in `mods/cockpit/memory/<repo>.md` eintragen und mit nach `main` bringen.
    6. Im Thread antworten und ihn auflösen.
 5. **Auftrag „Cockpit · Setup prüfen“:** das Werkzeug `mcp__cockpit__check_setup` aufrufen (ohne geladene Mod: `/cockpit setup`). Danach im Thread antworten.
-6. **Auftrag „Cockpit · PR prüfen“:** PR des aktuellen Branches lesen und `cockpit/pr` neu schreiben, danach im Thread antworten.
-7. **Seite neu bauen:** wie in `apps/cockpit-web/README.md` beschrieben. Die Skill-Daten liefert `build_data.py` aus der jeweiligen Session.
+6. **Auftrag „Cockpit · Team“ (dieser Chat wird Lead):**
+   1. Die Aufgabe in 2 bis 4 Teile zerlegen, die sich möglichst nicht dieselben Dateien teilen. Jeder Teil bekommt einen kurzen Namen (wird der Avatar) und einen eigenen Branch `claude/<thema>-<teil>`.
+   2. Ein altes Team aufräumen: Dokumente in `cockpit/team/members` löschen (`ArtifactData`, `batch`).
+   3. `cockpit/team` schreiben: `{ goal, lead: { sessionId, url }, startedAt, state: 'running' }`.
+   4. Je Teil `create_session` mit `source_url` des Repos und der ausgefüllten Vorlage aus `mods/cockpit/team/auftrag.md` als `prompt`. Gleich danach das Dokument des Teils anlegen: `cockpit/team/members/<neue Session-ID>` mit `state: 'waiting'`, `name`, `task`, `branch`, `url`.
+   5. Im Thread antworten (wer was macht) und ihn auflösen.
+   6. Danach: Meldet ein Team-Chat Fehler oder hängt er, mit `get_session` und `list_events` nachsehen und `state` auf `failed` setzen. Sind alle fertig, `cockpit/team.state` auf `done` setzen und die PRs zusammenfassen.
+7. **Auftrag „Cockpit · Antwort“:** Zeile 2 ist die Session-ID des Team-Chats, der Rest die Antwort. Mit `send_message` an diese Session schicken („Antwort des Nutzers auf deine Frage: …“), im Thread kurz bestätigen und ihn auflösen.
+8. **Auftrag „Cockpit · PR prüfen“:** PR des aktuellen Branches lesen und `cockpit/pr` neu schreiben, danach im Thread antworten.
+9. **Seite neu bauen:** wie in `apps/cockpit-web/README.md` beschrieben. Die Skill-Daten liefert `build_data.py` aus der jeweiligen Session.
 
 ### Nächste Schritte, in dieser Reihenfolge
 
@@ -211,9 +235,9 @@ Die Handy-Seite zeigt:
 3. **Phase 4 abrunden:**
    - Memory-Dateien für weitere Repos anlegen, sobald dort gearbeitet wird.
    - Merge-Einträge aus anderen Repos zurück nach Else-Live- schreiben (Schreibzugriff klären).
-4. **Phase 5, Chat-Teamwork:**
-   - Ein Lead-Chat verteilt Aufgaben (`create_session`, `send_message`).
-   - Der Status steht im Dokument `cockpit/team` und erscheint auf der Seite als Avatare.
+4. **Phase 5 erproben und abrunden:**
+   - ein echter Lauf mit 2 Team-Chats und einer kleinen Aufgabe
+   - Avatare in Leiste und Panel der Mod
 5. **Kontext-Ringe pro Kategorie:** Die Mod gibt die Aufschlüsselung (`breakdown`) in `cockpit/context` mit, und das Kontext-Blatt zeigt sie an.
 6. **Kleinigkeiten:**
    - Neue Skills erscheinen auf der Seite erst nach dem Neu-Veröffentlichen.

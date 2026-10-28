@@ -324,6 +324,29 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .stile.fail small { color: #e5372c; font-weight: 600; }
 .wide { grid-column: 1 / -1; }
 
+/* Team: one avatar per chat, its ring shows the state */
+.ava { position: relative; flex: none; width: var(--s, 40px); height: var(--s, 40px); border-radius: 50%; display: grid; place-items: center; color: #fff;
+  font: 700 calc(var(--s, 40px) * 0.36)/1 var(--rounded); background: linear-gradient(155deg, var(--c1), var(--c2)); box-shadow: 0 0 0 2.5px var(--ring-bg, var(--surface)), 0 0 0 4.5px var(--st); }
+.ava.working::after { content: ""; position: absolute; inset: -6.5px; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--st); animation: rot 1.2s linear infinite; }
+.ava .badge { position: absolute; right: -5px; bottom: -5px; width: 18px; height: 18px; border-radius: 50%; background: var(--st); color: #fff; display: grid; place-items: center; font: 800 11px/1 var(--rounded); box-shadow: 0 0 0 2px var(--ring-bg, var(--surface)); }
+.ava .badge svg { width: 11px; height: 11px; }
+.avas { display: flex; align-items: center; }
+.avas .ava { --s: 32px; --ring-bg: #1b2236; }
+.avas .ava + .ava { margin-left: -6px; }
+.mrow { position: relative; width: 100%; display: flex; align-items: center; gap: 14px; padding: 12px 14px; animation: rowIn 0.5s var(--spring) both; animation-delay: calc(var(--i, 0) * 40ms + 100ms); transition: background-color 0.25s; }
+.mrow:active { background: var(--surface-2); }
+.mrow + .mrow::before { content: ""; position: absolute; top: 0; left: 68px; right: 0; border-top: 0.5px solid var(--sep); }
+.mrow .stext span { -webkit-line-clamp: 1; }
+.mstate { flex: none; font-size: 13px; font-weight: 600; color: var(--st); }
+.alerts { display: flex; flex-direction: column; gap: 10px; }
+.alert { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--st) 55%, transparent), 0 10px 26px -16px var(--st); animation: alertIn 0.6s var(--bounce) both; }
+.alert .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.alert small { font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--st); }
+.alert p { margin: 0; font-size: 15.5px; overflow-wrap: anywhere; }
+.alert .acts { display: flex; gap: 16px; margin-top: 4px; }
+@keyframes alertIn { from { opacity: 0; transform: translateY(-10px) scale(0.97); } }
+.goal { font: 600 18px/1.3 var(--display); margin: 0; overflow-wrap: anywhere; }
+
 .pill { min-height: 34px; padding: 0 14px; border-radius: 17px; background: var(--fill); color: var(--accent); font-weight: 600; font-size: 15px; text-transform: none; letter-spacing: 0; transition: transform 0.2s var(--spring); }
 .pill:active { transform: scale(0.94); }
 
@@ -459,6 +482,8 @@ summary small { color: var(--fg3); font-size: 13px; }
     </button>
   </header>
 
+  <section class="alerts" id="alerts" aria-live="assertive" hidden></section>
+
   <label class="search">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
     <input id="q" type="search" placeholder="Was willst du tun?" autocomplete="off" aria-label="Skill suchen">
@@ -524,6 +549,16 @@ summary small { color: var(--fg3); font-size: 13px; }
   const SETUP = { c1: '#1d3b30', c2: '#0a1712', g: 'rgba(48, 209, 88, 0.34)', pat: 'pins' }
   const SETUP_ICON = '<path d="M4 7h10M4 12h7M4 17h10"/><path d="M15.5 11.5l2 2 3.5-4"/>'
   const STATE_DOT = { ok: '#30d158', warn: '#ffd60a', fail: '#ff453a' }
+  const TEAM = { c1: '#1b2236', c2: '#0a0d16', g: 'rgba(100, 160, 255, 0.4)', pat: 'orbits' }
+  const TEAM_ICON = '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9.5" r="2.4"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M14.5 15.2a4.5 4.5 0 0 1 6 3.8"/>'
+  const MEMBER_LOOK = {
+    working: { st: '#0a84ff', word: 'Arbeitet' },
+    waiting: { st: '#8e8e93', word: 'Wartet' },
+    question: { st: '#ff9f0a', word: 'Frage an dich' },
+    conflict: { st: '#ff453a', word: 'Konflikt' },
+    done: { st: '#30d158', word: 'Fertig' },
+    failed: { st: '#ff453a', word: 'Abgebrochen' },
+  }
   const MERGE_ICON = '<circle cx="6" cy="5" r="2.2"/><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="12" r="2.2"/><path d="M6 7.2v9.6M6 7.2c0 4 3.5 4.8 9.8 4.8"/>'
   const ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
   const REC_ICON = '<path d="M12 4v16M4 12h16"/>'
@@ -582,6 +617,9 @@ summary small { color: var(--fg3); font-size: 13px; }
         body += `<path d="M${x - 140} ${y} C ${x - 40} ${y}, ${x} 196, ${x + 70} 196"/>`
       }
       fade = 'fade-r'
+    } else if (kind === 'orbits') {
+      for (let i = 1; i <= 7; i++) body += `<ellipse cx="330" cy="70" rx="${i * 30}" ry="${i * 17}" transform="rotate(-18 330 70)"/>`
+      for (const [x, y, r] of [[262, 52, 4], [372, 118, 3.2], [300, 150, 3.6], [398, 30, 2.6]]) body += `<circle cx="${x}" cy="${y}" r="${r}" fill="rgba(100, 180, 255, 0.6)" stroke="none"/>`
     } else if (kind === 'pins') {
       // Rows of status pins, a few lit green.
       for (let y = 22; y < 250; y += 22) {
@@ -699,6 +737,37 @@ summary small { color: var(--fg3); font-size: 13px; }
     return mine.length ? mine.reduce((a, b) => (RANK[b.state] > RANK[a.state] ? b : a)).state : null
   }
 
+  // --- Team: the lead chat writes cockpit/team, each member chat its own cockpit/team/members/<session> ---
+  const team = { goal: null, members: [], error: null, seen: new Set(), lead: null }
+  const SESSION_URL = /^https:\/\/claude\.ai\/code\/[A-Za-z0-9_-]+$/
+  function cleanMember(id, d) {
+    if (!d || typeof d !== 'object') return null
+    const str = v => (typeof v === 'string' ? v : '')
+    const st = MEMBER_LOOK[d.state] ? d.state : 'waiting'
+    return {
+      id, name: str(d.name) || 'Chat', task: str(d.task), note: str(d.note), question: str(d.question), state: st,
+      url: SESSION_URL.test(d.url) ? d.url : '', pr: typeof d.pr === 'number' ? d.pr : null, branch: str(d.branch),
+      updatedAt: typeof d.updatedAt === 'number' ? d.updatedAt : 0,
+    }
+  }
+  const PALETTE = ['Design', 'Code', 'Daten', 'Business', 'Persönlich']
+  // Each chat keeps its colour by its place in the team, so neighbours differ.
+  function memberColors(m) {
+    const ids = team.members.map(x => x.id).sort()
+    return CAT[PALETTE[Math.max(0, ids.indexOf(m.id)) % PALETTE.length]]
+  }
+  function initials(name) {
+    const words = name.split(/[\s\-_/]+/).filter(Boolean)
+    if (!words.length) return '?'
+    return words.length > 1 ? (words[0][0] + words[1][0]).toUpperCase() : words[0].slice(0, 2).replace(/^./, c => c.toUpperCase())
+  }
+  function avatar(m, size = 40) {
+    const look = MEMBER_LOOK[m.state]
+    const badge = m.state === 'done' ? `<span class="badge">${CHECK}</span>` : m.state === 'question' ? '<span class="badge">?</span>' : m.state === 'conflict' || m.state === 'failed' ? '<span class="badge">!</span>' : ''
+    return `<span class="ava ${m.state}" style="${colors(memberColors(m))};--st:${look.st};--s:${size}px" aria-hidden="true">${esc(initials(m.name))}${badge}</span>`
+  }
+  const needsYou = m => m.state === 'question' || m.state === 'conflict'
+
   const store = {
     get(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v) } catch { return fallback } },
     set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)) } catch {} },
@@ -793,6 +862,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     { id: 'session', kind: 'session', title: 'Diese Session' },
     { id: 'merge', kind: 'merge', title: 'Merge' },
     { id: 'setup', kind: 'setup', title: 'Setup' },
+    { id: 'team', kind: 'team', title: 'Team' },
     ...CATS.map(c => ({ id: c.id, kind: 'cat', title: c.id })),
     { id: 'rec', kind: 'rec', title: 'Empfohlen' },
   ]
@@ -820,6 +890,22 @@ summary small { color: var(--fg3); font-size: 13px; }
           <div class="wcount"><small>Dateien</small><b>${d.files ?? '–'}</b></div></div>
         <div class="wbottom"><div style="min-width:0"><small class="mstat" style="--dot:${st.dot}"><i></i>${esc(st.short)}</small><p>${esc(d.title)}</p></div>
           <span class="glyph">${glyph}</span></div>`
+    }
+    if (card.kind === 'team') {
+      const ms = team.members
+      if (!ms.length) {
+        return `${pattern('orbits')}<div class="wtop"><div><small>Team</small><b>Kein Team</b></div></div>
+          <div class="wbottom"><div><small>Bereit</small><p>Gib Claude eine größere Aufgabe, es verteilt sie auf mehrere Chats.</p></div>
+            <span class="glyph">${svg(TEAM_ICON)}</span></div>`
+      }
+      const count = st => ms.filter(m => m.state === st).length
+      const WORDS = { working: ['arbeitet', 'arbeiten'], question: ['Frage', 'Fragen'], conflict: ['Konflikt', 'Konflikte'], waiting: ['wartet', 'warten'], done: ['fertig', 'fertig'] }
+      const parts = Object.keys(WORDS).filter(st => count(st)).map(st => `${count(st)} ${WORDS[st][count(st) === 1 ? 0 : 1]}`)
+      return `${pattern('orbits')}<div class="wtop"><div style="min-width:0"><small>Team · ${ms.length} Chats</small>
+            <div class="avas" style="margin-top:6px">${ms.slice(0, 6).map(m => avatar(m, 32)).join('')}</div></div>
+          <div class="wcount"><small>Fertig</small><b>${count('done')}/${ms.length}</b></div></div>
+        <div class="wbottom"><div style="min-width:0"><small>${esc(parts.join(' · '))}</small><p>${esc(team.goal?.goal || '')}</p></div>
+          <span class="glyph">${svg(TEAM_ICON)}</span></div>`
     }
     if (card.kind === 'setup') {
       const d = setup.data
@@ -875,6 +961,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     }
     if (card.kind === 'merge') return mergeDetail()
     if (card.kind === 'setup') return setupDetail()
+    if (card.kind === 'team') return teamDetail()
     if (card.kind === 'rec') {
       return `${TIP('Halten: Claude installiert · Tippen: Details')}${group('Für deinen Stil', recommended.length, recommended.map(recRow).join(''))}`
     }
@@ -941,6 +1028,30 @@ summary small { color: var(--fg3); font-size: 13px; }
       ${actions(d)}`
   }
 
+  function teamDetail() {
+    const ms = team.members
+    const start = `<button class="primary" data-team-new>${ms.length ? 'Neue Aufgabe verteilen' : 'Aufgabe verteilen'}</button>`
+    if (!ms.length) return `<p class="empty">${esc(team.error ? 'Die Daten der Seite sind gerade nicht lesbar.' : 'Noch kein Team. Beschreib eine größere Aufgabe: Claude zerlegt sie und verteilt die Teile auf eigene Chats in diesem Repo.')}</p>${start}`
+    const order = { question: 0, conflict: 1, working: 2, waiting: 3, failed: 4, done: 5 }
+    const sorted = [...ms].sort((a, b) => order[a.state] - order[b.state] || a.name.localeCompare(b.name))
+    const rows = sorted.map((m, i) => `<button class="mrow" data-member="${esc(m.id)}" style="--i:${i};--st:${MEMBER_LOOK[m.state].st}">
+        ${avatar(m, 40)}<span class="stext"><b>${esc(m.name)}</b><span>${esc(m.note || m.task)}</span></span>
+        <span class="trail"><span class="mstate">${esc(MEMBER_LOOK[m.state].word)}</span>${CHEV}</span></button>`).join('')
+    return `${TIP('Tippen öffnet den Chat')}
+      ${team.goal?.goal ? `<div class="preview"><small class="label" style="margin:0"><span>Aufgabe</span></small><p class="goal">${esc(team.goal.goal)}</p></div>` : ''}
+      <div class="glist">${rows}</div>${start}`
+  }
+
+  function renderAlerts() {
+    const open = team.members.filter(needsYou)
+    const box = $('alerts')
+    box.hidden = !open.length
+    box.innerHTML = open.map(m => `<div class="alert" style="--st:${MEMBER_LOOK[m.state].st}">${avatar(m, 36)}
+      <div class="txt"><small>${esc(m.state === 'question' ? `Frage von ${m.name}` : `Konflikt bei ${m.name}`)}</small>
+        <p>${esc(m.question || m.note || 'Braucht deine Entscheidung.')}</p>
+        <div class="acts"><button class="text-btn" data-answer="${esc(m.id)}">Antworten</button><button class="text-btn" data-member="${esc(m.id)}">Details</button></div></div></div>`).join('')
+  }
+
   function setupDetail() {
     const d = setup.data
     const recheck = `<div class="links-row"><button class="text-btn" data-setup-refresh>Neu prüfen lassen</button></div>`
@@ -978,7 +1089,7 @@ summary small { color: var(--fg3); font-size: 13px; }
   function buildWallet() {
     const wallet = $('wallet')
     wallet.innerHTML = cards.map((card, i) => {
-      const look = card.kind === 'session' ? SESSION : card.kind === 'merge' ? MERGE : card.kind === 'setup' ? SETUP : card.kind === 'rec' ? TICKET : CAT[card.id]
+      const look = card.kind === 'session' ? SESSION : card.kind === 'merge' ? MERGE : card.kind === 'setup' ? SETUP : card.kind === 'team' ? TEAM : card.kind === 'rec' ? TICKET : CAT[card.id]
       return `<button class="wcard${card.kind === 'rec' ? ' ticket' : ''}" data-card="${card.id}" style="${colors(look)};z-index:${i + 1}" aria-expanded="false"></button>`
     }).join('') + '<div class="detail" id="detail"></div>'
     refreshCards()
@@ -1105,6 +1216,7 @@ summary small { color: var(--fg3); font-size: 13px; }
       ? `${live.size} ${live.size === 1 ? 'Skill' : 'Skills'} geladen · ${DATA.skills.length} bereit`
       : `${DATA.skills.length} Skills bereit`
     renderSuggest()
+    renderAlerts()
     refreshCards()
     // Leave the detail alone while a finger holds one of its buttons.
     if (state.open && !hold) { $('detail').innerHTML = detailHtml(cards.find(c => c.id === state.open)); layout() }
@@ -1185,6 +1297,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     const open = state.sheet
     if (!open) return
     if (open.context) return
+    if (open.member) { renderMemberSheet(open.member); return }
     const go = $('go'), hint = $('go-hint')
     if (go) go.disabled = !sendAvailable()
     if (hint) { hint.hidden = sendAvailable(); hint.textContent = sendReason() }
@@ -1280,10 +1393,34 @@ summary small { color: var(--fg3); font-size: 13px; }
     if (state.sheet?.context) renderContextSheet(false)
   }
 
+  function renderMemberSheet(id) {
+    const m = team.members.find(x => x.id === id)
+    const pass = $('pass'), body = $('sheet-body')
+    if (!m) { body.innerHTML = '<p class="empty">Dieser Chat gehört nicht mehr zum Team.</p>'; return }
+    const look = MEMBER_LOOK[m.state]
+    pass.className = 'pass'
+    pass.style.cssText = colors(TEAM)
+    pass.innerHTML = `${pattern('orbits')}
+      <div class="pass-head">${avatar({ ...m }, 48)}<div class="txt"><small>Team · ${esc(team.goal?.goal ? 'Teil der Aufgabe' : 'Chat')}</small><h2 id="sheet-title">${esc(m.name)}</h2></div>
+        <button class="round" data-close aria-label="Schließen">✕</button></div>
+      <span class="pass-status" style="--dot:${look.st}"><i></i><span>${esc(look.word)}${m.updatedAt ? ` · ${esc(ago(m.updatedAt))}` : ''}</span></span>`
+    body.innerHTML = `
+      ${needsYou(m) ? `<div class="alert" style="--st:${look.st}"><div class="txt"><small>${m.state === 'question' ? 'Frage an dich' : 'Konflikt'}</small><p>${esc(m.question || m.note)}</p>
+        <div class="acts"><button class="text-btn" data-answer="${esc(m.id)}">Antworten</button></div></div></div>` : ''}
+      <div class="card"><b>Auftrag</b><p class="muted">${esc(m.task || '–')}</p></div>
+      ${m.note ? `<div class="card"><b>Zuletzt</b><p>${esc(m.note)}</p></div>` : ''}
+      <div class="card">
+        ${m.branch ? `<div class="kv"><span>Branch</span><span><code>${esc(m.branch)}</code></span></div>` : ''}
+        ${m.pr ? `<div class="kv"><span>PR</span><span>#${m.pr}</span></div>` : ''}
+        <div class="kv"><span>Chat</span><span>${m.url ? `<a href="${esc(m.url)}" target="_blank" rel="noopener" style="color:var(--accent)">Verlauf öffnen ↗</a>` : '–'}</span></div>
+      </div>`
+  }
+
   async function renderSheet() {
     const open = state.sheet
     const pass = $('pass'), body = $('sheet-body')
     if (open.context) { renderContextSheet(true); return }
+    if (open.member) { renderMemberSheet(open.member); return }
     if (open.rec) {
       const rec = DATA.recommended.find(r => r.id === open.rec)
       pass.className = 'pass light'
@@ -1353,16 +1490,26 @@ summary small { color: var(--fg3); font-size: 13px; }
   }
 
   // --- Composer ----------------------------------------------------------------------
+  // What the composer sends: a skill's task, a task for the team, or an answer to a member.
   let composing = null
   function openComposer(name) {
-    if (!sendAvailable()) { island('Nicht möglich', sendReason(), 'warn'); return }
     const skill = skillByName(name)
-    composing = name
-    $('c-title').textContent = skill ? skill.short : short(name)
+    openWriter({ title: skill ? skill.short : short(name), look: CAT[skill?.category] || CAT.Weitere, mono: mono(name),
+      placeholder: 'Was soll der Skill tun?', foot: 'Claude startet den Skill damit.', button: 'Starten',
+      send: (text, el) => loadSkill(name, text, el) })
+  }
+  function openWriter(spec) {
+    if (!sendAvailable()) { island('Nicht möglich', sendReason(), 'warn'); return }
+    composing = spec
+    $('c-title').textContent = spec.title
+    $('c-send').textContent = spec.button
+    $('composer').querySelector('.c-foot span').textContent = spec.foot
     const tile = $('c-tile')
-    tile.style.cssText = colors(CAT[skill?.category] || CAT.Weitere)
-    tile.innerHTML = `<span class="mono">${esc(mono(name))}</span>`
+    tile.style.cssText = colors(spec.look)
+    tile.innerHTML = `<span class="mono">${esc(spec.mono)}</span>`
     const task = $('task')
+    task.placeholder = spec.placeholder
+    task.setAttribute('aria-label', spec.placeholder)
     task.value = ''
     $('c-count').textContent = '0/3000'
     $('c-send').disabled = true
@@ -1593,7 +1740,7 @@ summary small { color: var(--fg3); font-size: 13px; }
       const task = $('task').value.trim()
       if (!task || !composing) return
       t.disabled = true
-      const sent = await loadSkill(composing, task, $('go') || t)
+      const sent = await composing.send(task, $('go') || t)
       t.disabled = false
       if (sent) closeComposer(true)
       return
@@ -1601,6 +1748,27 @@ summary small { color: var(--fg3); font-size: 13px; }
     if (t.dataset.copy) return copyCommand(t.dataset.copy, '')
     if (t.hasAttribute('data-pr-refresh')) return refreshPr(t)
     if (t.hasAttribute('data-setup-refresh')) return refreshSetup(t)
+    if (t.hasAttribute('data-team-new')) {
+      return openWriter({ title: 'Team', look: TEAM, mono: 'T', button: 'Verteilen', placeholder: 'Welche Aufgabe soll das Team erledigen?',
+        foot: 'Claude zerlegt sie und startet eigene Chats.',
+        send: async (text, el) => {
+          const sent = await sendToClaude(`Cockpit · Team\n${text}`, el)
+          if (sent) island('Team wird gebildet', 'Claude zerlegt die Aufgabe', 'busy', { ...TEAM, mono: 'T' })
+          return sent
+        } })
+    }
+    if (t.dataset.answer) {
+      const m = team.members.find(x => x.id === t.dataset.answer)
+      if (!m) return
+      return openWriter({ title: m.name, look: memberColors(m), mono: initials(m.name), button: 'Antworten', placeholder: m.question || 'Deine Antwort',
+        foot: 'Claude gibt die Antwort an den Chat weiter.',
+        send: async (text, el) => {
+          const sent = await sendToClaude(`Cockpit · Antwort\n${m.id}\n${text}`, el)
+          if (sent) island('Antwort gesendet', `${m.name} macht weiter`)
+          return sent
+        } })
+    }
+    if (t.dataset.member) return openSheet({ member: t.dataset.member })
     if (t.dataset.hold?.startsWith('merge:')) return island('Gedrückt halten', 'Erst nach 1,2 s Halten wird gemergt', 'warn')
     if (t.dataset.start) {
       t.disabled = true
@@ -1672,6 +1840,27 @@ summary small { color: var(--fg3); font-size: 13px; }
       }
       render()
     }, () => { pr.error = 'no_data'; render() })
+    db.doc('cockpit/team').onSnapshot(snap => {
+      const d = snap.exists ? snap.data() : null
+      team.goal = d && typeof d.goal === 'string' ? { goal: d.goal, startedAt: typeof d.startedAt === 'number' ? d.startedAt : 0 } : null
+      render()
+    }, () => { team.error = 'no_data'; render() })
+    db.collection('cockpit/team/members').onSnapshot(snap => {
+      const before = new Map(team.members.map(m => [m.id, m]))
+      team.members = snap.docs.map(doc => cleanMember(doc.id, doc.data())).filter(Boolean)
+      team.error = null
+      // Pop up only when a chat newly asks you something or hits a conflict.
+      for (const m of team.members) {
+        const key = `${m.id}:${m.state}:${m.updatedAt}`
+        if (needsYou(m) && !team.seen.has(key) && before.get(m.id)?.state !== m.state) {
+          if (before.size) { island(m.state === 'question' ? `Frage von ${m.name}` : `Konflikt bei ${m.name}`, m.question || m.note, 'warn'); navigator.vibrate?.([12, 50, 12]) }
+        }
+        team.seen.add(key)
+        const old = before.get(m.id)
+        if (old && old.state !== 'done' && m.state === 'done') island(`${m.name} ist fertig`, m.note || m.task)
+      }
+      render()
+    }, () => { team.error = 'no_data'; render() })
     db.doc('cockpit/setup').onSnapshot(snap => {
       setup.data = snap.exists ? cleanSetup(snap.data()) : null
       setup.error = null

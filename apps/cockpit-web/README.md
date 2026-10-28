@@ -13,6 +13,8 @@ Was die Seite zeigt:
 
 - **Setup-Karte:** Ist das Repo bereit? Grüne, gelbe und rote Punkte für Connectors, Skills und Branch, geprüft gegen das Memory des Repos. Die Daten schreibt die Cockpit-Mod beim Start der Session.
 
+- **Team-Karte:** die Chats, auf die Claude eine größere Aufgabe verteilt hat, als Avatare mit Status. „Aufgabe verteilen“ schickt `Cockpit · Team`. Hat ein Chat eine Frage oder einen Konflikt, erscheint oben ein Hinweis mit „Antworten“.
+
 Wie „Starten“ funktioniert:
 1. Die Seite schickt den Auftrag per „Send to Claude“ als Kommentar an die Session.
 2. Claude startet den Skill und antwortet im Kommentar.
@@ -25,6 +27,8 @@ Daten, die Claude in die Datenbank der Seite schreibt (Sammlung `cockpit`):
 | `status` | `{ loaded: [{ skill, at }], session, updatedAt }` |
 | `context` | schreibt die Mod, siehe oben |
 | `setup` | schreibt die Mod: `{ repo, branch, memory, checks: [{ group: Memory\|Connectors\|Skills\|Branch, name, state: ok\|warn\|fail, detail }], at }` |
+| `team` | schreibt der Lead-Chat: `{ goal, lead, startedAt, state }` |
+| `team/members/<Session-ID>` | schreibt jeder Team-Chat selbst: `{ name, task, state: working\|waiting\|question\|conflict\|done\|failed, note, question, branch, pr, url, updatedAt }` |
 | `pr` | `{ repo, number, title, url, head, base, draft, state: open\|merged\|closed, ci: success\|failure\|pending\|none, checks: [{ name, state }], mergeable: true\|false\|null, files, additions, deletions, updatedAt, merge?: { state: running\|done\|failed, at, sha, branchDeleted, message } }` |
 
 `mergeable: null` heißt „GitHub prüft noch“ und sperrt den Knopf ebenso wie Konflikte.
