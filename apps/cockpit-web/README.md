@@ -18,6 +18,12 @@ Was die Seite zeigt:
 
 Jeder Auftrag nennt die Session, für die er gedacht ist (`Session: <ID>`, die Session, die zuletzt `cockpit/context` geschrieben hat). Nur „Skill installieren“ geht ohne Namen raus: Dort übernimmt die erste Session, die `cockpit/jobs/threads/<Thread-ID>` anlegt. Installiert wird immer global (`mods/cockpit/skills`), nie nur in einer Session.
 
+**v2 (nach apple-design):**
+- Das Blatt (Pass) folgt dem Finger 1:1 und schließt mit der Geschwindigkeit, mit der du loslässt. Ein Wisch nach unten schließt, ein kurzes Ziehen federt zurück.
+- Das Blatt lässt sich mitten in der Bewegung greifen, auch beim Wegfliegen. Nach oben gibt es nach wie ein Gummiband.
+- Die Suche schwebt als Material über der Seite.
+- Bei reduzierter Bewegung blendet das Blatt nur über. Reduzierte Transparenz und erhöhter Kontrast werden beachtet.
+
 Wie „Starten“ funktioniert:
 1. Die Seite schickt den Auftrag per „Send to Claude“ als Kommentar an die Session.
 2. Claude startet den Skill und antwortet im Kommentar.

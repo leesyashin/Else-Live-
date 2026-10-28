@@ -51,11 +51,11 @@ body.locked { overflow: hidden; }
 main { max-width: 440px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
 :focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; border-radius: 10px; }
-[data-hold] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+[data-hold], .wcard, .pass, .sheet-grab { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 
 /* Header */
 .top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding-top: 14px; }
-.top h1 { font: 700 34px/1.1 var(--display); letter-spacing: 0.01em; margin: 0; }
+.top h1 { font: 700 34px/1.08 var(--display); letter-spacing: -0.012em; margin: 0; }
 .top p { margin: 4px 0 0; color: var(--fg2); font-size: 15px; }
 .link-state { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 13px; color: var(--fg2); white-space: nowrap; }
 .link-state i { width: 7px; height: 7px; border-radius: 50%; background: var(--fg3); }
@@ -95,7 +95,10 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 
 
 /* Search (Spotlight) */
-.search { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 14px; border-radius: 16px; background: var(--surface); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04); }
+/* The search floats over the page as a material: content scrolls under it. */
+.search { position: sticky; top: calc(8px + env(safe-area-inset-top, 0px)); z-index: 20; display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 14px; border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 74%, transparent); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px -16px rgba(0, 0, 0, 0.35), inset 0 0.5px 0 rgba(255, 255, 255, 0.5); }
 .search svg { flex: none; width: 19px; height: 19px; color: var(--fg2); }
 .search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font: inherit; font-size: 18px; color: var(--fg); }
 .search input::placeholder { color: var(--fg2); }
@@ -144,7 +147,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .wcard.ticket .perf { position: absolute; left: 18px; right: 18px; top: 142px; border-top: 1.5px dashed rgba(28, 28, 30, 0.22); z-index: 1; }
 .wtop { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; min-height: 30px; }
 .wtop small, .wbottom small { display: block; font-size: 10.5px; font-weight: 600; letter-spacing: 0.09em; opacity: 0.72; text-transform: uppercase; }
-.wtop b { display: block; font: 600 21px/1.15 var(--display); letter-spacing: 0.005em; }
+.wtop b { display: block; font: 600 21px/1.15 var(--display); letter-spacing: -0.005em; }
 .wcount { text-align: right; }
 .wcount b { font: 600 24px/1.1 var(--display); font-variant-numeric: tabular-nums; }
 .wbottom { display: flex; justify-content: space-between; align-items: flex-end; gap: 14px; }
@@ -402,7 +405,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .pass-head { display: flex; align-items: center; gap: 12px; }
 .pass-head .txt { flex: 1; min-width: 0; }
 .pass-head small { font-size: 10.5px; font-weight: 600; letter-spacing: 0.09em; opacity: 0.75; text-transform: uppercase; }
-.pass-head h2 { margin: 2px 0 0; font: 700 26px/1.12 var(--display); overflow-wrap: anywhere; }
+.pass-head h2 { margin: 2px 0 0; font: 700 26px/1.1 var(--display); letter-spacing: -0.01em; overflow-wrap: anywhere; }
 .round { flex: none; width: 34px; height: 34px; border-radius: 50%; background: rgba(255, 255, 255, 0.2); color: inherit; display: grid; place-items: center; font-size: 16px; transition: transform 0.2s var(--spring); }
 .pass.light .round { background: rgba(28, 28, 30, 0.08); }
 .round:active { transform: scale(0.9); }
@@ -498,6 +501,16 @@ summary small { color: var(--fg3); font-size: 13px; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  /* Gentler, not gone: the sheet cross-fades instead of sliding. */
+  .sheet { transform: none !important; opacity: 0; transition: opacity 200ms ease !important; }
+  .sheet.open { opacity: 1; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .search { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (prefers-contrast: more) {
+  .search, .glist, .card, .preview, .stile { box-shadow: inset 0 0 0 1.5px var(--fg2); }
+  .stext span, .muted, .small { color: var(--fg); }
 }
 </style>
 
@@ -1726,6 +1739,8 @@ summary small { color: var(--fg3); font-size: 13px; }
     lastFocus = document.activeElement
     state.sheet = target
     const sheet = $('sheet'), scrim = $('scrim')
+    // Reopened while still leaving: take it back from where it is.
+    if (sheetMotion.anim) { sheetMotion.anim.stop(); sheetMotion.anim = null; sheet.style.transform = ''; sheet.classList.remove('dragging'); sheetMotion.y = 0 }
     sheet.hidden = false; scrim.hidden = false
     document.body.classList.add('locked')
     renderSheet()
@@ -1733,36 +1748,101 @@ summary small { color: var(--fg3); font-size: 13px; }
     requestAnimationFrame(() => requestAnimationFrame(() => { sheet.classList.add('open'); scrim.classList.add('open') }))
     setTimeout(() => $('pass').querySelector('[data-close]')?.focus({ preventScroll: true }), 380)
   }
-  function closeSheet() {
+  function closeSheet(velocity = 0) {
     const sheet = $('sheet'), scrim = $('scrim')
-    sheet.style.transform = ''
-    sheet.classList.remove('open', 'dragging'); scrim.classList.remove('open')
+    scrim.classList.remove('open')
     document.body.classList.remove('locked')
+    sheetMotion.leaving = state.sheet
     state.sheet = null
-    setTimeout(() => { if (!state.sheet) { sheet.hidden = true; scrim.hidden = true } }, 550)
+    const hide = () => {
+      if (state.sheet) return
+      sheet.hidden = true; scrim.hidden = true
+      sheet.style.transform = ''; sheet.classList.remove('open', 'dragging'); sheetMotion.y = 0
+    }
+    // A close by button may land while the sheet is still rising: start from the live value.
+    if (!sheetMotion.anim && !sheet.classList.contains('dragging')) sheetMotion.y = new DOMMatrix(getComputedStyle(sheet).transform).m42
+    if (REDUCED.matches) { sheet.classList.remove('open'); setTimeout(hide, 220) }
+    // Out along the path it came in, at the speed it was let go.
+    else sheetTo(sheet.offsetHeight + 24, Math.max(velocity, 0), hide)
     lastFocus?.focus?.({ preventScroll: true })
   }
 
-  // Drag the pass down to dismiss the sheet.
-  ;(() => {
-    let startY = 0, lastY = 0, lastT = 0, velocity = 0, dragging = false
+  // --- Springs (apple-design) ---------------------------------------------------------
+  // Damping ratio + response, as Apple tunes them; the motion starts from the live value
+  // and carries the finger's velocity, so it can be grabbed again at any moment.
+  const REDUCED = matchMedia('(prefers-reduced-motion: reduce)')
+  function spring({ from, to, velocity = 0, damping = 1, response = 0.35, onUpdate, onDone }) {
+    const k = (2 * Math.PI / response) ** 2
+    const c = 4 * Math.PI * damping / response
+    let x = from, v = velocity, last = performance.now(), raf = 0, live = true
+    const step = now => {
+      if (!live) return
+      const dt = Math.min(0.032, (now - last) / 1000); last = now
+      for (let i = 0; i < 4; i += 1) { const a = -k * (x - to) - c * v; v += a * dt / 4; x += v * dt / 4 }
+      if (Math.abs(x - to) < 0.4 && Math.abs(v) < 12) { onUpdate(to); live = false; onDone?.(); return }
+      onUpdate(x); raf = requestAnimationFrame(step)
+    }
+    raf = requestAnimationFrame(step)
+    return { stop() { live = false; cancelAnimationFrame(raf); return { x, v } } }
+  }
+  // Where a flick comes to rest (Apple's projection, scroll-like deceleration).
+  const project = (velocity, rate = 0.995) => (velocity / 1000) * rate / (1 - rate)
+  // Past an edge the sheet follows less and less instead of stopping dead.
+  const rubberband = (over, size, k = 0.55) => (over * size * k) / (size + k * Math.abs(over))
+
+  // Drag the pass down to dismiss the sheet: 1:1 while held, then a spring that keeps
+  // the finger's speed. Grabbing it again mid-flight picks it up where it is.
+  const sheetMotion = { anim: null, y: 0 }
+  function sheetTo(target, velocity, done) {
     const sheet = $('sheet')
+    sheetMotion.anim?.stop()
+    sheet.classList.add('dragging')
+    const close = target > 0
+    sheetMotion.anim = spring({
+      from: sheetMotion.y, to: target, velocity,
+      // A flick earns a little bounce; a calm release settles without one.
+      damping: !close && Math.abs(velocity) > 400 ? 0.8 : 1, response: close ? 0.3 : 0.35,
+      onUpdate: y => { sheetMotion.y = y; sheet.style.transform = `translateY(${y}px)` },
+      onDone: () => { sheetMotion.anim = null; if (!close) { sheet.style.transform = ''; sheet.classList.remove('dragging') } done?.() },
+    })
+  }
+  ;(() => {
+    const sheet = $('sheet')
+    let startY = 0, base = 0, dragging = false, trail = []
     const down = e => {
-      if (e.target.closest('button')) return
-      dragging = true; startY = lastY = e.clientY; lastT = performance.now(); velocity = 0
-      sheet.classList.add('dragging'); e.currentTarget.setPointerCapture?.(e.pointerId)
+      if (e.target.closest('button, a')) return
+      // Caught while leaving: it comes back under the finger.
+      if (!state.sheet && sheetMotion.anim && sheetMotion.leaving) {
+        state.sheet = sheetMotion.leaving
+        $('scrim').classList.add('open'); document.body.classList.add('locked')
+      }
+      if (!state.sheet) return
+      // Interrupt: start from where the sheet is on screen right now.
+      const halted = sheetMotion.anim?.stop(); sheetMotion.anim = null
+      base = halted ? halted.x : new DOMMatrix(getComputedStyle(sheet).transform).m42
+      sheetMotion.y = base
+      dragging = true; startY = e.clientY; trail = [{ y: e.clientY, t: e.timeStamp }]
+      sheet.classList.add('dragging'); sheet.style.transform = `translateY(${base}px)`
+      e.currentTarget.setPointerCapture?.(e.pointerId)
     }
     const move = e => {
       if (!dragging) return
-      const now = performance.now()
-      velocity = (e.clientY - lastY) / Math.max(1, now - lastT); lastY = e.clientY; lastT = now
-      const dy = e.clientY - startY
-      sheet.style.transform = `translateY(${dy < 0 ? dy / 4 : dy}px)`
+      trail.push({ y: e.clientY, t: e.timeStamp }); if (trail.length > 6) trail.shift()
+      const raw = base + e.clientY - startY
+      const y = raw < 0 ? rubberband(raw, sheet.offsetHeight) : raw
+      sheetMotion.y = y; sheet.style.transform = `translateY(${y}px)`
     }
     const up = () => {
       if (!dragging) return
-      dragging = false; sheet.classList.remove('dragging')
-      if (lastY - startY > 110 || velocity > 0.6) closeSheet(); else sheet.style.transform = ''
+      dragging = false
+      // Velocity from the last ~100 ms, not one noisy sample.
+      const recent = trail.filter(p => trail.at(-1).t - p.t < 100)
+      const first = recent[0], last = recent.at(-1)
+      const velocity = last && first && last.t > first.t ? (last.y - first.y) / (last.t - first.t) * 1000 : 0
+      const height = sheet.offsetHeight
+      const rest = sheetMotion.y + project(velocity)
+      if (rest > Math.min(height * 0.38, 260)) closeSheet(velocity)
+      else sheetTo(0, velocity)
     }
     for (const el of [$('grab'), $('pass')]) {
       el.addEventListener('pointerdown', down); el.addEventListener('pointermove', move)
