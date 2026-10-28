@@ -297,13 +297,32 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .dots { display: inline-flex; gap: 5px; align-items: center; }
 .dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--dot); box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.18); }
 .wbig { font: 700 28px/1.05 var(--display); letter-spacing: -0.01em; }
-.sgroup { display: flex; flex-direction: column; gap: 8px; }
-.sgroup + .sgroup { border-top: 0.5px solid var(--sep); padding-top: 12px; }
-.sgroup > small { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg2); }
-.sline { display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 3px 10px; align-items: baseline; }
-.sline i { width: 9px; height: 9px; border-radius: 50%; background: var(--dot); transform: translateY(-1px); }
-.sline b { font-weight: 600; font-size: 16px; overflow-wrap: anywhere; }
-.sline span { grid-column: 2; font-size: 14px; color: var(--fg2); }
+.ready { display: flex; flex-direction: column; gap: 12px; }
+.ready b { font: 700 30px/1.05 var(--display); letter-spacing: -0.01em; }
+.ready b span { color: var(--fg2); font-weight: 600; font-size: 20px; }
+.segs { display: flex; gap: 4px; height: 8px; }
+.segs i { flex: 1; border-radius: 4px; background: var(--fill); transform-origin: left; animation: segIn 0.5s var(--spring) both; animation-delay: calc(var(--i) * 45ms + 150ms); }
+.segs i.on { background: linear-gradient(90deg, #30d158, #34c759); }
+.segs i.miss { background: color-mix(in srgb, var(--warn) 55%, var(--fill)); }
+@keyframes segIn { from { transform: scaleX(0); opacity: 0; } }
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.stile {
+  position: relative; min-width: 0; min-height: 84px; border-radius: 18px; padding: 12px 14px;
+  display: flex; flex-direction: column; justify-content: space-between; gap: 10px; background: var(--surface);
+  animation: rowIn 0.5s var(--spring) both; animation-delay: calc(var(--i, 0) * 40ms + 120ms);
+}
+.stile b { font-weight: 600; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stile small { font-size: 13px; color: var(--fg2); }
+.stile .mk { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; color: #fff; }
+.stile .mk svg { width: 15px; height: 15px; }
+.stile.ok .mk { background: linear-gradient(155deg, #3ddc68, #1f9d45); }
+.stile.warn { background: transparent; box-shadow: inset 0 0 0 1.5px var(--sep); }
+.stile.warn b { color: var(--fg2); }
+.stile.warn .mk { background: var(--fill); color: var(--fg3); font: 700 15px/1 var(--rounded); }
+.stile.fail { background: color-mix(in srgb, #ff453a 11%, var(--surface)); }
+.stile.fail .mk { background: #ff453a; font: 800 15px/1 var(--rounded); }
+.stile.fail small { color: #e5372c; font-weight: 600; }
+.wide { grid-column: 1 / -1; }
 
 .pill { min-height: 34px; padding: 0 14px; border-radius: 17px; background: var(--fill); color: var(--accent); font-weight: 600; font-size: 15px; text-transform: none; letter-spacing: 0; transition: transform 0.2s var(--spring); }
 .pill:active { transform: scale(0.94); }
@@ -809,12 +828,13 @@ summary small { color: var(--fg3); font-size: 13px; }
           <div class="wbottom"><div><small>Wartet</small><p>Die Cockpit-Mod prüft das Repo beim Start der Session.</p></div>
             <span class="glyph">${svg(SETUP_ICON)}</span></div>`
       }
-      const good = d.checks.filter(c => c.state === 'ok').length
+      const counted = d.checks.filter(c => c.group !== 'Memory')
+      const good = counted.filter(c => c.state === 'ok').length
       const worst = d.checks.reduce((w, c) => (RANK[c.state] > RANK[w] ? c.state : w), 'ok')
       const dots = ['Connectors', 'Skills', 'Branch'].map(g => groupState(d, g)).filter(Boolean)
         .map(st => `<i style="--dot:${STATE_DOT[st]}"></i>`).join('')
       return `${pattern('pins')}<div class="wtop"><div style="min-width:0"><small>Setup · ${esc(d.repo || 'kein Repo')}</small>
-            <div class="wbig">${worst === 'ok' ? 'Alles bereit' : `${good} von ${d.checks.length}`}</div></div>
+            <div class="wbig">${worst === 'ok' ? 'Alles bereit' : `${good} von ${counted.length}`}</div></div>
           <div class="wcount"><small>Stand</small><span class="dots">${dots}</span></div></div>
         <div class="wbottom"><div style="min-width:0"><small>${esc(d.branch && d.branch !== 'HEAD' ? d.branch : 'kein Branch')}</small>
             <p>${esc(worst === 'ok' ? 'Connectors, Skills und Branch passen.' : d.checks.filter(c => c.state !== 'ok').map(c => c.name).join(' · '))}</p></div>
@@ -925,14 +945,34 @@ summary small { color: var(--fg3); font-size: 13px; }
     const d = setup.data
     const recheck = `<div class="links-row"><button class="text-btn" data-setup-refresh>Neu prüfen lassen</button></div>`
     if (!d) return `<p class="empty">${esc(setup.error ? 'Die Daten der Seite sind gerade nicht lesbar.' : 'Noch kein Ergebnis. Die Cockpit-Mod prüft beim Start der Session, ob Connectors, Skills und Branch passen.')}</p>${recheck}`
-    const LABEL = { Memory: 'Memory', Connectors: 'Connectors', Skills: 'Skills', Branch: 'Branch' }
-    const groups = GROUPS.map(g => {
-      const mine = d.checks.filter(c => c.group === g)
-      if (!mine.length) return ''
-      return `<div class="sgroup"><small>${LABEL[g]}</small>${mine.map(c => `<div class="sline" style="--dot:${STATE_DOT[c.state]}"><i></i><b>${esc(c.name)}</b><span>${esc(c.detail)}</span></div>`).join('')}</div>`
-    }).join('')
+    // Tiles like Control Center: a full tile is ready, a dashed one optional and off, a tinted one missing.
+    const NAMES = { github: 'GitHub', figma: 'Figma', canva: 'Canva', gmail: 'Gmail', slack: 'Slack', notion: 'Notion', linear: 'Linear' }
+    const nice = n => NAMES[n.toLowerCase()] || n
+    const WORD = {
+      Connectors: { ok: 'Verbunden', warn: 'Optional', fail: 'Fehlt' },
+      Skills: { ok: 'Bereit', warn: 'Optional', fail: 'Fehlt' },
+    }
+    const MARK = { ok: CHECK, warn: '–', fail: '!' }
+    let n = 0
+    const tile = (c, group) => `<div class="stile ${c.state}" style="--i:${n++}"><span class="mk">${MARK[c.state]}</span>
+      <span style="min-width:0;display:flex;flex-direction:column"><b>${esc(group === 'Connectors' ? nice(c.name) : c.name)}</b><small>${WORD[group][c.state]}</small></span></div>`
+    const section = (group, title) => {
+      const mine = d.checks.filter(c => c.group === group)
+      return mine.length ? `<h2 class="label"><span>${title}</span></h2><div class="tiles">${mine.map(c => tile(c, group)).join('')}</div>` : ''
+    }
+    const counted = d.checks.filter(c => c.group !== 'Memory')
+    const good = counted.filter(c => c.state === 'ok').length
+    const hero = `<div class="preview ready"><b>${good === counted.length ? 'Alles bereit' : `${good} <span>von ${counted.length} bereit</span>`}</b>
+      <div class="segs">${counted.map((c, i) => `<i class="${c.state === 'ok' ? 'on' : c.state === 'fail' ? 'miss' : ''}" style="--i:${i}"></i>`).join('')}</div></div>`
+    const br = d.checks.find(c => c.group === 'Branch')
+    const branch = br ? `<h2 class="label"><span>Branch</span></h2>
+      <div class="preview"><div class="route"><small>${br.state === 'ok' ? 'Ziel' : br.state === 'fail' ? 'Achtung' : 'Hinweis'}</small>
+        <div class="to">${ARROW}<span>${esc(br.state === 'ok' ? (br.detail.match(/nach (\S+)$/)?.[1] || 'main') : br.detail.split(':')[0])}</span></div>
+        <span class="from">${esc(br.state === 'ok' ? `aus ${br.name}` : br.detail.split(':').slice(1).join(':').trim() || br.name)}</span></div></div>` : ''
+    const memo = d.checks.find(c => c.group === 'Memory')
+    const memoNote = memo && memo.state !== 'ok' ? `<p class="empty">${esc(memo.detail)}</p>` : ''
     return `${TIP(`${d.repo || 'Kein Repo'} · geprüft ${d.at ? ago(d.at) : '–'}`)}
-      <div class="preview">${groups}</div>${recheck}`
+      ${hero}${memoNote}${section('Connectors', 'Connectors')}${section('Skills', 'Skills')}${branch}${recheck}`
   }
 
   function buildWallet() {
