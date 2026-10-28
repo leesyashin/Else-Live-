@@ -70,6 +70,23 @@ function contextRing(share: number, color: string): string {
 </svg>`
 }
 
+// The phone's Cockpit page; set from the mod's settings when it registers.
+let pageUrl = ''
+const PAGE_LABEL = 'Cockpit-Seite öffnen ↗'
+
+// Shows the page where the client can (the Artifact tool's `open`); the link stays either way.
+async function openPage($: $): Promise<string> {
+  if (!pageUrl) return 'Keine Cockpit-Seite eingestellt (Einstellung cockpitUrl).'
+  const shown = await ($.tool.call as unknown as (args: object) => Promise<{ isError?: boolean; deny?: string }>)({
+    tool: 'Artifact',
+    action: 'open',
+    url: pageUrl,
+  }).catch(() => ({ isError: true, deny: undefined }))
+  const opened = !shown.isError && !shown.deny
+
+  return `${opened ? 'Cockpit-Seite geöffnet.' : 'Cockpit-Seite:'} [${PAGE_LABEL}](${pageUrl})`
+}
+
 function clip(text: string, room: number): string {
   if (room <= 1) return ''
 
@@ -100,6 +117,7 @@ function languageOf(path: string): string | undefined {
 
 export const register: Register = (on, options) => {
   const cockpitUrl = typeof options.cockpitUrl === 'string' ? options.cockpitUrl.trim() : ''
+  pageUrl = cockpitUrl
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -107,6 +125,14 @@ export const register: Register = (on, options) => {
       description: 'Öffnet das Cockpit: alle Skills mit Status, Infokarten und Zeitstrahl',
     })
     await loadFavorites($)
+    if (cockpitUrl) {
+      await $.command.register({ name: 'seite', description: 'Öffnet die Cockpit-Seite (Handy-Cockpit)' })
+      await $.tool.register({
+        name: 'open_page',
+        description: 'Öffnet die Cockpit-Seite für den Nutzer und gibt ihren Link zurück. Für „öffne das Cockpit“ oder „zur Seite“.',
+        isDeferred: true,
+      })
+    }
     if (cockpitUrl) {
       await $.tool.register({
         name: 'sync_context',
@@ -174,6 +200,23 @@ export const register: Register = (on, options) => {
 
     return result
   })
+
+  // One tap from any session to the page: /seite, its row, and the model's tool.
+  on('command.run', { command: 'seite' }, async $ => ({ text: await openPage($) }))
+
+  on('ui.render', { component: 'CommandOutput', props: { command: 'seite' } }, async ($, e, next) => {
+    if (e.props.isErrored || !pageUrl) return next(e)
+    const { Box, Link, Text } = $.ui.resolve(e)
+
+    return (
+      <Box flexDirection="column">
+        <Link href={pageUrl} label={PAGE_LABEL} />
+        <Text dimColor>Skills, Merge, Setup und Team auf dem Handy</Text>
+      </Box>
+    )
+  })
+
+  on('tool.call', { tool: 'mcp__cockpit__open_page' as never }, async $ => ({ result: await openPage($) }))
 
   on('tool.call', { tool: 'mcp__cockpit__sync_pr' as never }, async $ => {
     const text = await syncPr($, cockpitUrl, true).catch(error => `PR-Abgleich fehlgeschlagen: ${String(error)}`)
@@ -254,7 +297,7 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
     const ui = $.ui.resolve(e)
-    const { Box, Button, Text } = ui
+    const { Box, Button, Link, Text } = ui
     const Svg = svgOf(ui, e.surface)
     const { rows, used, now } = await bandView($)
     const active = new Set(used.map(use => use.skill))
@@ -290,6 +333,7 @@ export const register: Register = (on, options) => {
         <Button key="cockpit-skills" plain onPress={() => openPane($)}>
           ✦ Skills <Text dimColor>{`${count}${loaded}`}</Text>
         </Button>
+        {pageUrl && <Link href={pageUrl} label="Seite ↗" />}
         {last && (
           <Text dimColor>
             {clip(`◉ ${shortName(last.skill)} · ${ago(now, last.at)}`, Math.max(0, e.props.bodyColumns - 24))}
@@ -309,7 +353,7 @@ export const register: Register = (on, options) => {
 }
 
 async function drawList($: $, ui: ElementTable, surface: RenderSurface, columns: number) {
-  const { Box, Button, Text } = ui
+  const { Box, Button, Link, Text } = ui
   const Input = inputOf(ui, surface)
   const { rows, used, favs, sum, needle, closed, now } = await listView($)
   const setup = await setupView($)
@@ -387,6 +431,7 @@ async function drawList($: $, ui: ElementTable, surface: RenderSurface, columns:
           ↻ Aktualisieren
         </Button>
       </Box>
+      {pageUrl && <Link href={pageUrl} label={PAGE_LABEL} />}
       <Text dimColor>
         {`◉ ${active.size} geladen · ● ${rows.length} verfügbar · ○ ${missing.length} empfohlen`}
       </Text>

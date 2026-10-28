@@ -251,6 +251,8 @@ Die Handy-Seite zeigt:
 8. **Auftrag „Cockpit · PR prüfen“:** das Werkzeug `mcp__cockpit__sync_pr` aufrufen (ohne Mod: PR lesen und `cockpit/pr` von Hand schreiben). Danach im Thread antworten.
 9. **Seite neu bauen:** wie in `apps/cockpit-web/README.md` beschrieben. Die Skill-Daten liefert `build_data.py` aus der jeweiligen Session.
 
+- **Zur Seite:** `/seite` öffnet die Cockpit-Seite aus jeder Session mit Mod und zeigt den Link als Knopf. Der Link steht auch oben in `/cockpit` und in der Leiste („Seite ↗“). Das Werkzeug `mcp__cockpit__open_page` macht dasselbe für Claude.
+
 ### Nächste Schritte, in dieser Reihenfolge
 
 1. **Desktop nachziehen:** Merge-Knopf (zwei Stufen wie oben) und Team-Avatare in Leiste und Panel der Mod.

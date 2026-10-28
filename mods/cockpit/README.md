@@ -58,6 +58,12 @@ Eine Mod für Claude Code, die zeigt, welche Skills du hast, ob Claude sie sieht
 - **Der PR des Branches** geht ins Dokument `cockpit/pr`, mit CI, Checks, Konflikten und Dateien. Das passiert beim Start, kurz nach jedem `git push` oder jeder PR-Änderung und nach Zügen höchstens alle 90 s. Geschrieben wird nur, wenn sich etwas geändert hat.
 - Das Werkzeug `sync_pr` löst den PR-Abgleich sofort aus.
 
+## Zur Cockpit-Seite
+
+- `/seite` öffnet die Cockpit-Seite und zeigt ihren Link als Knopf, in jeder Session, auch auf dem Handy.
+- Derselbe Link steht oben in `/cockpit` und in der Leiste über der Eingabe („Seite ↗“).
+- Claude kann die Seite mit dem Werkzeug `open_page` öffnen, etwa auf „öffne das Cockpit“.
+
 ## Aufträge vom Handy: nur eine Session
 
 - Ein Auftrag von der Cockpit-Seite weckt jede Session, die sie beobachtet. Liest eine Session den Thread (`ArtifactComments read`), hängt die Mod eine Zuteilung an: Nennt der Auftrag eine andere Session (`Session: <ID>`) oder hat eine andere ihn schon beansprucht (`cockpit/jobs/threads/<Thread-ID>`), bleibt diese still.
