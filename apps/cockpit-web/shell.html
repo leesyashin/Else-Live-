@@ -401,6 +401,9 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .mrow:active { background: var(--surface-2); }
 .mrow + .mrow::before { content: ""; position: absolute; top: 0; left: 68px; right: 0; border-top: 0.5px solid var(--sep); }
 .mrow .stext span { -webkit-line-clamp: 1; }
+.srow { color: inherit; text-decoration: none; }
+.srow + .srow::before { left: 40px; }
+.sdot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--st); box-shadow: 0 0 0 4px color-mix(in srgb, var(--st) 22%, transparent); }
 .mstate { flex: none; font-size: 13px; font-weight: 600; color: var(--st); }
 /* Alerts arrive on a spring and leave with a swipe. Each sits in a slot whose height follows
    the spring, so the page below makes room smoothly instead of jumping. */
@@ -671,6 +674,16 @@ summary small { color: var(--fg3); font-size: 13px; }
     done: { st: '#30d158', word: 'Fertig' },
     failed: { st: '#ff453a', word: 'Abgebrochen' },
   }
+  const SESSIONS_LOOK = { c1: '#3b2f22', c2: '#140f0a', g: 'rgba(255, 159, 10, 0.36)', pat: 'dots' }
+  const SESSIONS_ICON = '<rect x="3.5" y="4.5" width="17" height="6" rx="2"/><rect x="3.5" y="13.5" width="17" height="6" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>'
+  const SESSION_LOOK = {
+    working: { st: '#0a84ff', word: 'Arbeitet' },
+    blocked: { st: '#ff9f0a', word: 'Wartet auf dich' },
+    review: { st: '#bf5af2', word: 'Zum Ansehen' },
+    failed: { st: '#ff453a', word: 'Fehler' },
+    done: { st: '#30d158', word: 'Fertig' },
+    idle: { st: '#8e8e93', word: 'Ruht' },
+  }
   const MERGE_ICON = '<circle cx="6" cy="5" r="2.2"/><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="12" r="2.2"/><path d="M6 7.2v9.6M6 7.2c0 4 3.5 4.8 9.8 4.8"/>'
   const ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
   const REC_ICON = '<path d="M12 4v16M4 12h16"/>'
@@ -906,6 +919,31 @@ summary small { color: var(--fg3); font-size: 13px; }
     const badge = m.state === 'done' ? `<span class="badge">${CHECK}</span>` : m.state === 'question' ? '<span class="badge">?</span>' : m.state === 'conflict' || m.state === 'failed' ? '<span class="badge">!</span>' : ''
     return `<span class="ava ${m.state}" style="${colors(memberColors(m))};--st:${look.st};--s:${size}px" aria-hidden="true">${esc(initials(m.name))}${badge}</span>`
   }
+  // --- Sessions: every session's mod writes cockpit/sessions, the current ones with their repo ---
+  const sessions = { rows: [], at: 0, error: null }
+  const NO_REPO = 'Ohne Repo'
+  function cleanSession(r) {
+    if (!r || typeof r.id !== 'string' || typeof r.url !== 'string' || !/^https:\/\/claude\.ai\//.test(r.url)) return null
+    return {
+      id: r.id, url: r.url, title: typeof r.title === 'string' ? r.title : 'Ohne Titel',
+      repo: typeof r.repo === 'string' && r.repo ? r.repo : null,
+      state: SESSION_LOOK[r.state] ? r.state : 'idle',
+      note: typeof r.note === 'string' ? r.note : '',
+      updatedAt: typeof r.updatedAt === 'number' ? r.updatedAt : 0,
+    }
+  }
+  // Repos A–Z, sessions without one last; inside a repo the newest first.
+  function sessionGroups() {
+    const map = new Map()
+    for (const r of sessions.rows) {
+      const key = r.repo || NO_REPO
+      if (!map.has(key)) map.set(key, [])
+      map.get(key).push(r)
+    }
+    return [...map.entries()]
+      .sort(([a], [b]) => (a === NO_REPO) - (b === NO_REPO) || a.localeCompare(b, 'de', { sensitivity: 'base' }))
+      .map(([repo, rows]) => ({ repo, rows: rows.sort((a, b) => b.updatedAt - a.updatedAt) }))
+  }
   const needsYou = m => m.state === 'question' || m.state === 'conflict'
 
   const store = {
@@ -1036,6 +1074,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     { id: 'merge', kind: 'merge', title: 'Merge' },
     { id: 'setup', kind: 'setup', title: 'Setup' },
     { id: 'team', kind: 'team', title: 'Team' },
+    { id: 'sessions', kind: 'sessions', title: 'Sessions' },
     { id: 'skills', kind: 'skills', title: 'Skills' },
   ]
   const SKILL_CARDS = [
@@ -1096,6 +1135,18 @@ summary small { color: var(--fg3); font-size: 13px; }
         <div class="wbottom"><div style="min-width:0"><small>${esc(parts.join(' · '))}</small><p>${esc(team.goal?.goal || '')}</p></div>
           <span class="glyph">${svg(TEAM_ICON)}</span></div>`
     }
+    if (card.kind === 'sessions') {
+      const rs = sessions.rows
+      const groups = sessionGroups()
+      const waiting = rs.filter(r => r.state === 'blocked').length
+      const working = rs.filter(r => r.state === 'working').length
+      const parts = [working && `${working} arbeiten`, waiting && `${waiting} warten auf dich`].filter(Boolean)
+      return `${pattern('dots')}<div class="wtop"><div style="min-width:0"><small>Sessions · letzte 24 h</small><b>${rs.length ? `${rs.length} aktuell` : 'Keine aktuelle'}</b></div>
+          <div class="wcount"><small>Repos</small><b>${groups.length}</b></div></div>
+        <div class="wbottom"><div style="min-width:0"><small>${esc(parts.join(' · ') || (rs.length ? 'Alles ruhig' : 'Wartet'))}</small>
+            <p>${esc(groups.map(g => g.repo.split('/').pop()).join(' · ') || 'Die Cockpit-Mod trägt die Sessions beim Start ein.')}</p></div>
+          <span class="glyph">${svg(SESSIONS_ICON)}</span></div>`
+    }
     if (card.kind === 'setup') {
       const d = setup.data
       if (!d) {
@@ -1151,6 +1202,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     if (card.kind === 'merge') return mergeDetail()
     if (card.kind === 'setup') return setupDetail()
     if (card.kind === 'team') return teamDetail()
+    if (card.kind === 'sessions') return sessionsDetail()
     if (card.kind === 'rec') {
       return `${TIP('Halten: Claude installiert · Tippen: Details')}${group('Für deinen Stil', recommended.length, recommended.map(recRow).join(''))}`
     }
@@ -1230,6 +1282,19 @@ summary small { color: var(--fg3); font-size: 13px; }
       ${silent ? `<p class="hint">Die Session des PR hat noch nicht geantwortet. Ist sie offen und beobachtet sie die Seite?${d.sessionUrl ? ` <a class="text-btn" href="${esc(d.sessionUrl)}" target="_blank" rel="noopener">Session öffnen ↗</a>` : ''}</p>` : ''}
       ${!sendAvailable() && !blockers.length && d.state === 'open' && !busy ? `<p class="hint">${esc(sendReason())}</p>` : ''}
       ${actions(d)}`
+  }
+
+  function sessionsDetail() {
+    const groups = sessionGroups()
+    if (!groups.length) return `<p class="empty">${esc(sessions.error ? 'Die Daten der Seite sind gerade nicht lesbar.' : 'Keine aktuelle Session. Gezeigt werden Sessions der letzten 24 Stunden, archivierte nicht.')}</p>`
+    let i = 0
+    const html = groups.map(g => group(g.repo, g.rows.length, g.rows.map(r => {
+      const look = SESSION_LOOK[r.state]
+      return `<a class="mrow srow" href="${esc(r.url)}" target="_blank" rel="noopener" style="--i:${i++};--st:${look.st}">
+        <span class="sdot" aria-hidden="true"></span><span class="stext"><b>${esc(r.title)}</b><span>${esc(r.note || (r.updatedAt ? ago(r.updatedAt) : ''))}</span></span>
+        <span class="trail"><span class="mstate">${esc(look.word)}</span>${CHEV}</span></a>`
+    }).join(''))).join('')
+    return `${TIP(`Tippen öffnet die Session${sessions.at ? ` · Stand ${ago(sessions.at)}` : ''}`)}${html}`
   }
 
   function teamDetail() {
@@ -1408,7 +1473,7 @@ summary small { color: var(--fg3); font-size: 13px; }
   }
 
   const lookOf = card => card.kind === 'session' ? SESSION : card.kind === 'merge' ? MERGE : card.kind === 'setup' ? SETUP
-    : card.kind === 'team' ? TEAM : card.kind === 'skills' ? SKILLS : card.kind === 'rec' ? TICKET : CAT[card.id]
+    : card.kind === 'team' ? TEAM : card.kind === 'sessions' ? SESSIONS_LOOK : card.kind === 'skills' ? SKILLS : card.kind === 'rec' ? TICKET : CAT[card.id]
   const cardH = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--card-h')) || 214
   const stackY = i => (cards === SKILL_CARDS ? (i === 0 ? 0 : HEAD_PEEK + (i - 1) * PEEK) : i * PEEK)
   const cardEl = card => $('wallet').querySelector(`[data-card="${card.id}"]`)
@@ -2696,6 +2761,15 @@ summary small { color: var(--fg3); font-size: 13px; }
       }
       render()
     }, () => { team.error = 'no_data'; render() })
+    db.doc('cockpit/sessions').onSnapshot(snap => {
+      const d = snap.exists ? snap.data() : null
+      // The list may be older than the day it covers: drop what has gone stale since.
+      const fresh = r => r.state === 'working' || Date.now() - r.updatedAt < 24 * 3600 * 1000
+      sessions.rows = Array.isArray(d?.rows) ? d.rows.map(cleanSession).filter(r => r && fresh(r)) : []
+      sessions.at = typeof d?.at === 'number' ? d.at : 0
+      sessions.error = null
+      render()
+    }, () => { sessions.error = 'no_data'; render() })
     db.doc('cockpit/skills').onSnapshot(snap => {
       const d = snap.exists ? snap.data() : null
       const list = Array.isArray(d?.installed) ? d.installed.filter(i => i && typeof i.id === 'string') : []

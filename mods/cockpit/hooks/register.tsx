@@ -1,6 +1,6 @@
 import type { ElementTable, EngineInterface, Register, RenderSurface } from 'claude-code'
 
-import type { SetupReport, SkillFile, SkillRow, SkillUse } from '../types'
+import type { SessionList, SetupReport, SkillFile, SkillRow, SkillUse } from '../types'
 import { CATALOG, catalogFor } from './catalog'
 import type { CatalogEntry } from './catalog'
 import {
@@ -32,6 +32,7 @@ import {
   toggleFold,
 } from './skills'
 import { RULES, judge, openOrders, verdictNote } from './jobs'
+import { DOT, groupRows, sessionsText, sessionsView, stateLabel, syncSessions } from './sessions'
 import { syncPr, syncStatus, touchesPr } from './pr'
 import { COLOR, groupStates, setupText, syncSetup } from './setup'
 import { syncContext } from './sync'
@@ -98,6 +99,7 @@ function clip(text: string, room: number): string {
 async function openPane($: $): Promise<void> {
   const { isPlaced } = await $.ui.open({ id: PANE, title: TITLE })
   await refresh($)
+  void syncSessions($, pageUrl).catch(() => undefined)
   if (!isPlaced) await $.command.run({ command: 'cockpit' })
 }
 
@@ -147,6 +149,15 @@ export const register: Register = (on, options) => {
         isDeferred: true,
       })
     }
+    await $.command.register({
+      name: 'sessions',
+      description: 'Zeigt alle aktuellen Sessions, nach Repo sortiert, zum Öffnen',
+    })
+    await $.tool.register({
+      name: 'list_sessions',
+      description: 'Listet die aktuellen Sessions des Kontos (letzte 24 h, ohne archivierte) nach Repo, mit Status und Link zum Öffnen.',
+      isDeferred: true,
+    })
     await $.tool.register({
       name: 'check_setup',
       description: 'Prüft das Setup dieses Repos (Connectors, Skills, Branch laut Memory-Datei) sofort und schickt das Ergebnis an die Cockpit-Seite.',
@@ -160,6 +171,9 @@ export const register: Register = (on, options) => {
     // The page shows this session from now on: its skills (none yet) and its branch's PR.
     $.clock.after(5000, () => void syncStatus($, cockpitUrl).catch(() => undefined))
     $.clock.after(6000, () => void syncPr($, cockpitUrl, true).catch(() => undefined))
+    // Other sessions start and finish on their own: look again every few minutes.
+    $.clock.after(7000, () => void syncSessions($, cockpitUrl, true).catch(() => undefined))
+    $.clock.every(180_000, () => void syncSessions($, cockpitUrl, true).catch(() => undefined))
 
     return next(e)
   })
@@ -199,6 +213,28 @@ export const register: Register = (on, options) => {
     await syncPr($, cockpitUrl).catch(() => undefined)
 
     return result
+  })
+
+  // Every current session, by repo, one tap to open it: /sessions, its row, the pane and the model's tool.
+  on('command.run', { command: 'sessions' }, async $ => {
+    const view = await syncSessions($, cockpitUrl, true)
+
+    return { text: sessionsText(view, await $.clock.now(), ago) }
+  })
+
+  on('ui.render', { component: 'CommandOutput', props: { command: 'sessions' } }, async ($, e, next) => {
+    if (e.props.isErrored) return next(e)
+    const view = await sessionsView($)
+    if (!view) return next(e)
+    const columns = e.viewport?.columns ?? 40
+
+    return drawSessions($.ui.resolve(e), view, await $.clock.now(), columns)
+  })
+
+  on('tool.call', { tool: 'mcp__cockpit__list_sessions' as never }, async $ => {
+    const view = await syncSessions($, cockpitUrl, true)
+
+    return { result: sessionsText(view, await $.clock.now(), ago) }
   })
 
   // One tap from any session to the page: /seite, its row, and the model's tool.
@@ -311,6 +347,7 @@ export const register: Register = (on, options) => {
       : undefined
     const look = share === undefined ? undefined : contextLook(share)
     const groups = groupStates(await setupView($))
+    const sessions = await sessionsView($)
     const setupLabel = groups.map(one => `${one.group}: ${{ ok: 'in Ordnung', warn: 'Hinweis', fail: 'fehlt' }[one.state]}`).join(', ')
 
     return (
@@ -328,6 +365,11 @@ export const register: Register = (on, options) => {
               <Text color={COLOR[one.state]}>●</Text>
             ))}
             <Text dimColor> Setup</Text>
+          </Button>
+        )}
+        {sessions && sessions.rows.length > 0 && (
+          <Button key="cockpit-sessions" plain onPress={() => openPane($)} label={`${sessions.rows.length} aktuelle Sessions`}>
+            ⧉ <Text dimColor>{`${sessions.rows.length} Sessions`}</Text>
           </Button>
         )}
         <Button key="cockpit-skills" plain onPress={() => openPane($)}>
@@ -357,6 +399,7 @@ async function drawList($: $, ui: ElementTable, surface: RenderSurface, columns:
   const Input = inputOf(ui, surface)
   const { rows, used, favs, sum, needle, closed, now } = await listView($)
   const setup = await setupView($)
+  const sessions = await sessionsView($)
   const active = new Set(used.map(use => use.skill))
   const term = needle.trim().toLowerCase()
   const isSearching = term.length > 0
@@ -451,6 +494,7 @@ async function drawList($: $, ui: ElementTable, surface: RenderSurface, columns:
           onSubmit={value => setQuery($, value)}
         />
       )}
+      {sessions && !isSearching && sessionsSection($, ui, sessions, closed.includes('Sessions'), now, columns)}
       {setup && !isSearching && setupSection($, ui, setup, closed.includes('Setup'), columns)}
       {favored.length > 0 && (
         <Box flexDirection="column">
@@ -470,6 +514,53 @@ async function drawList($: $, ui: ElementTable, surface: RenderSurface, columns:
           </Text>
         ))}
       </Box>
+    </Box>
+  )
+}
+
+// The current sessions under their repo, each a link that opens it.
+function drawSessions(ui: ElementTable, view: SessionList, now: number, columns: number) {
+  const { Box, Link, Text } = ui
+  const groups = groupRows(view.rows)
+
+  return (
+    <Box flexDirection="column" gap={1}>
+      {view.error && <Text color="warning">{`⚠ ${view.error}`}</Text>}
+      {groups.length === 0 && !view.error && <Text dimColor>Keine aktuelle Session.</Text>}
+      {groups.map(group => (
+        <Box flexDirection="column">
+          <Text weight="semibold">
+            {group.repo}
+            <Text dimColor>{`  ${group.rows.length}`}</Text>
+          </Text>
+          {group.rows.map(row => (
+            <Box flexDirection="column">
+              <Box flexDirection="row" gap={1}>
+                <Text color={DOT[row.state].color}>{DOT[row.state].dot}</Text>
+                <Link key={`session:${row.id}`} href={row.url} label={clip(row.title, columns - 4)} />
+              </Box>
+              <Text dimColor>
+                {clip(`  ${stateLabel(row.state)} · ${ago(now, row.updatedAt)}${row.isSelf ? ' · diese Session' : ''}`, columns)}
+              </Text>
+            </Box>
+          ))}
+        </Box>
+      ))}
+    </Box>
+  )
+}
+
+function sessionsSection($: $, ui: ElementTable, view: SessionList, isClosed: boolean, now: number, columns: number) {
+  const { Box, Button, Text } = ui
+  const repos = new Set(view.rows.map(row => row.repo)).size
+
+  return (
+    <Box flexDirection="column">
+      <Button key="k:Sessions" plain onPress={() => toggleFold($, 'Sessions')}>
+        <Text weight="semibold">{`${isClosed ? '▸' : '▾'} Sessions`}</Text>
+        <Text dimColor>{`  ${view.rows.length} aktuell · ${repos} ${repos === 1 ? 'Repo' : 'Repos'}`}</Text>
+      </Button>
+      {!isClosed && drawSessions(ui, view, now, columns)}
     </Box>
   )
 }

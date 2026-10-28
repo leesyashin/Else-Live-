@@ -182,14 +182,14 @@ Für die nächste Session: Hier steht, was es gibt, wie es zusammenspielt und wi
 
 | Teil | Ort | Zweck |
 | --- | --- | --- |
-| Mod „cockpit“ | `mods/cockpit` | Skill-Launcher (Leiste, Panel, `/cockpit` als Text), Kontext-Ring in der Leiste, Abgleich mit der Handy-Seite. 15 Tests. |
+| Mod „cockpit“ | `mods/cockpit` | Skill-Launcher (Leiste, Panel, `/cockpit` als Text), Kontext-Ring in der Leiste, Sessions nach Repo, Abgleich mit der Handy-Seite. 28 Tests. |
 | Handy-Seite | `apps/cockpit-web` (Quelltext), live: https://claude.ai/artifact/3mAJQLuy66EZ9EoNiqAgT8 | Das Cockpit auf dem Handy, siehe unten. |
 | Marketplace | `.claude-plugin/marketplace.json` | `/plugin install cockpit --marketplace leesyashin/Else-Live-` |
 | Design-Entwürfe | https://claude.ai/artifact/5EBWMLf4CEbFLtgNSRfi5Q | Fünf Richtungen; gewählt wurden Wallet (3) und Suche mit Vorschlägen (4). |
 
 Die Handy-Seite zeigt:
 - **oben:** Suche („Was willst du tun?“), Vorschläge, Kontext-Ring
-- **darunter:** ein Wallet-Kartenstapel mit Session, Merge, Setup, Team und Skills, jede Karte mit eigenem Muster
+- **darunter:** ein Wallet-Kartenstapel mit Session, Merge, Setup, Team, Sessions und Skills, jede Karte mit eigenem Muster
 - **Karte Skills:** öffnet einen zweiten Stapel mit den Bereichen (Design, Code, Daten, Business, Persönlich, Weitere, Empfohlen)
 - **Animation:** Die angetippte Karte gleitet nach oben. Die Karten darüber weichen nach oben aus, die darunter nach unten, beide blenden aus. Beim Schließen kommen sie gestaffelt zurück, beim Drücken gibt die Karte leicht nach.
 - **in einer geöffneten Karte:** Skills als Liste; gedrückt halten lädt den Skill, tippen öffnet ihn als Pass mit Anleitung und Referenzen
@@ -215,6 +215,7 @@ Die Handy-Seite zeigt:
   - `cockpit/setup` mit `{ repo, branch, memory, checks[], at }`. Schreibt die Mod beim Start und nach Änderungen. Das Werkzeug `mcp__cockpit__check_setup` löst es sofort aus.
   - `cockpit/skills` mit `{ installed: [{ id, name, title, author, at, pr }] }`. Schreibt die Session, die einen Skill installiert. Die Seite nimmt ihn sofort aus „Empfohlen“ und zeigt ihn unter Design.
   - `cockpit/jobs/threads/<Thread-ID>` mit `{ session, kind, at }`: wer einen Auftrag übernommen hat.
+  - `cockpit/sessions` mit `{ rows: [{ id, title, repo, state, note, updatedAt, url, isSelf }], at, error }`: alle aktuellen Sessions des Kontos (nicht archiviert, letzte 24 h). Schreibt die Mod beim Start und alle 3 Minuten, wenn sich etwas geändert hat; liest sie über den Connector „Claude Code Remote“.
 
 ### So übernimmt eine neue Session
 
@@ -251,6 +252,7 @@ Die Handy-Seite zeigt:
 8. **Auftrag „Cockpit · PR prüfen“:** das Werkzeug `mcp__cockpit__sync_pr` aufrufen (ohne Mod: PR lesen und `cockpit/pr` von Hand schreiben). Danach im Thread antworten.
 9. **Seite neu bauen:** wie in `apps/cockpit-web/README.md` beschrieben. Die Skill-Daten liefert `build_data.py` aus der jeweiligen Session.
 
+- **Sessions:** `/sessions`, der Panel-Abschnitt „Sessions“, `⧉ n Sessions` in der Leiste und die Wallet-Karte „Sessions“ zeigen alle aktuellen Sessions nach Repo; ein Tipp öffnet sie. Werkzeug für Claude: `mcp__cockpit__list_sessions`.
 - **Zur Seite:** `/seite` öffnet die Cockpit-Seite aus jeder Session mit Mod und zeigt den Link als Knopf. Der Link steht auch oben in `/cockpit` und in der Leiste („Seite ↗“). Das Werkzeug `mcp__cockpit__open_page` macht dasselbe für Claude.
 
 ### Nächste Schritte, in dieser Reihenfolge

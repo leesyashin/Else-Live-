@@ -726,3 +726,79 @@ test('/seite opens the Cockpit page and leaves its link', async ($, on) => {
     await ui.unmount()
   }
 })
+
+// --- Every current session, by repo -----------------------------------------------------
+
+const NOW_ISO = new Date(1_000_000).toISOString()
+const OLD_ISO = new Date(1_000_000 - 2 * 24 * 60 * 60 * 1000).toISOString()
+const SESSIONS = [
+  { id: 'session_b', title: 'Website', session_status: 'SESSION_STATUS_IDLE', status_bucket: 'SESSION_STATUS_BUCKET_BLOCKED', updated_at: NOW_ISO },
+  { id: 'session_test', title: 'Diese hier', session_status: 'SESSION_STATUS_RUNNING', status_bucket: 'SESSION_STATUS_BUCKET_WORKING', updated_at: NOW_ISO },
+  { id: 'session_a', title: 'Prop review', session_status: 'SESSION_STATUS_IDLE', status_bucket: 'SESSION_STATUS_BUCKET_REVIEW_READY', updated_at: NOW_ISO },
+  { id: 'session_old', title: 'Alt', session_status: 'SESSION_STATUS_IDLE', status_bucket: 'SESSION_STATUS_BUCKET_COMPLETED', updated_at: OLD_ISO },
+  { id: 'session_gone', title: 'Archiviert', session_status: 'SESSION_STATUS_ARCHIVED', status_bucket: 'SESSION_STATUS_BUCKET_COMPLETED', updated_at: NOW_ISO },
+  { id: 'session_none', title: 'Nur Chat', session_status: 'SESSION_STATUS_IDLE', status_bucket: 'SESSION_STATUS_BUCKET_COMPLETED', updated_at: NOW_ISO },
+]
+const SOURCES: Record<string, string | null> = {
+  session_b: 'https://github.com/leesyashin/Else-Live-',
+  session_test: 'https://github.com/leesyashin/Else-Live-',
+  session_a: 'https://github.com/leesyashin/IF-Prop',
+  session_none: null,
+}
+
+function sessionsWorld(on: On) {
+  const asked: string[] = []
+  const { clock, calls } = syncWorld(on, () => ({ result: '', text: 'The document is now at version 1.' }))
+  on('mcp.call', (_, e) => {
+    const id = String(e.args.session_id ?? '')
+    asked.push(`${e.server}:${e.tool}${id ? `:${id}` : ''}`)
+    const source = SOURCES[id]
+    const body =
+      e.tool === 'list_sessions' ? { ccr: { data: SESSIONS, has_more: false } }
+      : { ccr: { id, session_context: { sources: source ? [{ git_repository: { url: source } }] : [] } } }
+    // The connector wraps its JSON in a note of its own.
+    return { value: { content: [{ type: 'text', text: `<other-session>\n${JSON.stringify(body)}\n</other-session>` }], isError: false } }
+  })
+  return { clock, calls, asked }
+}
+
+test('/sessions lists the current sessions under their repo, each one a link', async ($, on) => {
+  const { clock, calls, asked } = sessionsWorld(on)
+  await $.session.start({ cwd: '/', surface: 'mobile', isInteractive: true })
+  await clock.advance(8000)
+
+  expect(asked).toContain('claude-code-remote:list_sessions')
+  // Archived and old sessions are read no further.
+  expect(asked).not.toContain('claude-code-remote:get_session:session_old')
+
+  const text = String(((await $.command.run({ command: 'sessions', args: '' } as never)) as { text?: string }).text)
+  expect(text).not.toContain('Alt')
+  expect(text).not.toContain('Archiviert')
+  // Repos A–Z, then the sessions without one.
+  const order = ['**leesyashin/Else-Live-** · 2', '**leesyashin/IF-Prop** · 1', '**Ohne Repo** · 1'].map(line => text.indexOf(line))
+  expect(order.every(at => at >= 0)).toBe(true)
+  expect([...order].sort((a, b) => a - b)).toEqual(order)
+  expect(text).toContain('[Website](https://claude.ai/code/session_b) · wartet auf dich')
+  expect(text).toContain('[Diese hier](https://claude.ai/code/session_test) · arbeitet · gerade eben · diese Session')
+
+  // The phone's page gets the same list.
+  const doc = calls.find(call => call.doc_id === 'sessions' && call.action === 'set')
+  expect((doc?.data as { rows: unknown[] }).rows.length).toBe(4)
+
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({
+      plugin: 'cockpit', component: 'CommandOutput', requestId: 'sessions', surface,
+      props: { command: 'sessions', args: '', isErrored: false, text: '', bodyColumns: 40, scroll: { offset: 0, bodyRows: 20 }, view: {} },
+    } as never)
+    const hrefs = (await ui.findAll({ type: 'Link' })).map(link => link.props.href)
+    expect(hrefs).toEqual([
+      'https://claude.ai/code/session_b', 'https://claude.ai/code/session_test',
+      'https://claude.ai/code/session_a', 'https://claude.ai/code/session_none',
+    ])
+    await ui.unmount()
+  }
+
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await pane.find({ key: 'k:Sessions' }))?.text).toContain('4 aktuell · 3 Repos')
+  await pane.unmount()
+})

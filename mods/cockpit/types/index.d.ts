@@ -55,6 +55,27 @@ export type SetupReport = {
   at: number
 }
 
+export type SessionState = 'working' | 'blocked' | 'review' | 'failed' | 'done' | 'idle'
+
+// One of the account's current cloud sessions, as the Sessions list shows it.
+export type SessionRow = {
+  id: string
+  title: string
+  // owner/repo, or null when the session has none.
+  repo: string | null
+  state: SessionState
+  note: string | null
+  updatedAt: number
+  url: string
+  isSelf: boolean
+}
+
+export type SessionList = {
+  rows: SessionRow[]
+  at: number
+  error: string | null
+}
+
 declare module 'claude-code' {
   interface PluginState {
     cockpit: {
@@ -70,6 +91,7 @@ declare module 'claude-code' {
       query: string
       tick: number
       setup: Shaped<SetupReport | null>
+      sessions: Shaped<SessionList | null>
     }
   }
 }
