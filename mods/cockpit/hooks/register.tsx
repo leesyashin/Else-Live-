@@ -25,7 +25,7 @@ import {
   shortName,
   sourceLabel,
   startSkill,
-  textOverview,
+  textFor,
   toggleBody,
   toggleFavorite,
   toggleFold,
@@ -90,18 +90,18 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('command.run', { command: 'cockpit' }, async $ => {
-    await $.ui.open({ id: PANE, title: TITLE })
+  on('command.run', { command: 'cockpit' }, async ($, e) => {
+    if (e.args.trim() === '') await $.ui.open({ id: PANE, title: TITLE })
     await refresh($)
 
-    return { text: await textOverview($) }
+    return { text: await textFor($, e.args) }
   })
 
   // On the phone the cockpit lives in /cockpit's own row: the same list and
   // cards as the pane, drawn inline. Elsewhere the pane shows them and the
   // row keeps its text.
   on('ui.render', { component: 'CommandOutput', props: { command: 'cockpit' } }, async ($, e, next) => {
-    if (e.surface !== 'mobile' || e.props.isErrored) return next(e)
+    if (e.surface !== 'mobile' || e.props.isErrored || e.props.args.trim() !== '') return next(e)
     const ui = $.ui.resolve(e)
     const name = await selectedSkill($)
     const columns = e.viewport?.columns ?? 40
@@ -115,7 +115,14 @@ export const register: Register = on => {
     const result = await next(e)
     try {
       await recordUse($, e.skill, e.path)
-      $.ui.toast(`✦ Skill geladen: ${shortName(e.skill)}`)
+      const text = `✦ Skill geladen: ${shortName(e.skill)}`
+      $.ui.toast(text)
+      // A client that draws no toast (the phone on a cloud session) still
+      // shows the transcript: there the proof is a notice the model never reads.
+      const surfaces = await $.session.surfaces()
+      if (!surfaces.some(surface => surface !== 'mobile')) {
+        await $.session.append({ message: { type: 'system', content: [{ type: 'text', text }] } })
+      }
     } catch {
       // Recording is a courtesy; the skill's prompt stands either way.
     }

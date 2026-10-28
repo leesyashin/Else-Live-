@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import type { On } from 'claude-code'
+import type { On, RenderSurface } from 'claude-code'
 
 const SURFACES = ['terminal', 'desktop', 'vscode', 'mobile'] as const
 const HOME = '/home/me'
@@ -79,7 +79,7 @@ const FILES: Record<string, string> = {
 }
 
 // Nothing sits beneath the plugin: each hook here stands for the engine.
-function world(on: On, store: Record<string, unknown> = {}) {
+function world(on: On, store: Record<string, unknown> = {}, surfaces: readonly RenderSurface[] = ['desktop']) {
   // The store in memory, so a test can read what the plugin kept.
   const saved: Record<string, unknown> = { ...store }
   on('store.get', (_, e) => ({ value: saved[e.key] }))
@@ -112,6 +112,7 @@ function world(on: On, store: Record<string, unknown> = {}) {
     ran.push([e.command, e.args])
     return { text: 'ok' }
   })
+  on('session.surfaces', () => ({ value: surfaces }))
   on('prompt.fill', (_, e) => {
     filled.push(e.text)
     return { isFilled: true }
@@ -253,14 +254,14 @@ test('search narrows the list and ignores folded categories', async ($, on) => {
 })
 
 test('on the phone /cockpit draws the cockpit into its own row', async ($, on) => {
-  const { clock, ran } = world(on)
-  on('session.surfaces', () => ({ value: ['mobile'] }))
+  const { clock, ran } = world(on, {}, ['mobile'])
   await $.session.start({ cwd: '/', surface: 'mobile', isInteractive: true })
   await clock.advance(2000)
 
-  const { text } = await $.command.run({ command: 'cockpit' } as never)
-  expect(text).toContain('**Cockpit · Skills**: ◉ 0 geladen · ● 3 verfügbar')
-  expect(text).toContain('**Design:** frontend-design, ux-copy, ○ apple-design')
+  const { text } = await $.command.run({ command: 'cockpit', args: '' } as never)
+  expect(text).toContain('**Cockpit** · ◉ 0 geladen · ● 3 verfügbar · ○ 5 empfohlen')
+  expect(text).toContain('- Design · 2 (+5 empfohlen)')
+  expect(text).toContain('- Persönlich · 1')
 
   const row = await $.ui.mount({
     plugin: 'cockpit',
@@ -276,4 +277,55 @@ test('on the phone /cockpit draws the cockpit into its own row', async ($, on) =
   await row.press({ key: 'start' })
   expect(ran).toContainEqual(['frontend-design', ''])
   await row.unmount()
+})
+
+test('/cockpit with a word opens a category, a card, the SKILL.md or a search', async ($, on) => {
+  const { clock } = world(on, {}, [])
+  await $.session.start({ cwd: '/', surface: 'mobile', isInteractive: true })
+  await clock.advance(2000)
+  const run = async (args: string) => (await $.command.run({ command: 'cockpit', args } as never)).text ?? ''
+
+  const design = await run('design')
+  expect(design).toContain('**Design** · 2 installiert · 5 empfohlen')
+  expect(design).toContain('● **frontend-design**: Gestaltet Oberflächen mit Haltung')
+  expect(design).toContain('○ **apple-design** (Emil Kowalski)')
+
+  const card = await run('ux-copy')
+  expect(card).toContain('● Verfügbar: Claude sieht ihn')
+  expect(card).toContain('**Starten:** `/design:ux-copy deine Aufgabe`')
+  expect(card).toContain('**Referenzdateien:** references/hero.webp, references/voice.md')
+  expect(card).toContain('`/cockpit ux-copy anleitung`')
+
+  const body = await run('ux-copy anleitung')
+  expect(body).toContain('# UX Copy')
+  expect(body).not.toContain('name: ux-copy')
+
+  expect(await run('berater')).toContain('nicht in Claudes Liste')
+  const recommended = await run('apple-design')
+  expect(recommended).toContain('○ Nicht installiert.')
+  expect(recommended).toContain('**Installation:** npx skills@latest add emilkowalski/skills')
+  expect(await run('haltung')).toContain('● **frontend-design**')
+  expect(await run('zzz')).toContain('Nichts gefunden')
+})
+
+test('with no drawing surface a loaded skill leaves a notice in the transcript', async ($, on) => {
+  const { clock } = world(on, {}, [])
+  const session = mock.session(on)
+  await $.session.start({ cwd: '/', surface: 'mobile', isInteractive: true })
+  await clock.advance(2000)
+  await $.skill.prompt({ skill: 'design:ux-copy', text: 'Prompt' })
+
+  const notices = session.appended().filter(row => row.message.type === 'system')
+  expect(JSON.stringify(notices)).toContain('✦ Skill geladen: ux-copy')
+})
+
+test('on the desktop a loaded skill shows as a toast alone', async ($, on) => {
+  const { clock, toasts } = world(on)
+  const session = mock.session(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(2000)
+  await $.skill.prompt({ skill: 'design:ux-copy', text: 'Prompt' })
+
+  expect(toasts).toContain('✦ Skill geladen: ux-copy')
+  expect(session.appended().filter(row => row.message.type === 'system')).toHaveLength(0)
 })

@@ -3,6 +3,7 @@ import type { EngineInterface } from 'claude-code'
 
 import type { SkillDetail, SkillFile, SkillRow, SkillSummary, SkillUse } from '../types'
 import { CATALOG, catalogFor } from './catalog'
+import type { CatalogEntry } from './catalog'
 
 type $ = EngineInterface
 
@@ -375,32 +376,183 @@ export async function askToInstall($: $, id: string): Promise<void> {
   })
 }
 
-// The /cockpit row as text: what a surface shows where it draws no tree of
-// the plugin's, and what the model reads of the run.
-export async function textOverview($: $): Promise<string> {
-  const [rows, used, sum, now] = await Promise.all([
+// --- /cockpit as text --------------------------------------------------------
+// What a client sees where it draws no tree of the plugin's (the phone shows a
+// cloud session's command rows as text), and what the model reads of the run.
+
+const BODY_WORDS = new Set(['anleitung', 'skill.md', 'md'])
+
+function oneLine(text: string, room: number): string {
+  const line = text.replace(/\s+/g, ' ').trim()
+
+  return line.length > room ? `${line.slice(0, room - 1)}…` : line
+}
+
+function findCategory(word: string): Category | undefined {
+  return CATEGORIES.find(category => category.toLowerCase() === word.toLowerCase())
+}
+
+function findSkill(rows: SkillRow[], word: string): SkillRow | undefined {
+  const lower = word.toLowerCase()
+
+  return (
+    rows.find(row => row.name.toLowerCase() === lower) ??
+    rows.find(row => shortName(row.name).toLowerCase() === lower)
+  )
+}
+
+function findCatalog(word: string): CatalogEntry | undefined {
+  const lower = word.toLowerCase()
+
+  return CATALOG.find(entry => entry.id === lower || entry.title.toLowerCase() === lower)
+}
+
+// `/cockpit` alone, `/cockpit <Kategorie>`, `/cockpit <skill> [anleitung]`,
+// or anything else as a search.
+export async function textFor($: $, args: string): Promise<string> {
+  const words = args.trim().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return textOverview($)
+  const wantsBody = words.length > 1 && BODY_WORDS.has(words.at(-1)!.toLowerCase())
+  const term = (wantsBody ? words.slice(0, -1) : words).join(' ')
+  const rows = await read($, skills)
+  const category = findCategory(term)
+  if (category) return textCategory($, category)
+  const row = findSkill(rows, term)
+  if (row) return textSkill($, row.name, wantsBody)
+  const entry = findCatalog(term)
+  if (entry) return textSkill($, `${CATALOG_PREFIX}${entry.id}`, false)
+
+  return textSearch($, term)
+}
+
+async function textOverview($: $): Promise<string> {
+  const [rows, used, favs, sum, now] = await Promise.all([
     read($, skills),
     read($, uses),
+    read($, favorites),
     read($, summary),
     $.clock.now(),
   ])
   const active = new Set(used.map(use => use.skill))
   const installed = new Set(rows.map(row => catalogFor(row.name)?.id))
   const missing = CATALOG.filter(entry => !installed.has(entry.id))
-  const lines = [
-    `**Cockpit · Skills**: ◉ ${active.size} geladen · ● ${rows.length} verfügbar · ○ ${missing.length} empfohlen`,
-  ]
+  const lines = [`**Cockpit** · ◉ ${active.size} geladen · ● ${rows.length} verfügbar · ○ ${missing.length} empfohlen`]
   const unlisted = sum ? Math.max(0, sum.total - sum.included) : 0
-  if (unlisted > 0) lines.push(`⚠ ${unlisted} Skills passen nicht in Claudes Liste.`)
-  for (const category of CATEGORIES) {
-    const names = rows
-      .filter(row => categorize(row) === category)
-      .map(row => (active.has(row.name) ? `◉ ${shortName(row.name)}` : shortName(row.name)))
-    if (category === 'Design') names.push(...missing.map(entry => `○ ${entry.title}`))
-    if (names.length > 0) lines.push(`**${category}:** ${names.join(', ')}`)
+  if (unlisted > 0) lines.push(`⚠ ${unlisted} Skills passen nicht in Claudes Liste: Claude wählt sie nicht von selbst.`)
+  const favored = rows.filter(row => favs.includes(row.name)).map(row => shortName(row.name))
+  if (favored.length > 0) lines.push(`★ **Favoriten:** ${favored.join(', ')}`)
+  const recent = [...used].reverse().filter((use, at, list) => list.findIndex(one => one.skill === use.skill) === at)
+  if (recent.length > 0) {
+    lines.push(`◉ **Geladen:** ${recent.map(use => `${shortName(use.skill)} (${ago(now, use.at)})`).join(', ')}`)
   }
-  const last = used.at(-1)
-  if (last) lines.push(`Zuletzt geladen: ${shortName(last.skill)} (${ago(now, last.at)})`)
+  const counts = CATEGORIES.map(category => {
+    const count = rows.filter(row => categorize(row) === category).length
+    const extra = category === 'Design' && missing.length > 0 ? ` (+${missing.length} empfohlen)` : ''
+
+    return count > 0 || extra ? `- ${category} · ${count}${extra}` : undefined
+  }).filter(Boolean)
+  lines.push(`**Kategorien**\n${counts.join('\n')}`)
+  lines.push('`/cockpit design` zeigt eine Kategorie mit Beschreibungen, `/cockpit ux-copy` die Infokarte eines Skills.')
+
+  return lines.join('\n\n')
+}
+
+function statusMark(row: SkillRow, active: Set<string>): string {
+  if (active.has(row.name)) return '◉'
+
+  return '●'
+}
+
+async function textCategory($: $, category: Category): Promise<string> {
+  const [rows, used] = await Promise.all([read($, skills), read($, uses)])
+  const active = new Set(used.map(use => use.skill))
+  const members = rows.filter(row => categorize(row) === category)
+  const installed = new Set(rows.map(row => catalogFor(row.name)?.id))
+  const missing = category === 'Design' ? CATALOG.filter(entry => !installed.has(entry.id)) : []
+  const head = `**${category}** · ${members.length} installiert${missing.length > 0 ? ` · ${missing.length} empfohlen` : ''}`
+  const lines = members.map(row => {
+    const hint = row.isListed ? '' : ' _(nicht in Claudes Liste)_'
+    const text = row.description ? `: ${oneLine(row.description, 110)}` : ''
+
+    return `${statusMark(row, active)} **${shortName(row.name)}**${hint}${text}`
+  })
+  for (const entry of missing) lines.push(`○ **${entry.title}** (${entry.author}): ${entry.summary}`)
+
+  return [head, lines.join('\n'), '`/cockpit <name>` öffnet die Infokarte.'].join('\n\n')
+}
+
+async function textSearch($: $, term: string): Promise<string> {
+  const [rows, used] = await Promise.all([read($, skills), read($, uses)])
+  const active = new Set(used.map(use => use.skill))
+  const lower = term.toLowerCase()
+  const hits = rows.filter(
+    row => row.name.toLowerCase().includes(lower) || row.description.toLowerCase().includes(lower),
+  )
+  const recommended = CATALOG.filter(
+    entry => entry.title.toLowerCase().includes(lower) || entry.summary.toLowerCase().includes(lower),
+  )
+  if (hits.length === 0 && recommended.length === 0) {
+    return `Nichts gefunden für „${term}“. \`/cockpit\` zeigt alle Kategorien.`
+  }
+  const lines = hits
+    .slice(0, 15)
+    .map(row => `${statusMark(row, active)} **${shortName(row.name)}**: ${oneLine(row.description, 90)}`)
+  if (hits.length > 15) lines.push(`… und ${hits.length - 15} weitere`)
+  for (const entry of recommended) lines.push(`○ **${entry.title}** (${entry.author}): ${entry.summary}`)
+
+  return [`**Suche „${term}“** · ${hits.length + recommended.length} Treffer`, lines.join('\n')].join('\n\n')
+}
+
+async function textSkill($: $, name: string, wantsBody: boolean): Promise<string> {
+  const [rows, used, favs, now] = await Promise.all([
+    read($, skills),
+    read($, uses),
+    read($, favorites),
+    $.clock.now(),
+  ])
+  const isCatalog = name.startsWith(CATALOG_PREFIX)
+  const entry = isCatalog ? CATALOG.find(one => `${CATALOG_PREFIX}${one.id}` === name) : catalogFor(name)
+  const row = rows.find(one => one.name === name)
+  const mine = used.filter(use => use.skill === name)
+  const latest = mine.at(-1)
+  const title = isCatalog ? (entry?.title ?? name) : shortName(name)
+  const prefix = isCatalog ? undefined : prefixOf(name)
+  const star = favs.includes(name) ? ' ★' : ''
+  const lines = [`**${title}**${star}${prefix ? ` · ${prefix}` : ''}${entry ? ` · von ${entry.author}` : ''}`]
+
+  if (isCatalog) lines.push('○ Nicht installiert.')
+  else if (latest) lines.push(`◉ In dieser Session geladen: ${mine.length}×, zuletzt ${ago(now, latest.at)}.`)
+  else if (row?.isListed) lines.push('● Verfügbar: Claude sieht ihn und kann ihn selbst wählen.')
+  else lines.push('● Startbar per Befehl, aber nicht in Claudes Liste: Claude wählt ihn nicht von selbst.')
+  if (row) lines.push(`${sourceLabel(row)}${row.tokens > 0 ? ` · ~${row.tokens} Tokens in Claudes Kontext` : ''}`)
+  if (row?.description) lines.push(row.description)
+  if (!isCatalog) lines.push(`**Starten:** \`/${name} deine Aufgabe\``)
+
+  if (entry) {
+    lines.push(`**Was er tut:** ${entry.summary}\n${entry.rules.map(rule => `- ${rule}`).join('\n')}`)
+    const links = entry.references.map(link => `[${link.label}](${link.href})`).join(' · ')
+    lines.push(`**Referenzen:** ${entry.referenceNote}\n${links}`)
+    if (entry.note) lines.push(`⚠ ${entry.note}`)
+    lines.push(`**Installation:** ${entry.install}`)
+  }
+
+  if (!isCatalog) {
+    const path = await skillFile($, name).catch(() => undefined)
+    if (!path) {
+      lines.push('_Keine Dateien auf diesem Rechner: eingebaut oder von einem Connector geliefert._')
+    } else {
+      const folder = path.slice(0, path.lastIndexOf('/'))
+      const files = await listFiles($, folder)
+      if (files.length > 0) lines.push(`**Referenzdateien:** ${files.map(file => file.label).join(', ')}`)
+      if (wantsBody) {
+        const text = await $.fs.read(path).catch(() => undefined)
+        const body = typeof text === 'string' ? stripFrontmatter(text) : ''
+        lines.push(`**SKILL.md**, so wie Claude sie liest:\n\n${body.length > 6000 ? `${body.slice(0, 6000)}\n\n… (gekürzt)` : body}`)
+      } else {
+        lines.push(`**Anleitung:** \`/cockpit ${shortName(name)} anleitung\` zeigt die SKILL.md.`)
+      }
+    }
+  }
 
   return lines.join('\n\n')
 }
