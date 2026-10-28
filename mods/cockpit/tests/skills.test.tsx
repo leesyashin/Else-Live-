@@ -63,6 +63,28 @@ const COMMANDS = [
   { name: 'cockpit', description: 'Öffnet das Cockpit', source: 'plugin' },
 ]
 
+// The repo's memory file as the mod ships it; a test may take it away.
+const MEMORY_FILE = 'else-live-.md'
+const MEMORY = `---
+repo: leesyashin/Else-Live-
+base: main
+branch: claude/*
+connectors: github
+optional: figma
+skills: frontend-design, plugin-authoring
+---
+
+# Else-Live-
+
+## Setup
+- [x] Mod geladen
+- [ ] Figma freigeben
+
+## Merges
+- 2026-10-28 · #46 Merge-Knopf
+`
+let memoryText: string | undefined = MEMORY
+
 const entry = (name: string, kind: 'file' | 'dir') => ({ name, kind, size: 0, mtimeMs: 0, isLink: false })
 
 const TREE: Record<string, ReturnType<typeof entry>[]> = {
@@ -109,7 +131,7 @@ function world(
   })
   on('fs.list', (_, e) => ({ value: (TREE[e.path ?? ''] ?? []) as never }))
   on('fs.read', (_, e) => {
-    const text = FILES[e.path]
+    const text = FILES[e.path] ?? (e.path.endsWith(`/memory/${MEMORY_FILE}`) ? memoryText : undefined)
     if (text === undefined) throw new Error('missing')
     return { value: text }
   })
@@ -422,4 +444,169 @@ test('a session that compacts early reports its own threshold', async ($, on) =>
   await run($)
   // 80 % of the 200k window less the summary's reserve.
   expect(calls[1]!.data).toMatchObject({ threshold: 144000, repo: 'Else-Live-' })
+})
+
+// --- Setup check (Phase 4) ---------------------------------------------------------
+
+function setupWorld(on: On, branch: string, memory: string | null = MEMORY) {
+  memoryText = memory ?? undefined
+  const page: Record<string, unknown>[] = []
+  const { clock, calls } = syncWorld(on, input => {
+    if (input.action === 'get') return { result: '', text: 'No document.', isError: true }
+    if (input.doc_id === 'setup') page.push(input.data as Record<string, unknown>)
+    return { result: '', text: 'The document is now at version 1.' }
+  })
+  on('process.run', () => ({ value: { exitCode: 0, stdout: `${branch}\n`, stderr: '' } as never }))
+  on('tool.list', () => ({
+    value: [
+      { name: 'Bash', description: '', mcp: false },
+      { name: 'mcp__github__create_pull_request', description: '', mcp: true },
+      { name: 'mcp__github__merge_pull_request', description: '', mcp: true },
+    ],
+  }))
+  return { clock, calls, page }
+}
+
+test('the setup check finds connectors, skills and the branch from the memory file', async ($, on) => {
+  const { clock, page } = setupWorld(on, 'claude/phase-4')
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(5000)
+
+  // The page got the whole report once.
+  expect(page.length).toBe(1)
+  const report = page[0] as { checks: { name: string; state: string }[]; memory: string }
+  const states = Object.fromEntries(report.checks.map(check => [check.name, check.state]))
+  expect(states).toEqual({
+    [MEMORY_FILE]: 'ok',
+    github: 'ok',
+    figma: 'warn',
+    'frontend-design': 'ok',
+    'plugin-authoring': 'fail',
+    'claude/phase-4': 'ok',
+  })
+
+  // The band shows one dot per group: connectors yellow, skills red, branch green.
+  for (const surface of ['desktop', 'terminal'] as const) {
+    const band = await $.ui.mount({ ...BAND, surface })
+    const setup = await band.find({ key: 'cockpit-setup' })
+    expect(setup?.props.label).toBe('Setup: Connectors: Hinweis, Skills: fehlt, Branch: in Ordnung')
+    const dots = (await band.findAll({ type: 'Text', text: '●' })).map(dot => dot.props.color)
+    expect(dots).toEqual(['warning', 'error', 'success'])
+    await band.unmount()
+  }
+
+  // The pane lists each check.
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await pane.find({ key: 'k:Setup' }))?.text).toContain('4/6')
+  expect(await pane.find({ type: 'Text', text: /plugin-authoring Fehlt in dieser Session/ })).toBeDefined()
+  await pane.press({ key: 'k:Setup' })
+  expect(await pane.find({ type: 'Text', text: /plugin-authoring Fehlt/ })).toBeUndefined()
+  await pane.unmount()
+
+  // A turn re-checks, but sends nothing when nothing changed.
+  await clock.advance(61_000)
+  await $.turn.complete({} as never).catch(() => undefined)
+  expect(page.length).toBe(1)
+})
+
+test('working on the base branch is red, a detached checkout yellow', async ($, on) => {
+  const { clock, page } = setupWorld(on, 'main')
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(5000)
+  const branch = (page[0] as { checks: { group: string; state: string; detail: string }[] }).checks.find(c => c.group === 'Branch')
+  expect(branch).toMatchObject({ state: 'fail', detail: 'Direkt auf main: erst einen eigenen Branch anlegen' })
+})
+
+test('/cockpit setup prints the check; a repo without memory says how to add one', async ($, on) => {
+  const { clock } = setupWorld(on, 'HEAD', null)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(5000)
+  const answer = await $.command.run({ command: 'cockpit', args: 'setup' })
+  const text = String((answer as { text?: string }).text)
+  expect(text).toContain('Setup · Else-Live- · HEAD')
+  expect(text).toContain('🟡 else-live-.md: Noch kein Memory: mods/cockpit/memory/else-live-.md anlegen')
+  expect(text).toContain('🟡 Branch: Kein Branch ausgecheckt')
+})
+
+// --- PR and skill status to the page (Phase 6) ---------------------------------------
+
+function prWorld(on: On, pr: Record<string, unknown>, runs: Record<string, unknown>[] = []) {
+  memoryText = MEMORY
+  const writes: Record<string, unknown>[] = []
+  const github: string[] = []
+  let version = 0
+  const { clock } = syncWorld(on, input => {
+    if (input.action === 'get') return { result: '', text: 'No document.', isError: true }
+    version += 1
+    writes.push(input)
+    return { result: '', text: `The document is now at version ${version}.` }
+  })
+  on('process.run', () => ({ value: { exitCode: 0, stdout: 'claude/phase-6\n', stderr: '' } as never }))
+  on('tool.list', () => ({ value: [] }))
+  on('tool.call', { tool: 'Bash' } as never, () => ({ result: { stdout: '', stderr: '', interrupted: false } }) as never)
+  const answer = { current: pr }
+  on('mcp.call', (_, e) => {
+    github.push(`${e.tool}:${String(e.args.method ?? '')}`)
+    const body =
+      e.tool === 'list_pull_requests' ? [{ number: 47 }]
+      : e.args.method === 'get' ? answer.current
+      : e.args.method === 'get_check_runs' ? { total_count: runs.length, check_runs: runs }
+      : { state: 'pending', statuses: [] }
+    return { value: { content: [{ type: 'text', text: JSON.stringify(body) }], isError: false } }
+  })
+  return { clock, writes, github, answer }
+}
+
+const PR = {
+  number: 47, title: 'Phase 6', html_url: 'https://github.com/leesyashin/Else-Live-/pull/47', state: 'open', merged: false, draft: true,
+  mergeable_state: 'clean', changed_files: 3, additions: 40, deletions: 2, updated_at: '2026-10-28T20:00:00Z',
+  head: { ref: 'claude/phase-6' }, base: { ref: 'main' },
+}
+
+test('the branch PR goes to the merge card with CI, conflicts and files', async ($, on) => {
+  const { clock, writes, github } = prWorld(on, PR, [
+    { name: 'build', status: 'completed', conclusion: 'success' },
+    { name: 'lint', status: 'in_progress', conclusion: null },
+  ])
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(7000)
+
+  expect(github).toContain('list_pull_requests:')
+  const pr = writes.find(write => write.doc_id === 'pr')!
+  expect(pr.action).toBe('set')
+  expect(pr.data).toMatchObject({
+    repo: 'leesyashin/Else-Live-', number: 47, head: 'claude/phase-6', base: 'main', draft: true, state: 'open',
+    ci: 'pending', mergeable: true, files: 3, additions: 40, deletions: 2,
+    checks: [{ name: 'build', state: 'success' }, { name: 'lint', state: 'pending' }],
+  })
+  // The session card starts empty for this session.
+  expect(writes.find(write => write.doc_id === 'status')?.data).toMatchObject({ loaded: [], session: 'session_test' })
+})
+
+test('a push refreshes the card; the same PR is updated, keeping Claude\'s merge field', async ($, on) => {
+  const { clock, writes, answer } = prWorld(on, PR)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(7000)
+  const before = writes.filter(write => write.doc_id === 'pr').length
+
+  answer.current = { ...PR, mergeable_state: 'dirty', changed_files: 4 }
+  const call = $.tool.call as unknown as (args: object) => Promise<unknown>
+  await call({ tool: 'Bash', command: 'git push -u origin claude/phase-6' }).catch(() => undefined)
+  await clock.advance(3000)
+
+  const prs = writes.filter(write => write.doc_id === 'pr')
+  expect(prs.length).toBe(before + 1)
+  expect(prs.at(-1)!.action).toBe('update')
+  expect(prs.at(-1)!.data).toMatchObject({ mergeable: false, files: 4 })
+})
+
+test('a loaded skill is written to the session card', async ($, on) => {
+  const { clock, writes } = prWorld(on, PR)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(7000)
+  await $.skill.prompt({ skill: 'design:ux-copy', text: 'Prompt', path: `${UX}/SKILL.md` })
+  await clock.advance(100)
+
+  const status = writes.filter(write => write.doc_id === 'status').at(-1)
+  expect(status?.data).toMatchObject({ loaded: [{ skill: 'design:ux-copy' }], session: 'session_test' })
 })

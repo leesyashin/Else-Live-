@@ -1,6 +1,6 @@
 import type { ElementTable, EngineInterface, Register, RenderSurface } from 'claude-code'
 
-import type { SkillFile, SkillRow, SkillUse } from '../types'
+import type { SetupReport, SkillFile, SkillRow, SkillUse } from '../types'
 import { CATALOG, catalogFor } from './catalog'
 import type { CatalogEntry } from './catalog'
 import {
@@ -22,6 +22,7 @@ import {
   refresh,
   selectedSkill,
   setQuery,
+  setupView,
   shortName,
   sourceLabel,
   startSkill,
@@ -30,6 +31,8 @@ import {
   toggleFavorite,
   toggleFold,
 } from './skills'
+import { syncPr, syncStatus, touchesPr } from './pr'
+import { COLOR, groupStates, setupText, syncSetup } from './setup'
 import { syncContext } from './sync'
 
 type $ = EngineInterface
@@ -110,14 +113,35 @@ export const register: Register = (on, options) => {
         isDeferred: true,
       })
     }
+    if (cockpitUrl) {
+      await $.tool.register({
+        name: 'sync_pr',
+        description: 'Liest den PR des aktuellen Branches (CI, Konflikte, Dateien) und schreibt ihn sofort in die Merge-Karte der Cockpit-Seite. Geschieht sonst nach Pushes und PR-Änderungen von selbst.',
+        isDeferred: true,
+      })
+    }
+    await $.tool.register({
+      name: 'check_setup',
+      description: 'Prüft das Setup dieses Repos (Connectors, Skills, Branch laut Memory-Datei) sofort und schickt das Ergebnis an die Cockpit-Seite.',
+      isDeferred: true,
+    })
     // Relative times ("vor 3 Min") and the band's pulse move on once a minute.
     $.clock.every(60_000, () => void bumpTick($))
     $.clock.after(1500, () => void refresh($))
+    // The skills are read first, so the check finds them.
+    $.clock.after(4000, () => void syncSetup($, cockpitUrl, true).catch(() => undefined))
+    // The page shows this session from now on: its skills (none yet) and its branch's PR.
+    $.clock.after(5000, () => void syncStatus($, cockpitUrl).catch(() => undefined))
+    $.clock.after(6000, () => void syncPr($, cockpitUrl, true).catch(() => undefined))
 
     return next(e)
   })
 
   on('command.run', { command: 'cockpit' }, async ($, e) => {
+    if (e.args.trim().toLowerCase() === 'setup') {
+      const report = await syncSetup($, cockpitUrl, true)
+      return { text: report ? setupText(report) : 'Das Setup ließ sich nicht prüfen.' }
+    }
     if (e.args.trim() === '') await $.ui.open({ id: PANE, title: TITLE })
     await refresh($)
 
@@ -142,8 +166,35 @@ export const register: Register = (on, options) => {
     const result = await next(e)
     await bumpTick($).catch(() => undefined)
     if (cockpitUrl) await syncContext($, cockpitUrl).catch(() => undefined)
+    // A turn may have switched the branch; the check is cheap and sends only changes.
+    await syncSetup($, cockpitUrl).catch(() => undefined)
+    // CI moves on its own: look at the PR now and then.
+    await syncPr($, cockpitUrl).catch(() => undefined)
 
     return result
+  })
+
+  on('tool.call', { tool: 'mcp__cockpit__sync_pr' as never }, async $ => {
+    const text = await syncPr($, cockpitUrl, true).catch(error => `PR-Abgleich fehlgeschlagen: ${String(error)}`)
+
+    return { result: text }
+  })
+
+  // A push or a change to the PR: the merge card follows a moment later.
+  on('tool.call', async ($, e, next) => {
+    const result = await next(e)
+    const input = e as unknown as Record<string, unknown>
+    if (cockpitUrl && touchesPr(String(input.tool), input)) {
+      $.clock.after(2500, () => void syncPr($, cockpitUrl, true).catch(() => undefined))
+    }
+
+    return result
+  })
+
+  on('tool.call', { tool: 'mcp__cockpit__check_setup' as never }, async $ => {
+    const report = await syncSetup($, cockpitUrl, true).catch(() => null)
+
+    return { result: report ? setupText(report) : 'Das Setup ließ sich nicht prüfen.' }
   })
 
   on('tool.call', { tool: 'mcp__cockpit__sync_context' as never }, async $ => {
@@ -158,6 +209,7 @@ export const register: Register = (on, options) => {
     const result = await next(e)
     try {
       await recordUse($, e.skill, e.path)
+      if (cockpitUrl) void syncStatus($, cockpitUrl).catch(() => undefined)
       const text = `✦ Skill geladen: ${shortName(e.skill)}`
       $.ui.toast(text)
       // A client that draws no toast (the phone on a cloud session) still
@@ -189,6 +241,8 @@ export const register: Register = (on, options) => {
       ? Math.min(1, (context.percent ?? ((context.tokens ?? 0) / Math.max(1, context.window)) * 100) / 100)
       : undefined
     const look = share === undefined ? undefined : contextLook(share)
+    const groups = groupStates(await setupView($))
+    const setupLabel = groups.map(one => `${one.group}: ${{ ok: 'in Ordnung', warn: 'Hinweis', fail: 'fehlt' }[one.state]}`).join(', ')
 
     return (
       <Box flexDirection="row" alignItems="center" gap={1}>
@@ -199,6 +253,14 @@ export const register: Register = (on, options) => {
           <Text color={look.theme}>{`${Svg ? '' : '◔ '}${Math.round(share * 100)} % Kontext`}</Text>
         )}
         {isRecent && Svg && <Svg source={PULSE} alt="Gerade wurde ein Skill geladen" width={14} height={14} isInteractive />}
+        {groups.length > 0 && (
+          <Button key="cockpit-setup" plain onPress={() => openPane($)} label={`Setup: ${setupLabel}`}>
+            {groups.map(one => (
+              <Text color={COLOR[one.state]}>●</Text>
+            ))}
+            <Text dimColor> Setup</Text>
+          </Button>
+        )}
         <Button key="cockpit-skills" plain onPress={() => openPane($)}>
           ✦ Skills <Text dimColor>{`${count}${loaded}`}</Text>
         </Button>
@@ -224,6 +286,7 @@ async function drawList($: $, ui: ElementTable, surface: RenderSurface, columns:
   const { Box, Button, Text } = ui
   const Input = inputOf(ui, surface)
   const { rows, used, favs, sum, needle, closed, now } = await listView($)
+  const setup = await setupView($)
   const active = new Set(used.map(use => use.skill))
   const term = needle.trim().toLowerCase()
   const isSearching = term.length > 0
@@ -317,6 +380,7 @@ async function drawList($: $, ui: ElementTable, surface: RenderSurface, columns:
           onSubmit={value => setQuery($, value)}
         />
       )}
+      {setup && !isSearching && setupSection($, ui, setup, closed.includes('Setup'), columns)}
       {favored.length > 0 && (
         <Box flexDirection="column">
           <Text weight="semibold">★ Favoriten</Text>
@@ -335,6 +399,28 @@ async function drawList($: $, ui: ElementTable, surface: RenderSurface, columns:
           </Text>
         ))}
       </Box>
+    </Box>
+  )
+}
+
+function setupSection($: $, ui: ElementTable, report: SetupReport, isClosed: boolean, columns: number) {
+  const { Box, Button, Text } = ui
+  const good = report.checks.filter(check => check.state === 'ok').length
+
+  return (
+    <Box flexDirection="column">
+      <Button key="k:Setup" plain onPress={() => toggleFold($, 'Setup')}>
+        <Text weight="semibold">{`${isClosed ? '▸' : '▾'} Setup`}</Text>
+        <Text dimColor>{`  ${good}/${report.checks.length} · ${report.repo ?? 'kein Repo'}`}</Text>
+      </Button>
+      {!isClosed &&
+        report.checks.map(check => (
+          <Text>
+            <Text color={COLOR[check.state]}>●</Text>
+            {` ${check.name} `}
+            <Text dimColor>{clip(check.detail, columns - check.name.length - 4)}</Text>
+          </Text>
+        ))}
     </Box>
   )
 }

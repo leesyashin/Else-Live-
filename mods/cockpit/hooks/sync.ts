@@ -23,7 +23,8 @@ export type ContextSnapshot = {
 }
 
 // The module's own memory; a reload starts it over, which only costs one read.
-let version: number | undefined
+// Each document's last known version, so every write is pinned to it.
+const versions = new Map<string, number>()
 let threshold: number | null | undefined
 let lastAt = 0
 let stopped: string | undefined
@@ -76,7 +77,7 @@ export async function snapshot($: $): Promise<ContextSnapshot> {
 
 type Answer = { text?: string; isError?: boolean; deny?: string }
 
-async function artifactData($: $, input: Record<string, unknown>): Promise<Answer> {
+export async function artifactData($: $, input: Record<string, unknown>): Promise<Answer> {
   // The tool table types ArtifactData's input loosely; the fields are its own.
   // Called through a plain signature: checking the full tool table here costs
   // the type checker millions of instantiations.
@@ -89,6 +90,52 @@ function versionIn(text: string | undefined): number | undefined {
   return match ? Number(match[1]) : undefined
 }
 
+// Writes one document of the page's `cockpit` collection, pinned to the
+// version last seen; a refusal of the tool stops every write this session.
+// `update` keeps the fields it does not name (a missing document is created).
+export async function writeDoc(
+  $: $,
+  url: string,
+  doc: string,
+  data: object,
+  mode: 'set' | 'update' = 'set',
+): Promise<'written' | 'denied' | 'failed'> {
+  const base = { url, collection: COLLECTION, doc_id: doc }
+  let version = versions.get(doc)
+
+  if (version === undefined) {
+    const read = await artifactData($, { ...base, action: 'get' })
+    if (read.deny) {
+      stopped = `Nicht erlaubt: ${read.deny}`
+      return 'denied'
+    }
+    version = read.isError || /not found|no document|does not exist/i.test(read.text ?? '') ? 0 : versionIn(read.text)
+  }
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const write = await artifactData($, version ? { ...base, action: mode, data, if_version: version } : { ...base, action: 'set', data })
+    if (write.deny) {
+      stopped = `Nicht erlaubt: ${write.deny}`
+      return 'denied'
+    }
+    const next = versionIn(write.text)
+    if (!write.isError && next !== undefined) {
+      versions.set(doc, next)
+      stopped = undefined
+      return 'written'
+    }
+    // Someone else wrote meanwhile: the refusal names the current version.
+    version = next
+  }
+  versions.delete(doc)
+
+  return 'failed'
+}
+
+export function isStopped(): boolean {
+  return stopped !== undefined
+}
+
 export async function syncContext($: $, url: string, force = false): Promise<string> {
   if (!url) return 'Keine Cockpit-Seite eingestellt.'
   if (stopped && !force) return stopped
@@ -96,26 +143,9 @@ export async function syncContext($: $, url: string, force = false): Promise<str
   if (!force && now - lastAt < MIN_GAP_MS) return 'Gerade erst abgeglichen.'
   lastAt = now
   const data = await snapshot($)
-  const base = { url, collection: COLLECTION, doc_id: DOC }
-
-  if (version === undefined) {
-    const read = await artifactData($, { ...base, action: 'get' })
-    if (read.deny) return (stopped = `Nicht erlaubt: ${read.deny}`)
-    version = read.isError || /not found|no document|does not exist/i.test(read.text ?? '') ? 0 : versionIn(read.text)
-  }
-
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const write = await artifactData($, version ? { ...base, action: 'set', data, if_version: version } : { ...base, action: 'set', data })
-    if (write.deny) return (stopped = `Nicht erlaubt: ${write.deny}`)
-    const next = versionIn(write.text)
-    if (!write.isError && next !== undefined) {
-      version = next
-      stopped = undefined
-      return `Abgeglichen: ${Math.round((data.used / data.max) * 100)} %`
-    }
-    // Someone else wrote meanwhile: the refusal names the current version.
-    version = next
-  }
+  const written = await writeDoc($, url, DOC, data)
+  if (written === 'denied') return stopped ?? 'Nicht erlaubt.'
+  if (written === 'written') return `Abgeglichen: ${Math.round((data.used / data.max) * 100)} %`
 
   return 'Abgleich fehlgeschlagen, nächster Versuch nach dem nächsten Schritt.'
 }
