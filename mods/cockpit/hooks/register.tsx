@@ -31,6 +31,7 @@ import {
   toggleFavorite,
   toggleFold,
 } from './skills'
+import { RULES, judge, openOrders, verdictNote } from './jobs'
 import { syncPr, syncStatus, touchesPr } from './pr'
 import { COLOR, groupStates, setupText, syncSetup } from './setup'
 import { syncContext } from './sync'
@@ -189,6 +190,31 @@ export const register: Register = (on, options) => {
     }
 
     return result
+  })
+
+  // Every session watching the page is woken by an order from the phone.
+  // Reading the thread tells this one whether it is the one to act.
+  on('tool.call', { tool: 'ArtifactComments' as never }, async ($, e, next) => {
+    const result = await next(e)
+    const input = e as unknown as Record<string, unknown>
+    if (!cockpitUrl || input.action !== 'read' || input.url !== cockpitUrl || result.deny !== undefined || result.isError) return result
+    try {
+      const orders = openOrders(result.text ?? '')
+      if (!orders.length) return result
+      const verdicts = await Promise.all(orders.map(order => judge($, cockpitUrl, order)))
+
+      return { ...result, context: [...(result.context ?? []), verdictNote(verdicts)] }
+    } catch {
+      return result
+    }
+  })
+
+  // The rules for orders from the phone hold in every repo, not only in Else-Live-.
+  on('prompt.compose', async ($, e, next) => {
+    const result = await next(e)
+    if (!cockpitUrl) return result
+
+    return { sections: [...result.sections, { id: 'cockpit:orders', text: RULES, scope: 'session' as const }] }
   })
 
   on('tool.call', { tool: 'mcp__cockpit__check_setup' as never }, async $ => {
@@ -547,7 +573,7 @@ async function drawCard($: $, ui: ElementTable, surface: RenderSurface, name: st
             <Link href={link.href} label={link.label} />
           ))}
           {entry.note && <Text color="warning">{entry.note}</Text>}
-          <Text dimColor>{`Installation: ${entry.install}`}</Text>
+          <Text dimColor>{`Quelle: ${entry.install} · wird global installiert`}</Text>
         </Box>
       )}
 

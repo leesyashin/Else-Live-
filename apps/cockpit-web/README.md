@@ -16,6 +16,8 @@ Was die Seite zeigt:
 
 - **Team-Karte:** die Chats, auf die Claude eine größere Aufgabe verteilt hat, als Avatare mit Status. „Aufgabe verteilen“ schickt `Cockpit · Team`. Hat ein Chat eine Frage oder einen Konflikt, erscheint oben ein Hinweis mit „Antworten“.
 
+Jeder Auftrag nennt die Session, für die er gedacht ist (`Session: <ID>`, die Session, die zuletzt `cockpit/context` geschrieben hat). Nur „Skill installieren“ geht ohne Namen raus: Dort übernimmt die erste Session, die `cockpit/jobs/threads/<Thread-ID>` anlegt. Installiert wird immer global (`mods/cockpit/skills`), nie nur in einer Session.
+
 Wie „Starten“ funktioniert:
 1. Die Seite schickt den Auftrag per „Send to Claude“ als Kommentar an die Session.
 2. Claude startet den Skill und antwortet im Kommentar.
@@ -27,6 +29,8 @@ Daten, die Claude in die Datenbank der Seite schreibt (Sammlung `cockpit`):
 | --- | --- |
 | `status` | `{ loaded: [{ skill, at }], session, updatedAt }` |
 | `context` | schreibt die Mod, siehe oben |
+| `skills` | `{ installed: [{ id, name, title, author, at, pr }] }`: über das Cockpit installierte Skills. Sie verlassen „Empfohlen“ sofort und stehen unter Design. |
+| `jobs/threads/<Thread-ID>` | `{ session, kind, at }`: welche Session einen Auftrag übernommen hat. Nur die erste legt das Dokument an. |
 | `setup` | schreibt die Mod: `{ repo, branch, memory, checks: [{ group: Memory\|Connectors\|Skills\|Branch, name, state: ok\|warn\|fail, detail }], at }` |
 | `team` | schreibt der Lead-Chat: `{ goal, lead, startedAt, state }` |
 | `team/members/<Session-ID>` | schreibt jeder Team-Chat selbst: `{ name, task, state: working\|waiting\|question\|conflict\|done\|failed, note, question, branch, pr, url, updatedAt }` |
