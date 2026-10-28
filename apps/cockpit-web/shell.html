@@ -255,11 +255,12 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 }
 .sheet.open { transform: translateY(0); }
 .sheet.dragging { transition: none; }
-.pass { position: relative; overflow: hidden; color: #fff; background: radial-gradient(130% 100% at 100% 0%, var(--g, transparent) 0%, transparent 58%), radial-gradient(90% 80% at 0% 100%, rgba(0, 0, 0, 0.16), transparent 62%), linear-gradient(155deg, var(--c1) 0%, var(--c2) 100%); padding: 10px max(20px, env(safe-area-inset-right, 0px)) 20px max(20px, env(safe-area-inset-left, 0px)); touch-action: none; display: flex; flex-direction: column; gap: 14px; }
+.pass { position: relative; overflow: hidden; color: #fff; background: radial-gradient(130% 100% at 100% 0%, var(--g, transparent) 0%, transparent 58%), radial-gradient(90% 80% at 0% 100%, rgba(0, 0, 0, 0.16), transparent 62%), linear-gradient(155deg, var(--c1) 0%, var(--c2) 100%); flex: none; margin: 0 max(12px, env(safe-area-inset-right, 0px)) 0 max(12px, env(safe-area-inset-left, 0px)); border-radius: 20px; min-height: 148px; box-shadow: var(--shadow), inset 0 0.5px 0 rgba(255, 255, 255, 0.32), inset 0 0 0 0.5px rgba(255, 255, 255, 0.1); padding: 18px 20px 20px; touch-action: none; display: flex; flex-direction: column; gap: 12px; }
 .pass::before { content: ""; position: absolute; inset: 0; background: linear-gradient(118deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 50%); pointer-events: none; }
 .pass > * { position: relative; }
 .pass.light { color: #1c1c1e; }
-.grab { align-self: center; width: 36px; height: 5px; border-radius: 3px; background: currentColor; opacity: 0.45; }
+.sheet-grab { flex: none; display: grid; place-items: center; padding: 8px 0 10px; touch-action: none; cursor: grab; }
+.sheet-grab i { width: 36px; height: 5px; border-radius: 3px; background: var(--fg3); opacity: 0.8; }
 .pass-head { display: flex; align-items: center; gap: 12px; }
 .pass-head .txt { flex: 1; min-width: 0; }
 .pass-head small { font-size: 10.5px; font-weight: 600; letter-spacing: 0.09em; opacity: 0.75; text-transform: uppercase; }
@@ -272,7 +273,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .pass-status { display: inline-flex; align-self: flex-start; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; padding: 5px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.2); }
 .pass.light .pass-status { background: rgba(28, 28, 30, 0.08); }
 .pass-status i { width: 8px; height: 8px; border-radius: 50%; background: var(--dot, rgba(255, 255, 255, 0.8)); }
-.sheet-body { overflow-y: auto; overscroll-behavior: contain; padding: 18px max(16px, env(safe-area-inset-right, 0px)) calc(28px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 20px; }
+.sheet-body { overflow-y: auto; overscroll-behavior: contain; padding: 16px max(16px, env(safe-area-inset-right, 0px)) calc(28px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 20px; }
 .card { background: var(--surface); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
 .card p { margin: 0; }
 .lead { font-size: 17px; }
@@ -368,6 +369,7 @@ summary small { color: var(--fg3); font-size: 13px; }
 
 <div class="scrim" id="scrim" hidden></div>
 <section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden>
+  <div class="sheet-grab" id="grab"><i></i></div>
   <div class="pass" id="pass"></div>
   <div class="sheet-body" id="sheet-body"></div>
 </section>
@@ -896,7 +898,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     if (fresh) {
       pass.className = 'pass'
       pass.style.cssText = colors(SESSION)
-      pass.innerHTML = `${pattern('radar')}<span class="grab"></span>
+      pass.innerHTML = `${pattern('radar')}
         <div class="pass-head"><div class="txt"><small>Cockpit · diese Session</small><h2 id="sheet-title">Kontext</h2></div>
           <button class="round" data-close aria-label="Schließen">✕</button></div>
         <span class="pass-status" id="pass-status" style="--dot:${look.a}"><i></i><span>${esc(ctx.error ? 'Nicht abrufbar' : look.word)}</span></span>`
@@ -939,7 +941,7 @@ summary small { color: var(--fg3); font-size: 13px; }
       const rec = DATA.recommended.find(r => r.id === open.rec)
       pass.className = 'pass light'
       pass.style.cssText = colors(TICKET)
-      pass.innerHTML = `${pattern('guilloche')}<span class="grab"></span>
+      pass.innerHTML = `${pattern('guilloche')}
         <div class="pass-head"><div class="txt"><small>Empfohlen · ${esc(rec.author)}</small><h2 id="sheet-title">${esc(rec.title)}</h2></div>
           <button class="round" data-close aria-label="Schließen">✕</button></div>
         <span class="pass-status" style="--dot:#ff9f0a"><i></i><span>Nicht installiert</span></span>`
@@ -962,8 +964,8 @@ summary small { color: var(--fg3); font-size: 13px; }
     const fav = state.favorites.has(skill.name)
     pass.className = 'pass'
     pass.style.cssText = colors(cat)
-    pass.innerHTML = `${pattern(cat.pat)}<span class="grab"></span>
-      <div class="pass-head"><div class="txt"><small>${esc(skill.category)} · ${esc(skill.source)}</small><h2 id="sheet-title">${esc(skill.short)}</h2></div>
+    pass.innerHTML = `${pattern(cat.pat)}
+      <div class="pass-head"><div class="txt"><small>Cockpit · ${esc(skill.category)}</small><h2 id="sheet-title">${esc(skill.short)}</h2></div>
         <button class="round" data-fav="${esc(skill.name)}" aria-pressed="${fav}" aria-label="Favorit">${fav ? '★' : '☆'}</button>
         <button class="round" data-close aria-label="Schließen">✕</button></div>
       <span class="pass-status" id="pass-status" style="--dot:${st.dot}"><i></i><span>${esc(st.t)}</span></span>`
@@ -1024,25 +1026,28 @@ summary small { color: var(--fg3); font-size: 13px; }
   // Drag the pass down to dismiss the sheet.
   ;(() => {
     let startY = 0, lastY = 0, lastT = 0, velocity = 0, dragging = false
-    const sheet = $('sheet'), pass = $('pass')
-    pass.addEventListener('pointerdown', e => {
+    const sheet = $('sheet')
+    const down = e => {
       if (e.target.closest('button')) return
       dragging = true; startY = lastY = e.clientY; lastT = performance.now(); velocity = 0
-      sheet.classList.add('dragging'); pass.setPointerCapture?.(e.pointerId)
-    })
-    pass.addEventListener('pointermove', e => {
+      sheet.classList.add('dragging'); e.currentTarget.setPointerCapture?.(e.pointerId)
+    }
+    const move = e => {
       if (!dragging) return
       const now = performance.now()
       velocity = (e.clientY - lastY) / Math.max(1, now - lastT); lastY = e.clientY; lastT = now
       const dy = e.clientY - startY
       sheet.style.transform = `translateY(${dy < 0 ? dy / 4 : dy}px)`
-    })
+    }
     const up = () => {
       if (!dragging) return
       dragging = false; sheet.classList.remove('dragging')
       if (lastY - startY > 110 || velocity > 0.6) closeSheet(); else sheet.style.transform = ''
     }
-    pass.addEventListener('pointerup', up); pass.addEventListener('pointercancel', up)
+    for (const el of [$('grab'), $('pass')]) {
+      el.addEventListener('pointerdown', down); el.addEventListener('pointermove', move)
+      el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up)
+    }
   })()
 
   // --- Dynamic Island --------------------------------------------------------------
