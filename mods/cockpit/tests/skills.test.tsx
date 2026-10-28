@@ -530,7 +530,7 @@ test('/cockpit setup prints the check; a repo without memory says how to add one
 
 // --- PR and skill status to the page (Phase 6) ---------------------------------------
 
-function prWorld(on: On, pr: Record<string, unknown>, runs: Record<string, unknown>[] = []) {
+function prWorld(on: On, pr: Record<string, unknown>, runs: Record<string, unknown>[] = [], env: Record<string, string> = {}) {
   memoryText = MEMORY
   const writes: Record<string, unknown>[] = []
   const github: string[] = []
@@ -540,7 +540,7 @@ function prWorld(on: On, pr: Record<string, unknown>, runs: Record<string, unkno
     version += 1
     writes.push(input)
     return { result: '', text: `The document is now at version ${version}.` }
-  })
+  }, env)
   on('process.run', () => ({ value: { exitCode: 0, stdout: 'claude/phase-6\n', stderr: '' } as never }))
   on('tool.list', () => ({ value: [] }))
   on('tool.call', { tool: 'Bash' } as never, () => ({ result: { stdout: '', stderr: '', interrupted: false } }) as never)
@@ -578,9 +578,20 @@ test('the branch PR goes to the merge card with CI, conflicts and files', async 
     repo: 'leesyashin/Else-Live-', number: 47, head: 'claude/phase-6', base: 'main', draft: true, state: 'open',
     ci: 'pending', mergeable: true, files: 3, additions: 40, deletions: 2,
     checks: [{ name: 'build', state: 'success' }, { name: 'lint', state: 'pending' }],
+    session: 'session_test',
   })
   // The session card starts empty for this session.
   expect(writes.find(write => write.doc_id === 'status')?.data).toMatchObject({ loaded: [], session: 'session_test' })
+})
+
+test('a cloud session names itself on the card, so only it merges', async ($, on) => {
+  const { clock, writes } = prWorld(on, PR, [], { CLAUDE_CODE_REMOTE_SESSION_ID: 'cse_01AbC' })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(7000)
+
+  expect(writes.find(write => write.doc_id === 'pr')!.data).toMatchObject({
+    session: 'session_test', sessionUrl: 'https://claude.ai/code/session_01AbC',
+  })
 })
 
 test('a push refreshes the card; the same PR is updated, keeping Claude\'s merge field', async ($, on) => {
