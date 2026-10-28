@@ -133,6 +133,16 @@ Ursprünglicher Plan:
 - Das Panel zeigt kleine Avatare mit Status: arbeitet, wartet, fertig. Ein Klick öffnet den Verlauf.
 - Ein Pop-up erscheint nur bei Konflikt oder einer Frage an dich.
 
+### Phase 6: Alles automatisch (umgesetzt)
+
+- **Skill-Status:** Die Mod schreibt jeden geladenen Skill selbst in `cockpit/status` (Hook `skill.prompt`). Beim Session-Start setzt sie die Liste auf diese Session zurück. Die Session-Karte und die grünen Häkchen auf dem Handy laufen damit ohne Handarbeit.
+- **PR:** Die Mod liest den PR des aktuellen Branches über die GitHub-Werkzeuge der Session (`list_pull_requests`, dann `pull_request_read` mit `get`, `get_check_runs` und `get_status`). Sie schreibt ihn in `cockpit/pr`:
+  - beim Session-Start
+  - kurz nach jedem `git push` und jeder PR-Änderung über die GitHub-Werkzeuge
+  - nach Zügen höchstens alle 90 s, weil CI sich von selbst ändert
+- **Nur bei Änderungen:** Die Mod schreibt nur, wenn sich etwas geändert hat. Bei derselben PR-Nummer ergänzt sie das Dokument nur (`update`), damit Claudes `merge`-Feld aus dem Merge-Ablauf erhalten bleibt. Eine neue Nummer ersetzt das Dokument.
+- **Werkzeug `sync_pr`:** löst den PR-Abgleich sofort aus, etwa für „Cockpit · PR prüfen“.
+
 ## Empfohlene Design-Skills (Recherche 28.10.2026)
 
 1. **Emil Kowalski: `apple-design` + `emil-design-eng`** (github.com/emilkowalski/skills)
@@ -162,7 +172,7 @@ Ursprünglicher Plan:
 - **Chats untereinander:** Cloud-Sessions brauchen evtl. einmal deine Freigabe, bevor sie andere Sessions erreichen dürfen.
 - **Mod-Name:** offen.
 
-## Übergabe: Stand und nächste Schritte (28.10.2026, nach Phase 5)
+## Übergabe: Stand und nächste Schritte (28.10.2026, nach Phase 6)
 
 Für die nächste Session: Hier steht, was es gibt, wie es zusammenspielt und wie es weitergeht.
 
@@ -195,8 +205,8 @@ Die Handy-Seite zeigt:
   - `Cockpit · Team` + neue Zeile + `<Aufgabe>`
   - `Cockpit · Antwort` + neue Zeile + `<Session-ID>` + neue Zeile + `<Antwort>`
 - **Claude → Seite:** über die Datenbank der Seite (Werkzeug `ArtifactData`):
-  - `cockpit/status` mit `{ loaded: [{ skill, at }], session, updatedAt }`. Schreibt derzeit Claude von Hand, nachdem ein Skill geladen wurde.
-  - `cockpit/pr` mit dem offenen PR des Branches, Felder siehe `apps/cockpit-web/README.md`. Schreibt Claude nach jedem Push, PR-Ereignis und Merge.
+  - `cockpit/status` mit `{ loaded: [{ skill, at }], session, updatedAt }`. Schreibt die Mod bei jedem geladenen Skill.
+  - `cockpit/pr` mit dem offenen PR des Branches, Felder siehe `apps/cockpit-web/README.md`. Schreibt die Mod nach Pushes, PR-Änderungen und regelmäßig nach Zügen. Claude ergänzt nur das Feld `merge` im Merge-Ablauf.
   - `cockpit/context` mit `{ sessionId, repo, used, max, threshold, costUsd, limits[], at }`. Schreibt die Mod automatisch nach jedem Schritt (Hook `turn.complete`, Einstellung `cockpitUrl`). Das Werkzeug `mcp__cockpit__sync_context` löst es sofort aus.
   - `cockpit/team` mit `{ goal, lead, startedAt, state }` (schreibt der Lead) und `cockpit/team/members/<Session-ID>` mit `{ name, task, state, note, question, branch, pr, url, updatedAt }` (schreibt jeder Team-Chat selbst). Werte für `state`: `working`, `waiting`, `question`, `conflict`, `done`, `failed`.
   - `cockpit/setup` mit `{ repo, branch, memory, checks[], at }`. Schreibt die Mod beim Start und nach Änderungen. Das Werkzeug `mcp__cockpit__check_setup` löst es sofort aus.
@@ -208,7 +218,7 @@ Die Handy-Seite zeigt:
 3. **Auftrag „Cockpit · Skill laden“:**
    1. Den Skill mit dem Skill-Werkzeug starten, die Aufgabe als Argument.
    2. Im Kommentar-Thread kurz antworten und ihn auflösen.
-   3. In `cockpit/status` den Eintrag `{ skill, at }` ergänzen, mit `if_version`.
+   3. Ist die Mod nicht geladen: in `cockpit/status` den Eintrag `{ skill, at }` von Hand ergänzen, mit `if_version`. Mit Mod geschieht das von selbst.
 4. **Auftrag „Cockpit · Merge“:**
    1. Den PR live prüfen (GitHub-Werkzeuge): offen, Head unverändert, CI grün auf dem aktuellen Commit, keine Konflikte. Die Seite ist nur der Wunsch, nicht der Beweis.
    2. `cockpit/pr` auf `merge: { state: 'running', at }` setzen.
@@ -225,23 +235,18 @@ Die Handy-Seite zeigt:
    5. Im Thread antworten (wer was macht) und ihn auflösen.
    6. Danach: Meldet ein Team-Chat Fehler oder hängt er, mit `get_session` und `list_events` nachsehen und `state` auf `failed` setzen. Sind alle fertig, `cockpit/team.state` auf `done` setzen und die PRs zusammenfassen.
 7. **Auftrag „Cockpit · Antwort“:** Zeile 2 ist die Session-ID des Team-Chats, der Rest die Antwort. Mit `send_message` an diese Session schicken („Antwort des Nutzers auf deine Frage: …“), im Thread kurz bestätigen und ihn auflösen.
-8. **Auftrag „Cockpit · PR prüfen“:** PR des aktuellen Branches lesen und `cockpit/pr` neu schreiben, danach im Thread antworten.
+8. **Auftrag „Cockpit · PR prüfen“:** das Werkzeug `mcp__cockpit__sync_pr` aufrufen (ohne Mod: PR lesen und `cockpit/pr` von Hand schreiben). Danach im Thread antworten.
 9. **Seite neu bauen:** wie in `apps/cockpit-web/README.md` beschrieben. Die Skill-Daten liefert `build_data.py` aus der jeweiligen Session.
 
 ### Nächste Schritte, in dieser Reihenfolge
 
-1. **Skill-Status automatisch:** Die Mod schreibt geladene Skills (Hook `skill.prompt`) selbst in `cockpit/status`, so wie schon den Kontext. Dann wird der grüne Status ohne Handarbeit live.
-2. **Phase 3 fertigstellen:**
-   - `cockpit/pr` automatisch: Die Mod schreibt den PR nach jedem Push selbst, statt dass Claude es von Hand tut.
-   - Merge-Knopf auch in der Mod (Desktop-Panel, zwei Stufen wie oben).
-3. **Phase 4 abrunden:**
+1. **Desktop nachziehen:** Merge-Knopf (zwei Stufen wie oben) und Team-Avatare in Leiste und Panel der Mod.
+2. **Phase 4 abrunden:**
    - Memory-Dateien für weitere Repos anlegen, sobald dort gearbeitet wird.
    - Merge-Einträge aus anderen Repos zurück nach Else-Live- schreiben (Schreibzugriff klären).
-4. **Phase 5 erproben und abrunden:**
-   - ein echter Lauf mit 2 Team-Chats und einer kleinen Aufgabe
-   - Avatare in Leiste und Panel der Mod
-5. **Kontext-Ringe pro Kategorie:** Die Mod gibt die Aufschlüsselung (`breakdown`) in `cockpit/context` mit, und das Kontext-Blatt zeigt sie an.
-6. **Kleinigkeiten:**
+3. **Phase 5 erproben:** ein echter Lauf mit 2 Team-Chats und einer kleinen Aufgabe.
+4. **Kontext-Ringe pro Kategorie:** Die Mod gibt die Aufschlüsselung (`breakdown`) in `cockpit/context` mit, und das Kontext-Blatt zeigt sie an.
+5. **Kleinigkeiten:**
    - Neue Skills erscheinen auf der Seite erst nach dem Neu-Veröffentlichen.
    - Favoriten gelten pro Gerät.
    - Der Mod-Name ist offen.

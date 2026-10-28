@@ -90,7 +90,7 @@ async function readMemory($: $, repo: string | null): Promise<{ file: string | n
   return { file, memory: typeof text === 'string' ? parseMemory(text) : null }
 }
 
-async function currentBranch($: $, root: string | undefined): Promise<string | null> {
+export async function currentBranch($: $, root: string | undefined): Promise<string | null> {
   if (!root) return null
   const run = await $.process.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], { cwd: root }).catch(() => undefined)
 

@@ -77,7 +77,7 @@ export async function snapshot($: $): Promise<ContextSnapshot> {
 
 type Answer = { text?: string; isError?: boolean; deny?: string }
 
-async function artifactData($: $, input: Record<string, unknown>): Promise<Answer> {
+export async function artifactData($: $, input: Record<string, unknown>): Promise<Answer> {
   // The tool table types ArtifactData's input loosely; the fields are its own.
   // Called through a plain signature: checking the full tool table here costs
   // the type checker millions of instantiations.
@@ -92,7 +92,14 @@ function versionIn(text: string | undefined): number | undefined {
 
 // Writes one document of the page's `cockpit` collection, pinned to the
 // version last seen; a refusal of the tool stops every write this session.
-export async function writeDoc($: $, url: string, doc: string, data: object): Promise<'written' | 'denied' | 'failed'> {
+// `update` keeps the fields it does not name (a missing document is created).
+export async function writeDoc(
+  $: $,
+  url: string,
+  doc: string,
+  data: object,
+  mode: 'set' | 'update' = 'set',
+): Promise<'written' | 'denied' | 'failed'> {
   const base = { url, collection: COLLECTION, doc_id: doc }
   let version = versions.get(doc)
 
@@ -106,7 +113,7 @@ export async function writeDoc($: $, url: string, doc: string, data: object): Pr
   }
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const write = await artifactData($, version ? { ...base, action: 'set', data, if_version: version } : { ...base, action: 'set', data })
+    const write = await artifactData($, version ? { ...base, action: mode, data, if_version: version } : { ...base, action: 'set', data })
     if (write.deny) {
       stopped = `Nicht erlaubt: ${write.deny}`
       return 'denied'

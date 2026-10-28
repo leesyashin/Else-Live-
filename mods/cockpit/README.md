@@ -52,6 +52,12 @@ Eine Mod für Claude Code, die zeigt, welche Skills du hast, ob Claude sie sieht
 - **Für Claude:** das Werkzeug `check_setup`.
 - **Handy-Seite:** Das Ergebnis geht ins Dokument `cockpit/setup` und erscheint dort als Wallet-Karte „Setup“.
 
+## Phase 6: Alles automatisch
+
+- **Geladene Skills** gehen sofort ins Dokument `cockpit/status`. Die Session-Karte der Handy-Seite wird damit grün, ohne dass Claude etwas von Hand einträgt.
+- **Der PR des Branches** geht ins Dokument `cockpit/pr`, mit CI, Checks, Konflikten und Dateien. Das passiert beim Start, kurz nach jedem `git push` oder jeder PR-Änderung und nach Zügen höchstens alle 90 s. Geschrieben wird nur, wenn sich etwas geändert hat.
+- Das Werkzeug `sync_pr` löst den PR-Abgleich sofort aus.
+
 ## Installation
 
 In einer Terminal-Session:

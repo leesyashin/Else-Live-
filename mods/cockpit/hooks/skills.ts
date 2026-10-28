@@ -66,6 +66,10 @@ export function setupView($: $): Promise<SetupReport | null> {
   return read($, setup)
 }
 
+export function skillUses($: $): Promise<SkillUse[]> {
+  return read($, uses)
+}
+
 export function skillRows($: $): Promise<SkillRow[]> {
   return read($, skills)
 }

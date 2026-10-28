@@ -31,6 +31,7 @@ import {
   toggleFavorite,
   toggleFold,
 } from './skills'
+import { syncPr, syncStatus, touchesPr } from './pr'
 import { COLOR, groupStates, setupText, syncSetup } from './setup'
 import { syncContext } from './sync'
 
@@ -112,6 +113,13 @@ export const register: Register = (on, options) => {
         isDeferred: true,
       })
     }
+    if (cockpitUrl) {
+      await $.tool.register({
+        name: 'sync_pr',
+        description: 'Liest den PR des aktuellen Branches (CI, Konflikte, Dateien) und schreibt ihn sofort in die Merge-Karte der Cockpit-Seite. Geschieht sonst nach Pushes und PR-Änderungen von selbst.',
+        isDeferred: true,
+      })
+    }
     await $.tool.register({
       name: 'check_setup',
       description: 'Prüft das Setup dieses Repos (Connectors, Skills, Branch laut Memory-Datei) sofort und schickt das Ergebnis an die Cockpit-Seite.',
@@ -122,6 +130,9 @@ export const register: Register = (on, options) => {
     $.clock.after(1500, () => void refresh($))
     // The skills are read first, so the check finds them.
     $.clock.after(4000, () => void syncSetup($, cockpitUrl, true).catch(() => undefined))
+    // The page shows this session from now on: its skills (none yet) and its branch's PR.
+    $.clock.after(5000, () => void syncStatus($, cockpitUrl).catch(() => undefined))
+    $.clock.after(6000, () => void syncPr($, cockpitUrl, true).catch(() => undefined))
 
     return next(e)
   })
@@ -157,6 +168,25 @@ export const register: Register = (on, options) => {
     if (cockpitUrl) await syncContext($, cockpitUrl).catch(() => undefined)
     // A turn may have switched the branch; the check is cheap and sends only changes.
     await syncSetup($, cockpitUrl).catch(() => undefined)
+    // CI moves on its own: look at the PR now and then.
+    await syncPr($, cockpitUrl).catch(() => undefined)
+
+    return result
+  })
+
+  on('tool.call', { tool: 'mcp__cockpit__sync_pr' as never }, async $ => {
+    const text = await syncPr($, cockpitUrl, true).catch(error => `PR-Abgleich fehlgeschlagen: ${String(error)}`)
+
+    return { result: text }
+  })
+
+  // A push or a change to the PR: the merge card follows a moment later.
+  on('tool.call', async ($, e, next) => {
+    const result = await next(e)
+    const input = e as unknown as Record<string, unknown>
+    if (cockpitUrl && touchesPr(String(input.tool), input)) {
+      $.clock.after(2500, () => void syncPr($, cockpitUrl, true).catch(() => undefined))
+    }
 
     return result
   })
@@ -179,6 +209,7 @@ export const register: Register = (on, options) => {
     const result = await next(e)
     try {
       await recordUse($, e.skill, e.path)
+      if (cockpitUrl) void syncStatus($, cockpitUrl).catch(() => undefined)
       const text = `✦ Skill geladen: ${shortName(e.skill)}`
       $.ui.toast(text)
       // A client that draws no toast (the phone on a cloud session) still
