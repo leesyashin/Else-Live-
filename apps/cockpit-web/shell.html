@@ -404,12 +404,25 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .srow { padding: 0; }
 .srow .slink { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; padding: 12px 4px 12px 14px; color: inherit; text-decoration: none; }
 .srow.leaving { opacity: 0.45; transition: opacity 0.3s; }
-.sarch { flex: none; align-self: stretch; min-width: 48px; padding: 0 14px; display: grid; place-items: center; color: var(--fg3); font-size: 13px; font-weight: 600; transition: color 0.2s, background-color 0.2s; }
-.sarch svg { width: 20px; height: 20px; }
-.sarch.armed { color: #fff; background: #ff453a; }
+/* Swipe left to archive, as in iOS Mail: the row follows the finger over a red action. A short
+   swipe leaves it open (tap the action to confirm), a long or fast one archives at once. Only
+   transform and opacity move while the finger is down; the gap closes once, after the row left. */
+.swipe { position: relative; overflow: hidden; }
+.swipe-act { position: absolute; inset: 0; display: flex; justify-content: flex-end; background: #ff453a; color: #fff; opacity: 0; }
+.swipe.shown .swipe-act { opacity: 1; }
+.swipe-btn { width: 96px; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: #fff; font-size: 13px; font-weight: 600; transition: transform 0.24s var(--ease-out); }
+.swipe-btn svg { width: 22px; height: 22px; }
+.swipe-row { position: relative; background: var(--surface); transform: translate3d(0, 0, 0); transition: transform 0.34s var(--ease-out); touch-action: pan-y; }
+.swipe.dragging .swipe-row, .swipe.dragging .swipe-btn { transition: none; }
+.swipe.armed .swipe-btn { transition: transform 0.18s var(--ease-out); }
+.swipe.leave .swipe-row { transition: transform 0.22s var(--ease-out); }
+.swipe.collapse { transition: height 0.26s var(--ease-out), opacity 0.2s ease; opacity: 0; }
+.swipe + .swipe > .swipe-row::before { content: ""; position: absolute; top: 0; left: 68px; right: 0; border-top: 0.5px solid var(--sep); }
+.swipe.sess + .swipe.sess > .swipe-row::before { left: 40px; }
+.swipe-row.mrow { animation: none; }
+.swipe { animation: rowIn 0.5s var(--spring) both; animation-delay: calc(var(--i, 0) * 40ms + 100ms); }
 .secondary.arch { color: #ff453a; }
 .secondary.arch.armed { color: #fff; background: #ff453a; }
-.srow + .srow::before { left: 40px; }
 .sdot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--st); box-shadow: 0 0 0 4px color-mix(in srgb, var(--st) 22%, transparent); }
 .mstate { flex: none; font-size: 13px; font-weight: 600; color: var(--st); }
 /* Alerts arrive on a spring and leave with a swipe. Each sits in a slot whose height follows
@@ -958,6 +971,35 @@ summary small { color: var(--fg3); font-size: 13px; }
     }
     render(); refreshSheet()
   }
+  // A row that can be swiped left to archive; the action under it is a real button for taps and screen readers.
+  function swipeRow(id, title, row, i, kind = '') {
+    return `<div class="swipe${kind ? ` ${kind}` : ''}" data-swipe="${esc(id)}" style="--i:${i}">
+      <div class="swipe-act"><button class="swipe-btn" data-archive-now="${esc(id)}" aria-label="${esc(`${title} archivieren`)}">${svg(ARCHIVE_ICON)}<span>Archivieren</span></button></div>
+      ${row}</div>`
+  }
+  // Archives at once (the swipe was the decision): the row leaves left, the gap closes, then the order goes out.
+  // If it cannot be sent, the row comes back.
+  async function archiveNow(id, wrap) {
+    if (archive.pending.has(id) || !/^session_[A-Za-z0-9]+$/.test(id)) return
+    archive.pending.add(id)
+    swipe.open = null
+    navigator.vibrate?.(10)
+    if (wrap?.isConnected) {
+      const row = wrap.querySelector('.swipe-row')
+      wrap.classList.add('shown', 'leave'); wrap.classList.remove('dragging', 'armed')
+      row.style.transform = `translate3d(${-wrap.offsetWidth - 24}px, 0, 0)`
+      await new Promise(done => setTimeout(done, REDUCED.matches ? 0 : 200))
+      wrap.style.height = `${wrap.offsetHeight}px`
+      void wrap.offsetHeight
+      wrap.classList.add('collapse'); wrap.style.height = '0px'
+      await new Promise(done => setTimeout(done, REDUCED.matches ? 0 : 260))
+    }
+    const sent = await sendToClaude(`Cockpit · Archivieren\n${id}`, wrap?.isConnected ? wrap : $('detail'))
+    if (sent) island('Wird archiviert', 'Claude archiviert den Chat', 'busy', { ...SESSIONS_LOOK, mono: 'A' })
+    else archive.pending.delete(id)
+    render(); refreshSheet()
+  }
+
   function cleanSession(r) {
     if (!r || typeof r.id !== 'string' || typeof r.url !== 'string' || !/^https:\/\/claude\.ai\//.test(r.url)) return null
     return {
@@ -1324,16 +1366,14 @@ summary small { color: var(--fg3); font-size: 13px; }
     const groups = sessionGroups()
     if (!groups.length) return `<p class="empty">${esc(sessions.error ? 'Die Daten der Seite sind gerade nicht lesbar.' : 'Keine aktuelle Session. Gezeigt werden Sessions der letzten 24 Stunden, archivierte nicht.')}</p>`
     let i = 0
-    const html = groups.map(g => group(g.repo, g.rows.length, g.rows.map(r => {
+    const html = groups.map(g => ({ ...g, rows: g.rows.filter(r => !archive.pending.has(r.id)) })).filter(g => g.rows.length).map(g => group(g.repo, g.rows.length, g.rows.map(r => {
       const look = SESSION_LOOK[r.state]
-      const leaving = archive.pending.has(r.id)
-      return `<div class="mrow srow${leaving ? ' leaving' : ''}" style="--i:${i++};--st:${look.st}">
+      return swipeRow(r.id, r.title, `<div class="mrow srow swipe-row" style="--st:${look.st}">
         <a class="slink" href="${esc(r.url)}" target="_blank" rel="noopener">
-          <span class="sdot" aria-hidden="true"></span><span class="stext"><b>${esc(r.title)}</b><span>${esc(leaving ? 'Wird archiviert …' : r.note || (r.updatedAt ? ago(r.updatedAt) : ''))}</span></span>
-          <span class="trail"><span class="mstate">${esc(look.word)}</span>${CHEV}</span></a>
-        ${leaving ? '' : `<button class="sarch${archive.armed === r.id ? ' armed' : ''}" data-archive="${esc(r.id)}" aria-label="${esc(`${r.title} archivieren`)}">${archive.armed === r.id ? 'Archivieren?' : svg(ARCHIVE_ICON)}</button>`}</div>`
+          <span class="sdot" aria-hidden="true"></span><span class="stext"><b>${esc(r.title)}</b><span>${esc(r.note || (r.updatedAt ? ago(r.updatedAt) : ''))}</span></span>
+          <span class="trail"><span class="mstate">${esc(look.word)}</span>${CHEV}</span></a></div>`, i++, 'sess')
     }).join(''))).join('')
-    return `${TIP(`Tippen öffnet · rechts archivieren${sessions.at ? ` · Stand ${ago(sessions.at)}` : ''}`)}${html}`
+    return `${TIP(`Tippen öffnet · nach links wischen archiviert${sessions.at ? ` · Stand ${ago(sessions.at)}` : ''}`)}${html}`
   }
 
   function teamDetail() {
@@ -1342,10 +1382,10 @@ summary small { color: var(--fg3); font-size: 13px; }
     if (!ms.length) return `<p class="empty">${esc(team.error ? 'Die Daten der Seite sind gerade nicht lesbar.' : team.archivedAt ? `Das letzte Team ist fertig, gemergt und archiviert${team.goal?.goal ? ` („${team.goal.goal}“)` : ''}. Gib Claude die nächste größere Aufgabe.` : 'Noch kein Team. Beschreib eine größere Aufgabe: Claude zerlegt sie und verteilt die Teile auf eigene Chats in diesem Repo.')}</p>${start}`
     const order = { question: 0, conflict: 1, working: 2, waiting: 3, failed: 4, done: 5 }
     const sorted = [...ms].sort((a, b) => order[a.state] - order[b.state] || a.name.localeCompare(b.name))
-    const rows = sorted.map((m, i) => `<button class="mrow" data-member="${esc(m.id)}" style="--i:${i};--st:${MEMBER_LOOK[m.state].st}">
+    const rows = sorted.filter(m => !archive.pending.has(m.id)).map((m, i) => swipeRow(m.id, m.name, `<button class="mrow swipe-row" data-member="${esc(m.id)}" style="--st:${MEMBER_LOOK[m.state].st}">
         ${avatar(m, 40)}<span class="stext"><b>${esc(m.name)}</b><span>${esc(m.note || m.task)}</span></span>
-        <span class="trail"><span class="mstate">${esc(MEMBER_LOOK[m.state].word)}</span>${CHEV}</span></button>`).join('')
-    return `${TIP('Tippen öffnet den Chat')}
+        <span class="trail"><span class="mstate">${esc(MEMBER_LOOK[m.state].word)}</span>${CHEV}</span></button>`, i)).join('')
+    return `${TIP('Tippen öffnet den Chat · nach links wischen archiviert')}
       ${team.goal?.goal ? `<div class="preview"><small class="label" style="margin:0"><span>Aufgabe</span></small><p class="goal">${esc(team.goal.goal)}</p></div>` : ''}
       <div class="glist">${rows}</div>${start}${archiveButton(ms.map(m => m.id), 'Team archivieren')}`
   }
@@ -1849,7 +1889,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     // Leave the detail alone while a finger holds one of its buttons.
     // Let a running merge animation finish instead of restarting it.
     const playing = state.open === 'merge' && Date.now() - pr.playedAt < PLAY_MS && !!$('detail').querySelector('.merged.play')
-    if (state.open && !hold && !playing) { $('detail').innerHTML = detailHtml(cards.find(c => c.id === state.open)); layout(true) }
+    if (state.open && !hold && !playing && !swipe.busy()) { $('detail').innerHTML = detailHtml(cards.find(c => c.id === state.open)); layout(true) }
     renderResults()
     refreshSheet()
   }
@@ -2621,9 +2661,87 @@ summary small { color: var(--fg3); font-size: 13px; }
   document.addEventListener('keydown', () => { swallowClick = false })
   document.addEventListener('contextmenu', e => { if (e.target.closest('[data-hold]')) e.preventDefault() })
 
+  // --- Swipe to archive ----------------------------------------------------------------
+  // 1:1 with the finger after a clear horizontal start (vertical movement stays a scroll).
+  const ACTION_W = 96
+  const swipe = { drag: null, open: null, swallow: false, busy() { return !!(this.drag || this.open) } }
+  function swipeTo(wrap, x, armed = false) {
+    const row = wrap.querySelector('.swipe-row'), btn = wrap.querySelector('.swipe-btn')
+    row.style.transform = x ? `translate3d(${x}px, 0, 0)` : ''
+    wrap.classList.toggle('shown', x < 0)
+    wrap.classList.toggle('armed', armed)
+    // Armed, the label rides on the row's edge; otherwise it waits at the right.
+    btn.style.transform = armed ? `translate3d(${x + ACTION_W}px, 0, 0)` : ''
+  }
+  function closeSwipe(wrap) {
+    if (!wrap?.isConnected) { swipe.open = null; return }
+    wrap.classList.remove('dragging')
+    swipeTo(wrap, 0)
+    if (swipe.open === wrap) swipe.open = null
+    setTimeout(() => { if (swipe.open !== wrap && !wrap.classList.contains('dragging')) wrap.classList.remove('shown') }, 340)
+  }
+  document.addEventListener('pointerdown', e => {
+    const wrap = e.target.closest?.('.swipe')
+    // A touch anywhere else closes an open row.
+    if (swipe.open && swipe.open !== wrap) { closeSwipe(swipe.open); swipe.swallow = true; return }
+    if (!wrap || e.target.closest('.swipe-btn') || (e.pointerType === 'mouse' && e.button !== 0)) return
+    const row = wrap.querySelector('.swipe-row')
+    swipe.drag = { wrap, id: e.pointerId, x0: e.clientX, y0: e.clientY, base: swipe.open === wrap ? -ACTION_W : 0, on: false, trail: [{ x: e.clientX, t: e.timeStamp }], w: wrap.offsetWidth, row }
+  }, { passive: true })
+  document.addEventListener('pointermove', e => {
+    const d = swipe.drag
+    if (!d || e.pointerId !== d.id) return
+    const dx = e.clientX - d.x0, dy = e.clientY - d.y0
+    if (!d.on) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { swipe.drag = null; return }
+      if (Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy) * 1.2) return
+      d.on = true
+      d.x0 = e.clientX - (dx > 0 ? 10 : -10)
+      d.wrap.classList.add('dragging', 'shown')
+      try { d.row.setPointerCapture(e.pointerId) } catch {}
+      // The hold-to-load of a row underneath gives way to the swipe.
+      cancelHold?.()
+    }
+    d.trail.push({ x: e.clientX, t: e.timeStamp }); if (d.trail.length > 6) d.trail.shift()
+    let x = d.base + e.clientX - d.x0
+    // Right of rest it resists; there is nothing there.
+    if (x > 0) x = rubberband(x, d.w)
+    const armed = x < -d.w * 0.55
+    if (armed !== d.armed) { d.armed = armed; if (armed) navigator.vibrate?.(6) }
+    swipeTo(d.wrap, x, armed)
+    d.x = x
+  }, { passive: true })
+  const endSwipe = e => {
+    const d = swipe.drag
+    if (!d || e.pointerId !== d.id) return
+    swipe.drag = null
+    if (!d.on) return
+    swipe.swallow = true
+    d.wrap.classList.remove('dragging')
+    const recent = d.trail.filter(p => d.trail.at(-1).t - p.t < 100)
+    const v = recent.length > 1 ? (recent.at(-1).x - recent[0].x) / Math.max(1, recent.at(-1).t - recent[0].t) : 0
+    const x = d.x ?? 0
+    // Where the flick would come to rest decides: far enough left archives, past the action opens it.
+    const rest = x + v * 140
+    const id = d.wrap.dataset.swipe
+    if (e.type !== 'pointercancel' && (d.armed || rest < -d.w * 0.55)) archiveNow(id, d.wrap)
+    else if (rest < -ACTION_W * 0.6) { swipeTo(d.wrap, -ACTION_W); swipe.open = d.wrap }
+    else closeSwipe(d.wrap)
+  }
+  document.addEventListener('pointerup', endSwipe)
+  document.addEventListener('pointercancel', endSwipe)
+  // The tap that ends a swipe (or closes an open row) opens nothing.
+  document.addEventListener('click', e => {
+    if (!swipe.swallow) return
+    swipe.swallow = false
+    if (e.target.closest?.('.swipe-btn')) return
+    e.preventDefault(); e.stopPropagation()
+  }, true)
+
   // --- Events ----------------------------------------------------------------------
   document.addEventListener('click', async e => {
     if (swallowClick) { swallowClick = false; e.preventDefault(); return }
+    if (e.target.closest?.('[data-archive-now]')) { const b = e.target.closest('[data-archive-now]'); return archiveNow(b.dataset.archiveNow, b.closest('.swipe')) }
     const t = e.target.closest('button, .scrim')
     if (!t) return
     if (t.id === 'scrim' || t.hasAttribute('data-close')) return closeSheet()
