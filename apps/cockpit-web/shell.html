@@ -99,7 +99,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 /* Search (Spotlight) */
 /* The search floats over the page as a material: content scrolls under it. */
 .search { position: sticky; top: calc(8px + env(safe-area-inset-top, 0px)); z-index: 20; display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 14px; border-radius: 16px;
-  background: color-mix(in srgb, var(--surface) 74%, transparent); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+  background: color-mix(in srgb, var(--surface) 78%, transparent); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px -16px rgba(0, 0, 0, 0.35), inset 0 0.5px 0 rgba(255, 255, 255, 0.5); }
 .search svg { flex: none; width: 19px; height: 19px; color: var(--fg2); }
 .search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font: inherit; font-size: 18px; color: var(--fg); }
@@ -149,7 +149,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   display: flex; flex-direction: column; justify-content: space-between; padding: 15px 20px 18px; width: 100%;
 }
 .wcard::before { content: ""; position: absolute; inset: 0; background: linear-gradient(118deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 34%, rgba(255, 255, 255, 0) 52%); pointer-events: none; }
-.wcard::after { content: ""; position: absolute; inset: 0; opacity: 0.09; mix-blend-mode: overlay; pointer-events: none;
+.wcard::after { content: ""; position: absolute; inset: 0; opacity: 0.05; pointer-events: none;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
 .wcard > * { position: relative; z-index: 1; }
 .pattern { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; transition: transform 1s var(--spring); }
@@ -178,6 +178,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 
 .detail { position: absolute; left: 0; right: 0; z-index: 30; opacity: 0; transform: translateY(26px); pointer-events: none; display: flex; flex-direction: column; gap: 10px; }
 .detail.show { pointer-events: auto; }
+/* A press gives way at once; the separate `scale` property never fights the card's transform. */
+.wcard.pressed { scale: 0.975; }
 .mini-dots { display: grid; grid-template-columns: repeat(3, 7px); gap: 4px; }
 .mini-dots i { width: 7px; height: 7px; border-radius: 2.5px; background: var(--d); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.4); }
 .hint { margin: 0 4px; font-size: 13px; color: var(--fg2); }
@@ -521,6 +523,8 @@ summary small { color: var(--fg3); font-size: 13px; }
   width: 96px; height: 32px; transform: translateX(-50%); opacity: 0; pointer-events: none; overflow: hidden;
   background: #000; color: #fff; border-radius: 999px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
   transition: opacity 0.2s var(--ease-out);
+  /* Its size springs every frame: keep that layout inside the island. */
+  contain: strict;
 }
 .island.show { opacity: 1; }
 .iface {
@@ -1409,95 +1413,63 @@ summary small { color: var(--fg3); font-size: 13px; }
   const stackY = i => (cards === SKILL_CARDS ? (i === 0 ? 0 : HEAD_PEEK + (i - 1) * PEEK) : i * PEEK)
   const cardEl = card => $('wallet').querySelector(`[data-card="${card.id}"]`)
 
-  // Every card, the detail and the wallet height keep their live values here. Each value is
-  // its own spring, so any new target picks up from where it is on screen, at its speed.
-  // Opacity and scale run in thousandths: the spring settles within 0.4 units.
-  const UNIT = { y: 1, h: 1, o: 1000, s: 1000, p: 1000 }
+  // Cards and the detail move with CSS transitions on transform and opacity only: the compositor
+  // runs them off the main thread, and a new target takes over from the value on screen, so every
+  // move stays interruptible. The wallet's height never animates (that would lay out every frame).
   const STAGGER = 40
+  const MOVE = 'cubic-bezier(0.32, 0.72, 0, 1)'
   const motions = new WeakMap()
-  function paintCard(el, m) {
-    el.style.transform = `translate3d(0, ${m.y}px, 0)${m.s * m.p !== 1 ? ` scale(${m.s * m.p})` : ''}`
-    const o = Math.min(1, Math.max(0, m.o))
-    el.style.opacity = o > 0.999 ? '' : String(o)
-    // A card on its way out can still be caught until it has mostly faded.
-    el.style.pointerEvents = m.to.o < 1 && o < 0.5 ? 'none' : ''
-  }
-  function paintDetail(el, m) {
-    el.style.transform = m.y ? `translate3d(0, ${m.y}px, 0)` : 'none'
-    el.style.opacity = String(Math.min(1, Math.max(0, m.o)))
-  }
-  const paintHeight = (el, m) => { el.style.height = `${m.h}px` }
-  function motionOf(el, init = { y: 0, s: 1, o: 1, p: 1 }, paint = paintCard) {
+  function motionOf(el) {
     let m = motions.get(el)
-    if (!m) { m = { ...init, to: { ...init }, anim: {}, timer: 0, parked: false, paint }; motions.set(el, m) }
+    if (!m) { m = { to: null, timer: 0, catchTimer: 0, parked: false }; motions.set(el, m) }
     return m
   }
-  function drive(el, m, key, to, { response = 0.36, velocity = 0, onDone } = {}) {
-    const u = UNIT[key]
-    const live = m.anim[key]?.stop()
-    m.anim[key] = null
-    const v = live ? live.v : velocity * u
-    if (Math.abs(m[key] - to) * u < 0.4 && Math.abs(v) < 12) { m[key] = to; m.paint(el, m); onDone?.(); return }
-    m.anim[key] = spring({
-      from: m[key] * u, to: to * u, velocity: v, damping: 1, response,
-      onUpdate: x => { m[key] = x / u; m.paint(el, m) },
-      onDone: () => { m.anim[key] = null; onDone?.() },
-    })
-  }
-  function halt(m, keys) { for (const k of keys) { m.anim[k]?.stop(); m.anim[k] = null } }
+  // Where the card is on screen right now, mid-flight included.
+  const liveY = el => new DOMMatrix(getComputedStyle(el).transform).m42
 
-  // Moves a card. `instant` jumps there (to set a starting point); otherwise it springs from where it is.
-  // `onSettle` runs once its opacity has arrived. Reduced motion only cross-fades: it moves while unseen.
-  function place(el, y, { scale = 1, opacity = 1, delay = 0, instant = false, velocity = 0, onSettle } = {}) {
+  // Moves a card. `instant` jumps there (to set a starting point); otherwise it glides from where
+  // it is. `onSettle` runs once it has arrived.
+  function place(el, y, { scale = 1, opacity = 1, delay = 0, instant = false, onSettle } = {}) {
     const m = motionOf(el)
     m.parked = false
-    if (instant) {
-      clearTimeout(m.timer)
-      halt(m, ['y', 's', 'o'])
-      Object.assign(m, { y, s: scale, o: opacity })
-      m.to = { y, s: scale, o: opacity }
-      m.paint(el, m)
-      return
-    }
     // Already on its way there (a re-render): leave the motion and its delay alone.
-    if (m.to.y === y && m.to.s === scale && m.to.o === opacity) return
-    clearTimeout(m.timer)
+    if (!instant && m.to && m.to.y === y && m.to.s === scale && m.to.o === opacity) return
     m.to = { y, s: scale, o: opacity }
-    const go = () => {
-      if (REDUCED.matches) {
-        const jump = () => { halt(m, ['y', 's']); m.y = y; m.s = scale; m.paint(el, m); drive(el, m, 'o', opacity, { response: 0.24, onDone: onSettle }) }
-        if (m.o > 0.02 && (Math.abs(m.y - y) > 0.5 || m.s !== scale)) drive(el, m, 'o', 0, { response: 0.2, onDone: jump })
-        else jump()
-        return
-      }
-      drive(el, m, 'y', y, { velocity })
-      drive(el, m, 's', scale)
-      drive(el, m, 'o', opacity, { response: opacity < 1 ? 0.3 : 0.36, onDone: onSettle })
-    }
-    if (delay) m.timer = setTimeout(go, delay)
-    else go()
+    clearTimeout(m.timer)
+    const fade = opacity < 1 ? 240 : 340
+    el.style.transition = instant ? 'none'
+      : `transform 520ms ${MOVE} ${delay}ms, opacity ${fade}ms var(--ease-out) ${delay}ms, scale 200ms var(--ease-out)`
+    el.style.transform = `translate3d(0, ${y}px, 0)${scale !== 1 ? ` scale(${scale})` : ''}`
+    el.style.opacity = opacity >= 1 ? '' : String(opacity)
+    // A card on its way out can still be caught until it has mostly faded.
+    clearTimeout(m.catchTimer)
+    el.style.pointerEvents = instant && opacity < 1 ? 'none' : ''
+    if (!instant && opacity < 1) m.catchTimer = setTimeout(() => { el.style.pointerEvents = 'none' }, delay + fade / 2)
+    // Commit the jump before the next glide starts from it (style only, no layout).
+    if (instant) getComputedStyle(el).transform
+    if (onSettle) m.timer = setTimeout(onSettle, instant ? 0 : delay + (opacity < 1 ? fade : 520))
   }
 
   // The detail rises in a beat after the card, and drops away at once.
   function detailTo(show, animate = true) {
-    const el = $('detail'), m = motionOf(el, { y: 26, o: 0 }, paintDetail)
+    const el = $('detail')
     el.classList.toggle('show', show)
-    clearTimeout(m.timer)
-    const y = show || REDUCED.matches ? 0 : 26, o = show ? 1 : 0
-    if (!animate) { halt(m, ['y', 'o']); m.y = y; m.o = o; m.paint(el, m); return }
-    const go = () => {
-      if (!REDUCED.matches) drive(el, m, 'y', y, { response: show ? 0.4 : 0.3 })
-      else { halt(m, ['y']); m.y = 0 }
-      drive(el, m, 'o', o, { response: show ? 0.36 : 0.2 })
-    }
-    if (show && m.o < 0.05) m.timer = setTimeout(go, 120)
-    else go()
+    const hidden = getComputedStyle(el).opacity < 0.05
+    el.style.transition = !animate ? 'none'
+      : show ? `transform 480ms ${MOVE} ${hidden ? 120 : 0}ms, opacity 360ms var(--ease-out) ${hidden ? 120 : 0}ms`
+      : 'transform 260ms var(--ease-out), opacity 180ms var(--ease-out)'
+    el.style.transform = show ? 'none' : 'translate3d(0, 26px, 0)'
+    el.style.opacity = show ? '1' : '0'
   }
 
+  // Growing happens at once (the space below is empty); shrinking waits until the cards have moved.
+  let heightTimer = 0
   function heightTo(h, animate = true) {
-    const el = $('wallet'), m = motionOf(el, { h: el.offsetHeight }, paintHeight)
-    if (!animate || REDUCED.matches) { halt(m, ['h']); m.h = h; m.paint(el, m); return }
-    drive(el, m, 'h', h, { response: 0.4 })
+    const el = $('wallet')
+    clearTimeout(heightTimer)
+    const now = parseFloat(el.style.height) || 0
+    if (!animate || h >= now) el.style.height = `${h}px`
+    else heightTimer = setTimeout(() => { el.style.height = `${h}px` }, 520)
   }
 
   // Builds the stack; `from` deals the cards in: each rises into place, the kept card glides on from
@@ -1514,7 +1486,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     })
     cards.forEach((card, i) => {
       const keep = card.id === from.keep
-      place(cardEl(card), stackY(i), { delay: keep ? 0 : (i + 1) * STAGGER, velocity: keep ? from.keepV : 0 })
+      place(cardEl(card), stackY(i), { delay: keep ? 0 : (i + 1) * STAGGER })
     })
     layout(true, true)
   }
@@ -1651,10 +1623,8 @@ summary small { color: var(--fg3); font-size: 13px; }
       if (switchToken !== token) return
       switchToken = null
       clearTimeout(switchTimer)
-      const m = motionOf(keepEl)
-      const live = m.anim.y?.stop()
       cards = nextCards
-      buildWallet({ keep: 'skills', keepY: m.y, keepV: live ? live.v : 0 })
+      buildWallet({ keep: 'skills', keepY: liveY(keepEl) })
       if (toSkills) scrollToWallet()
     }
     detailTo(false)
@@ -1676,11 +1646,8 @@ summary small { color: var(--fg3); font-size: 13px; }
   // Pressing gives way at once, on the way down, not when the finger lifts.
   ;(() => {
     let pressed = null, px = 0, py = 0
-    const press = (el, down) => {
-      el.classList.toggle('pressed', down)
-      if (REDUCED.matches) return
-      drive(el, motionOf(el), 'p', down ? 0.975 : 1, { response: down ? 0.2 : 0.36 })
-    }
+    // The CSS `scale` property sits on top of the card's transform, so a press never fights a move.
+    const press = (el, down) => el.classList.toggle('pressed', down)
     const release = () => { if (pressed) press(pressed, false); pressed = null }
     $('wallet').addEventListener('pointerdown', e => {
       const el = e.target.closest('.wcard')
