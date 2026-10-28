@@ -112,16 +112,30 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .block { display: flex; flex-direction: column; gap: 10px; }
 .suggest { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .app { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; transition: transform 0.3s var(--bounce); }
-.app:active { transform: scale(0.92); }
 .app span:last-child { max-width: 100%; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
 .icon { position: relative; width: 60px; height: 60px; border-radius: 15px; display: grid; place-items: center; color: #fff; background: linear-gradient(160deg, var(--c1), var(--c2)); box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.35), 0 2px 6px -2px rgba(0, 0, 0, 0.3); }
 .icon svg { width: 28px; height: 28px; }
 .icon .live { position: absolute; top: -4px; right: -4px; width: 16px; height: 16px; border-radius: 50%; background: var(--loaded); border: 2.5px solid var(--bg); }
 .chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
 .chips::-webkit-scrollbar { display: none; }
-.chip { flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 38px; padding: 0 14px; border-radius: 19px; background: var(--surface); font-size: 15px; transition: transform 0.25s var(--spring); }
-.chip:active { transform: scale(0.95); }
+.chip { flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 38px; padding: 0 14px; border-radius: 19px; background: var(--surface); font-size: 15px; transition: transform 0.45s var(--spring), background-color 0.3s; }
+/* Give on the press itself (pointer-down, no wait for the click), spring back on release. */
+.chip.pressed { transform: scale(0.94); background: color-mix(in srgb, var(--fg) 7%, var(--surface)); transition: transform 0.1s var(--ease-out), background-color 0.1s; }
+.app.pressed { transform: scale(0.92); transition: transform 0.1s var(--ease-out); }
 .chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--c1); }
+
+/* Home and results swap calmly: the old view leaves fast, the new one arrives in a short stagger. */
+.home { display: flex; flex-direction: column; gap: 22px; }
+.home[hidden], .results[hidden] { display: none; }
+.view-out { opacity: 0; pointer-events: none; transition: opacity 0.11s ease-in; }
+.view-in > * { animation: viewIn 0.42s var(--ease-out) both; animation-delay: calc(var(--k, 0) * 45ms); }
+.view-in > :nth-child(2) { --k: 1; } .view-in > :nth-child(3) { --k: 2; } .view-in > :nth-child(4) { --k: 3; } .view-in > :nth-child(n+5) { --k: 4; }
+@keyframes viewIn { from { opacity: 0; transform: translateY(10px); } }
+@keyframes viewFade { from { opacity: 0; } }
+/* Typing refines the results in place; only the way in is staggered. */
+.results:not(.view-in) .srow { animation: none; }
+/* Tall enough that the search can stay where it floats while the results swap in. */
+.results { min-height: 100vh; }
 
 /* Wallet */
 .wallet { position: relative; isolation: isolate; transition: height 0.6s var(--spring); }
@@ -378,13 +392,17 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .mrow + .mrow::before { content: ""; position: absolute; top: 0; left: 68px; right: 0; border-top: 0.5px solid var(--sep); }
 .mrow .stext span { -webkit-line-clamp: 1; }
 .mstate { flex: none; font-size: 13px; font-weight: 600; color: var(--st); }
-.alerts { display: flex; flex-direction: column; gap: 10px; }
-.alert { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--st) 55%, transparent), 0 10px 26px -16px var(--st); animation: alertIn 0.6s var(--bounce) both; }
+/* Alerts arrive on a spring and leave with a swipe. Each sits in a slot whose height follows
+   the spring, so the page below makes room smoothly instead of jumping. */
+.alerts { display: flex; flex-direction: column; margin-bottom: -10px; }
+.alerts[hidden] { display: none; }
+.aslot { flex: none; }
+.aslot > .alert { margin-bottom: 10px; touch-action: pan-y; will-change: transform, opacity; }
+.alert { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--st) 55%, transparent), 0 10px 26px -16px var(--st); -webkit-user-select: none; user-select: none; }
 .alert .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .alert small { font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--st); }
 .alert p { margin: 0; font-size: 15.5px; overflow-wrap: anywhere; }
 .alert .acts { display: flex; gap: 16px; margin-top: 4px; }
-@keyframes alertIn { from { opacity: 0; transform: translateY(-10px) scale(0.97); } }
 .goal { font: 600 18px/1.3 var(--display); margin: 0; overflow-wrap: anywhere; }
 
 .pill { min-height: 34px; padding: 0 14px; border-radius: 17px; background: var(--fill); color: var(--accent); font-weight: 600; font-size: 15px; text-transform: none; letter-spacing: 0; transition: transform 0.2s var(--spring); }
@@ -434,17 +452,17 @@ textarea:focus-visible { outline: none; }
 .links-row { display: flex; justify-content: center; gap: 22px; }
 .text-btn { color: var(--accent); font-size: 15px; font-weight: 500; padding: 6px 2px; min-height: 36px; }
 
-/* Composer: opens at the top, so the keyboard never covers it */
-.cscrim { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.35); opacity: 0; transition: opacity 0.3s; }
-.cscrim.open { opacity: 1; }
+/* Composer: opens at the top, so the keyboard never covers it. It grows out of the button
+   that opened it and goes back there; a swipe up throws it away. Springs drive it from script. */
+.cscrim { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.35); opacity: 0; touch-action: none; }
 .composer {
-  position: fixed; z-index: 41; top: calc(10px + env(safe-area-inset-top, 0px));
+  position: fixed; z-index: 41; top: calc(10px + env(safe-area-inset-top, 0px) + var(--vv-top, 0px));
   left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px));
   max-width: 560px; margin: 0 auto; background: var(--surface); border-radius: 22px;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28); overflow: hidden;
-  transform: translateY(-24px) scale(0.97); opacity: 0; transition: transform 0.5s var(--bounce), opacity 0.22s;
+  opacity: 0; will-change: transform, opacity;
 }
-.composer.open { transform: none; opacity: 1; }
+.composer .c-head, .composer .c-foot, .composer .c-body .tile { touch-action: none; }
 .c-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 10px 12px 6px; }
 .c-head b { font-weight: 600; font-size: 16px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
 .c-cancel { justify-self: start; color: var(--accent); font-size: 16px; padding: 8px 6px; min-height: 40px; }
@@ -509,6 +527,12 @@ summary small { color: var(--fg3); font-size: 13px; }
   /* Gentler, not gone: the sheet cross-fades instead of sliding. */
   .sheet { transform: none !important; opacity: 0; transition: opacity 200ms ease !important; }
   .sheet.open { opacity: 1; }
+  /* Search, composer and alerts only cross-fade. */
+  .view-in > * { animation: viewFade 0.2s ease both !important; }
+  .view-out { transition: opacity 0.12s ease-in !important; }
+  .cscrim, .composer, .aslot > .alert { transform: none !important; transition: opacity 0.2s ease !important; }
+  .cscrim.open, .composer.open { opacity: 1; }
+  .chip.pressed, .app.pressed { transform: none; opacity: 0.6; transition: opacity 0.1s !important; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .search { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
@@ -540,7 +564,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     <button class="clear" id="clear" aria-label="Suche leeren" hidden>✕</button>
   </label>
 
-  <div id="home" style="display:flex;flex-direction:column;gap:22px">
+  <div class="home" id="home">
     <section class="block" aria-label="Vorschläge">
       <h2 class="label"><span>Vorschläge</span></h2>
       <div class="suggest" id="suggest"></div>
@@ -552,7 +576,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     </section>
   </div>
 
-  <section class="block" id="results" hidden aria-live="polite"></section>
+  <section class="block results" id="results" hidden aria-live="polite"></section>
 </main>
 
 <div class="scrim" id="scrim" hidden></div>
@@ -946,12 +970,15 @@ summary small { color: var(--fg3); font-size: 13px; }
     return picks.slice(0, 4).map(skillByName)
   }
 
+  let suggestHtml = ''
   function renderSuggest() {
     const live = loadedSet()
-    $('suggest').innerHTML = suggestions().map(s => `<button class="app" style="${colors(CAT[s.category])}" data-hold="${esc(s.name)}" data-skill="${esc(s.name)}" aria-label="${esc(s.short)}. Tippen für Details, gedrückt halten zum Laden.">
+    const html = suggestions().map(s => `<button class="app" style="${colors(CAT[s.category])}" data-hold="${esc(s.name)}" data-skill="${esc(s.name)}" aria-label="${esc(s.short)}. Tippen für Details, gedrückt halten zum Laden.">
       <span class="sicon big">${BIG_RING}<span class="ripple"></span><span class="tile"><span class="mono">${svg(CAT[s.category].icon)}</span>${OK}</span>${live.has(s.name) ? '<span class="live"></span>' : ''}</span>
       <span>${esc(s.short)}</span></button>`).join('')
-    $('chips').innerHTML = TRIES.map(t => `<button class="chip" data-try="${esc(t.q)}" style="${colors(CAT[t.cat])}"><i></i>${esc(t.label)}</button>`).join('')
+    // Only touch the DOM when something changed, so a finger on a suggestion survives live updates.
+    if (html !== suggestHtml) { suggestHtml = html; $('suggest').innerHTML = html }
+    if (!$('chips').firstChild) $('chips').innerHTML = TRIES.map(t => `<button class="chip" data-try="${esc(t.q)}" style="${colors(CAT[t.cat])}"><i></i>${esc(t.label)}</button>`).join('')
   }
 
   // The slider runs on --ease-in-out (0.77, 0, 0.175, 1): the time at which it reaches a share of its way.
@@ -1182,14 +1209,131 @@ summary small { color: var(--fg3); font-size: 13px; }
       <div class="glist">${rows}</div>${start}`
   }
 
-  function renderAlerts() {
-    const open = team.members.filter(needsYou)
-    const box = $('alerts')
-    box.hidden = !open.length
-    box.innerHTML = open.map(m => `<div class="alert" style="--st:${MEMBER_LOOK[m.state].st}">${avatar(m, 36)}
+  // Alerts are kept by chat, so a live update never replays one. Each arrives on a spring in a
+  // slot that grows with it, and a sideways swipe throws it away until that chat asks something new.
+  const alerts = new Map()
+  const alertsGone = new Set()
+  let alertSwipedAt = 0
+  const goneKey = m => `${m.id}:${m.state}:${m.question || m.note}`
+  function alertHtml(m) {
+    return `${avatar(m, 36)}
       <div class="txt"><small>${esc(m.state === 'question' ? `Frage von ${m.name}` : `Konflikt bei ${m.name}`)}</small>
         <p>${esc(m.question || m.note || 'Braucht deine Entscheidung.')}</p>
-        <div class="acts"><button class="text-btn" data-answer="${esc(m.id)}">Antworten</button><button class="text-btn" data-member="${esc(m.id)}">Details</button></div></div></div>`).join('')
+        <div class="acts"><button class="text-btn" data-answer="${esc(m.id)}">Antworten</button><button class="text-btn" data-member="${esc(m.id)}">Details</button></div></div>`
+  }
+  function renderAlerts() {
+    const open = team.members.filter(m => needsYou(m) && !alertsGone.has(goneKey(m)))
+    const box = $('alerts')
+    const ids = new Set(open.map(m => m.id))
+    for (const a of alerts.values()) if (!ids.has(a.id) && !a.leaving) leaveAlert(a)
+    let before = box.firstChild
+    for (const m of open) {
+      const html = alertHtml(m)
+      let a = alerts.get(m.id)
+      if (a?.leaving) { a = null }
+      if (!a) a = enterAlert(m, html)
+      else if (a.html !== html) { a.el.innerHTML = html; a.html = html }
+      a.gone = goneKey(m)
+      a.el.style.setProperty('--st', MEMBER_LOOK[m.state].st)
+      if (a.slot !== before) box.insertBefore(a.slot, before)
+      before = a.slot.nextSibling
+    }
+    box.hidden = !box.children.length
+  }
+  function enterAlert(m, html) {
+    const slot = document.createElement('div'), el = document.createElement('div')
+    slot.className = 'aslot'; el.className = 'alert'; el.innerHTML = html
+    slot.append(el)
+    const a = { id: m.id, slot, el, html, p: 0, x: 0, h: 0, w: 0, anims: {}, leaving: false, swiped: false }
+    alerts.set(m.id, a)
+    const box = $('alerts')
+    box.hidden = false; box.append(slot)
+    a.h = el.offsetHeight + 10; a.w = el.offsetWidth
+    swipeAlert(a)
+    if (REDUCED.matches) {
+      el.style.opacity = '0'
+      requestAnimationFrame(() => requestAnimationFrame(() => { el.style.opacity = '' }))
+      return a
+    }
+    paintAlert(a)
+    alertSpring(a, 'p', 100, 0, { damping: 1, response: 0.42 }, () => { a.slot.style.height = '' })
+    return a
+  }
+  function leaveAlert(a, velocity = 0) {
+    a.leaving = true
+    const gone = () => { a.slot.remove(); if (alerts.get(a.id) === a) alerts.delete(a.id); $('alerts').hidden = !$('alerts').children.length; fitAlerts() }
+    if (REDUCED.matches) { a.el.style.opacity = '0'; setTimeout(gone, 200); return }
+    a.anims.p?.stop(); a.anims.p = null
+    a.h = a.el.offsetHeight + 10
+    // Leaving is quicker than arriving; a swiped alert first flies out along the swipe.
+    if (a.swiped) {
+      const side = Math.sign(a.x || velocity || 1)
+      let closing = false
+      alertSpring(a, 'x', side * (a.w + 40), velocity, { damping: 1, response: 0.3 }, gone, () => {
+        if (!closing && Math.abs(a.x) > a.w * 0.5) { closing = true; alertSpring(a, 'p', 0, 0, { damping: 1, response: 0.3 }) }
+      })
+    } else alertSpring(a, 'p', 0, 0, { damping: 1, response: 0.28 }, gone)
+  }
+  // spring() settles within 0.4 of its target, so the share in the slot runs 0…100.
+  function alertSpring(a, key, to, velocity, opts, done, tick) {
+    a.anims[key]?.stop()
+    a.anims[key] = spring({ from: a[key], to, velocity, ...opts,
+      onUpdate: v => { a[key] = v; paintAlert(a); tick?.() },
+      onDone: () => { a.anims[key] = null; done?.() } })
+  }
+  function paintAlert(a) {
+    const t = Math.max(0, a.p / 100)
+    if (a.anims.p || a.leaving || t < 1) a.slot.style.height = `${a.h * t}px`
+    const drop = a.swiped ? 0 : -(1 - t) * a.h
+    a.el.style.transform = a.x || drop ? `translate(${a.x}px, ${drop}px)` : ''
+    a.el.style.opacity = String(Math.min(1, t) * (1 - Math.min(1, Math.abs(a.x) / (a.w || 320)) * 0.8))
+    fitAlerts()
+  }
+  // The page gap above the search opens and closes with the slots instead of jumping.
+  function fitAlerts() {
+    let total = 0
+    for (const a of alerts.values()) total += a.slot.style.height ? a.h * Math.max(0, a.p / 100) : a.h
+    $('alerts').style.marginBottom = `${-10 - 12 * (1 - Math.min(1, total / 40))}px`
+  }
+  function swipeAlert(a) {
+    const el = a.el
+    let down = null, mode = null, base = 0, trail = []
+    el.addEventListener('pointerdown', e => {
+      if (a.leaving) return
+      const halted = a.anims.x?.stop(); a.anims.x = null
+      base = halted ? halted.x : a.x
+      down = { x: e.clientX, y: e.clientY, id: e.pointerId }; mode = null; trail = []
+    })
+    el.addEventListener('pointermove', e => {
+      if (!down || e.pointerId !== down.id) return
+      const dx = e.clientX - down.x, dy = e.clientY - down.y
+      if (!mode) {
+        if (Math.hypot(dx, dy) < 10) return
+        mode = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y'
+        if (mode === 'y') { down = null; return }
+        down.x += Math.sign(dx) * 10
+        el.setPointerCapture?.(e.pointerId)
+      }
+      trail.push({ x: e.clientX, t: e.timeStamp }); if (trail.length > 6) trail.shift()
+      a.x = base + e.clientX - down.x
+      paintAlert(a)
+    })
+    const up = e => {
+      if (!down || e.pointerId !== down.id) return
+      const swiping = mode === 'x'
+      down = null; mode = null
+      if (!swiping) return
+      alertSwipedAt = performance.now()
+      trail.push({ x: e.clientX, t: e.timeStamp })
+      const recent = trail.filter(p => e.timeStamp - p.t < 100)
+      const first = recent[0], last = recent.at(-1)
+      const velocity = last && first && last.t > first.t ? (last.x - first.x) / (last.t - first.t) * 1000 : 0
+      if (Math.abs(a.x + project(velocity)) > a.w * 0.45) {
+        alertsGone.add(a.gone); a.swiped = true
+        leaveAlert(a, velocity)
+      } else alertSpring(a, 'x', 0, velocity, { damping: Math.abs(velocity) > 400 ? 0.8 : 1, response: 0.35 })
+    }
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up)
   }
 
   function setupDetail() {
@@ -1398,19 +1542,42 @@ summary small { color: var(--fg3); font-size: 13px; }
     return 0
   }
 
+  // Home and results swap as a short cross-fade: the old view leaves in 110 ms, the new one
+  // comes in staggered. A swap reversed while the old view is still leaving just brings it back.
+  let view = 'home', viewTimer = 0, viewInTimer = 0, resultsHtml = ''
+  function showView(next) {
+    if (next === view) return
+    view = next
+    const coming = $(next), leaving = $(next === 'home' ? 'results' : 'home')
+    clearTimeout(viewTimer); clearTimeout(viewInTimer)
+    coming.classList.remove('view-out')
+    if (!coming.hidden) { leaving.hidden = true; leaving.classList.remove('view-out', 'view-in'); return }
+    leaving.classList.remove('view-in'); leaving.classList.add('view-out')
+    viewTimer = setTimeout(() => {
+      leaving.hidden = true; leaving.classList.remove('view-out')
+      coming.hidden = false
+      settleUnderSearch(coming)
+      coming.classList.remove('view-in'); void coming.offsetWidth; coming.classList.add('view-in')
+      viewInTimer = setTimeout(() => coming.classList.remove('view-in'), 700)
+    }, 110)
+  }
+  // The search floats; the new view starts right under it instead of half hidden behind it.
+  // It runs while the view is still transparent, so the scroll itself is never seen.
+  function settleUnderSearch(el) {
+    const bar = $('q').closest('.search').getBoundingClientRect()
+    const gap = el.getBoundingClientRect().top - bar.bottom - 22
+    if (gap < 0) window.scrollBy(0, gap)
+  }
+
   function renderResults() {
     const q = state.query.trim().toLowerCase()
     const searching = q.length > 0
-    $('home').hidden = searching
-    $('results').hidden = !searching
     $('clear').hidden = !searching
+    showView(searching ? 'results' : 'home')
     if (!searching) return
     const hits = DATA.skills.map(s => ({ s, p: score(s, q) })).filter(h => h.p > 0).sort((a, b) => b.p - a.p || a.s.short.localeCompare(b.s.short)).map(h => h.s)
     const recs = recommended.filter(r => [r.title, r.author, r.summary].some(t => t.toLowerCase().includes(q)))
-    if (!hits.length && !recs.length) {
-      $('results').innerHTML = `<p class="empty">Kein Skill passt zu „${esc(state.query)}“. Versuch es mit einem anderen Wort.</p>`
-      return
-    }
+    if (!hits.length && !recs.length) return setResults(`<p class="empty">Kein Skill passt zu „${esc(state.query)}“. Versuch es mit einem anderen Wort.</p>`)
     const parts = []
     if (hits.length) {
       const best = hits[0], cat = CAT[best.category], live = loadedSet().has(best.name)
@@ -1427,7 +1594,13 @@ summary small { color: var(--fg3); font-size: 13px; }
     if (rest.length || recs.length) {
       parts.push(group('Weitere Treffer', hits.length - 1 + recs.length, rest.map((s, i) => skillRow(s, i)).join('') + recs.map((r, i) => recRow(r, rest.length + i)).join('')))
     }
-    $('results').innerHTML = parts.join('')
+    setResults(parts.join(''))
+  }
+  // Live updates re-render often: leave the DOM alone unless the results really changed.
+  function setResults(html) {
+    if (html === resultsHtml) return
+    resultsHtml = html
+    $('results').innerHTML = html
   }
 
   function render() {
@@ -1714,16 +1887,19 @@ summary small { color: var(--fg3); font-size: 13px; }
 
   // --- Composer ----------------------------------------------------------------------
   // What the composer sends: a skill's task, a task for the team, or an answer to a member.
+  // It grows out of the button that opened it and shrinks back there; a swipe up or a send
+  // throws it away upwards. Springs drive the share p (0…100) and the drag offset y.
   let composing = null
-  function openComposer(name) {
+  const cm = { p: 0, y: 0, dx: 0, dy: 0, s0: 1, h: 0, top: 0, anims: {}, spec: null, leaving: false }
+  function openComposer(name, from) {
     const skill = skillByName(name)
     openWriter({ title: skill ? skill.short : short(name), look: CAT[skill?.category] || CAT.Weitere, mono: mono(name),
       placeholder: 'Was soll der Skill tun?', foot: 'Claude startet den Skill damit.', button: 'Starten',
-      send: (text, el) => loadSkill(name, text, el) })
+      send: (text, el) => loadSkill(name, text, el) }, from)
   }
-  function openWriter(spec) {
+  function openWriter(spec, from) {
     if (!sendAvailable()) { island('Nicht möglich', sendReason(), 'warn'); return }
-    composing = spec
+    composing = spec; cm.spec = spec
     $('c-title').textContent = spec.title
     $('c-send').textContent = spec.button
     $('composer').querySelector('.c-foot span').textContent = spec.foot
@@ -1736,19 +1912,129 @@ summary small { color: var(--fg3); font-size: 13px; }
     task.value = ''
     $('c-count').textContent = '0/3000'
     $('c-send').disabled = true
-    $('composer').hidden = false; $('cscrim').hidden = false
+    const el = $('composer'), scrim = $('cscrim')
+    const fresh = el.hidden
+    el.hidden = false; scrim.hidden = false
+    scrim.style.pointerEvents = ''
+    cm.leaving = false
+    document.body.classList.add('locked')
+    followKeyboard()
     // Focus inside the tap itself, so iOS raises the keyboard.
     task.focus({ preventScroll: true })
-    requestAnimationFrame(() => { $('composer').classList.add('open'); $('cscrim').classList.add('open') })
+    if (REDUCED.matches) {
+      el.style.transform = ''; el.style.opacity = ''; scrim.style.opacity = ''
+      const box = el.getBoundingClientRect()
+      cm.h = box.height; cm.top = box.top; cm.p = 100; cm.y = 0
+      requestAnimationFrame(() => { el.classList.add('open'); scrim.classList.add('open') })
+      return
+    }
+    el.classList.remove('open'); scrim.classList.remove('open')
+    // Reopened on its way out: it turns around from where it is.
+    if (fresh) { aimComposer(from); cm.p = 0; cm.y = 0; paintComposer() }
+    composerSpring('p', 100, 0, { damping: 1, response: 0.38 })
+    if (cm.y) composerSpring('y', 0, 0, { damping: 1, response: 0.35 })
   }
-  function closeComposer(sent = false) {
+  // Start on the trigger: centred on it, about as wide as it.
+  function aimComposer(from) {
+    const el = $('composer')
+    el.style.transform = 'none'
+    const box = el.getBoundingClientRect()
+    cm.h = box.height; cm.top = box.top
+    const r = from?.isConnected ? from.getBoundingClientRect() : null
+    if (!r || !r.width) { cm.dx = 0; cm.dy = -24; cm.s0 = 0.94; return }
+    cm.dx = r.left + r.width / 2 - (box.left + box.width / 2)
+    cm.dy = r.top + r.height / 2 - (box.top + box.height / 2)
+    cm.s0 = Math.min(0.9, Math.max(0.25, r.width / box.width))
+  }
+  function paintComposer() {
+    const t = Math.max(0, cm.p / 100), q = 1 - t
+    const el = $('composer')
+    el.style.transform = `translate(${cm.dx * q}px, ${cm.dy * q + cm.y}px) scale(${cm.s0 + (1 - cm.s0) * t})`
+    el.style.opacity = String(Math.min(1, t * 2.5))
+    // The scrim lifts as the composer leaves, whichever way it goes.
+    const away = Math.min(1, Math.max(0, -cm.y / (cm.h + cm.top || 1)))
+    $('cscrim').style.opacity = String(Math.min(1, t) * (1 - away))
+  }
+  function composerSpring(key, to, velocity, opts, done) {
+    cm.anims[key]?.stop()
+    cm.anims[key] = spring({ from: cm[key], to, velocity, ...opts,
+      onUpdate: v => { cm[key] = v; paintComposer() },
+      onDone: () => { cm.anims[key] = null; done?.() } })
+  }
+  // fling: the release velocity of a swipe up (px/s); a send leaves the same way.
+  function closeComposer(sent = false, fling = null) {
     if (!composing) return
     composing = null
+    cm.leaving = true
     $('task').blur()
-    $('composer').classList.remove('open'); $('cscrim').classList.remove('open')
-    setTimeout(() => { if (!composing) { $('composer').hidden = true; $('cscrim').hidden = true } }, 320)
+    if (!state.sheet) document.body.classList.remove('locked')
+    const el = $('composer'), scrim = $('cscrim')
+    // Leaving never blocks the page: taps go through the fading scrim.
+    scrim.style.pointerEvents = 'none'
+    const hide = () => {
+      if (composing) return
+      el.hidden = true; scrim.hidden = true; cm.leaving = false
+      el.classList.remove('open'); scrim.classList.remove('open')
+      el.style.transform = ''; el.style.opacity = ''; scrim.style.opacity = ''
+      cm.p = 0; cm.y = 0
+    }
+    if (REDUCED.matches) {
+      el.style.opacity = ''; scrim.style.opacity = ''
+      el.classList.remove('open'); scrim.classList.remove('open'); setTimeout(hide, 220)
+    } else if (sent || fling !== null) {
+      // Still growing when thrown: it keeps growing while it flies, no jump.
+      composerSpring('y', -(cm.top + cm.h + 40), Math.min(fling ?? -1200, -600), { damping: 1, response: 0.3 }, hide)
+    }
+    // Back into the button it came from, a little quicker than it came out.
+    else { cm.anims.y?.stop(); composerSpring('p', 0, 0, { damping: 1, response: 0.28 }, hide); if (cm.y) composerSpring('y', 0, 0, { damping: 1, response: 0.28 }) }
     if (!sent) $('go')?.focus?.({ preventScroll: true })
   }
+  // The keyboard never moves it: iOS pans the visual viewport, so the composer follows that pan.
+  function followKeyboard() {
+    const vv = window.visualViewport
+    $('composer').style.setProperty('--vv-top', `${vv ? Math.max(0, vv.offsetTop) : 0}px`)
+  }
+  window.visualViewport?.addEventListener('resize', () => { if (!$('composer').hidden) followKeyboard() })
+  window.visualViewport?.addEventListener('scroll', () => { if (!$('composer').hidden) followKeyboard() })
+  // Swipe it up and away: 1:1 under the finger, a soft edge downwards, and the release speed
+  // decides. Caught while it flies off, it comes back under the finger.
+  ;(() => {
+    const el = $('composer')
+    let down = null, base = 0, trail = []
+    el.addEventListener('pointerdown', e => {
+      // With reduced motion the swipe still works; the composer stays put and only the scrim fades.
+      if (e.target.closest('button, textarea')) return
+      if (!composing && cm.leaving && cm.spec) {
+        composing = cm.spec; cm.leaving = false
+        $('cscrim').style.pointerEvents = ''; document.body.classList.add('locked')
+      }
+      if (!composing) return
+      const halted = cm.anims.y?.stop(); cm.anims.y = null
+      base = halted ? halted.x : cm.y
+      cm.y = base
+      down = { y: e.clientY, id: e.pointerId }; trail = [{ y: e.clientY, t: e.timeStamp }]
+      el.setPointerCapture?.(e.pointerId)
+    })
+    el.addEventListener('pointermove', e => {
+      if (!down || e.pointerId !== down.id) return
+      trail.push({ y: e.clientY, t: e.timeStamp }); if (trail.length > 6) trail.shift()
+      const raw = base + e.clientY - down.y
+      cm.y = raw > 0 ? rubberband(raw, 240) : raw
+      paintComposer()
+    })
+    const up = e => {
+      if (!down || e.pointerId !== down.id) return
+      down = null
+      // Measured up to the release: a finger that stopped before letting go throws nothing.
+      trail.push({ y: e.clientY, t: e.timeStamp })
+      const recent = trail.filter(p => e.timeStamp - p.t < 100)
+      const first = recent[0], last = recent.at(-1)
+      const velocity = last && first && last.t > first.t ? (last.y - first.y) / (last.t - first.t) * 1000 : 0
+      if (cm.y + project(velocity) < -Math.min(cm.h * 0.35, 90)) closeComposer(false, Math.min(velocity, 0))
+      else composerSpring('y', 0, velocity, { damping: Math.abs(velocity) > 400 ? 0.8 : 1, response: 0.35 })
+    }
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up)
+  })()
 
   let lastFocus = null
   function openSheet(target) {
@@ -2063,7 +2349,7 @@ summary small { color: var(--fg3); font-size: 13px; }
       store.set('cockpit.favorites', [...state.favorites])
       render(); return
     }
-    if (t.dataset.compose) return openComposer(t.dataset.compose)
+    if (t.dataset.compose) return openComposer(t.dataset.compose, t)
     if (t.hasAttribute('data-cancel') || t.id === 'cscrim') return closeComposer()
     if (t.hasAttribute('data-send')) {
       const task = $('task').value.trim()
@@ -2084,7 +2370,7 @@ summary small { color: var(--fg3); font-size: 13px; }
           const sent = await sendToClaude(withSession(`Cockpit · Team\n${text}`, currentSession()), el)
           if (sent) island('Team wird gebildet', 'Claude zerlegt die Aufgabe', 'busy', { ...TEAM, mono: 'T' })
           return sent
-        } })
+        } }, t)
     }
     if (t.dataset.answer) {
       const m = team.members.find(x => x.id === t.dataset.answer)
@@ -2095,7 +2381,7 @@ summary small { color: var(--fg3); font-size: 13px; }
           const sent = await sendToClaude(withSession(`Cockpit · Antwort\n${m.id}\n${text}`, team.lead), el)
           if (sent) island('Antwort gesendet', `${m.name} macht weiter`)
           return sent
-        } })
+        } }, t)
     }
     if (t.dataset.member) return openSheet({ member: t.dataset.member })
     if (t.dataset.hold?.startsWith('merge:')) return island('Gedrückt halten', 'Erst nach 1,2 s Halten wird gemergt', 'warn')
@@ -2123,6 +2409,23 @@ summary small { color: var(--fg3); font-size: 13px; }
   })
   // The scrim is a div: clicks on it close the composer too.
   $('cscrim').addEventListener('click', () => closeComposer())
+  // A swipe on an alert is not a tap on its buttons.
+  $('alerts').addEventListener('click', e => { if (performance.now() - alertSwipedAt < 350) { e.stopPropagation(); e.preventDefault() } }, true)
+  // Chips and suggestions give way the moment a finger lands (iOS shows :active late or not at all).
+  ;(() => {
+    let pressed = null, x = 0, y = 0
+    const release = () => { pressed?.classList.remove('pressed'); pressed = null }
+    document.addEventListener('pointerdown', e => {
+      const el = e.target.closest('.chip, .app')
+      release()
+      if (!el) return
+      pressed = el; x = e.clientX; y = e.clientY
+      el.classList.add('pressed')
+    }, { passive: true })
+    document.addEventListener('pointermove', e => { if (pressed && Math.hypot(e.clientX - x, e.clientY - y) > 10) release() }, { passive: true })
+    document.addEventListener('pointerup', release)
+    document.addEventListener('pointercancel', release)
+  })()
   window.addEventListener('resize', () => layout(false))
   setInterval(() => { if (state.loaded.length) render() }, 60000)
 
