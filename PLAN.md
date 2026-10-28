@@ -51,6 +51,12 @@ Eine Mod für Claude Code, die Funktionen und Oberfläche erweitert: mehr Übers
 - Jede Skill-Nutzung erzeugt einen Toast und einen Eintrag im Zeitstrahl.
 - Die Gruppe „Design“ enthält die empfohlenen Design-Skills mit ihren Regeln und Referenzen zum Ansehen.
 
+**Auf dem Handy:** Die Mobile-App zeigt bei Cloud-Sessions keine Mod-Oberfläche. Deshalb gibt es das Cockpit dort als Artifact-Seite (`apps/cockpit-web`):
+- alle Skills farbig nach Kategorie
+- Infokarten mit Anleitung und Referenzen
+- ein Starten-Knopf, der den Auftrag per „Send to Claude“ an die Session schickt
+- Live-Status über die Datenbank der Seite
+
 ### Phase 2: Kontext-Ring
 
 - Live-Füllstand der Session als Ring, der von Grün über Gelb zu Rot wechselt.
