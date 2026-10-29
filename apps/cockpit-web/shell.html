@@ -415,8 +415,12 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .swipe-row { position: relative; background: var(--surface); transform: translate3d(0, 0, 0); transition: transform 0.34s var(--ease-out); touch-action: pan-y; }
 .swipe.dragging .swipe-row, .swipe.dragging .swipe-btn { transition: none; }
 .swipe.armed .swipe-btn { transition: transform 0.18s var(--ease-out); }
-.swipe.leave .swipe-row { transition: transform 0.22s var(--ease-out); }
-.swipe.collapse { transition: height 0.26s var(--ease-out), opacity 0.2s ease; opacity: 0; }
+.swipe.leave .swipe-row { transition: transform 0.24s var(--ease-out); }
+/* The red goes with the row, so only an empty gap is left to close. */
+.swipe.leave .swipe-act { opacity: 0; transition: opacity 0.18s ease 0.06s; }
+.swipe.collapse { transition: height 0.24s var(--ease-out); }
+/* A redraw of an open card (live data, an archived row) must not deal its rows in again. */
+.detail.still .swipe, .detail.still .mrow, .detail.still .srow, .detail.still .preview, .detail.still .stile, .detail.still .segs i { animation: none; }
 .swipe + .swipe > .swipe-row::before { content: ""; position: absolute; top: 0; left: 68px; right: 0; border-top: 0.5px solid var(--sep); }
 .swipe.sess + .swipe.sess > .swipe-row::before { left: 40px; }
 .swipe-row.mrow { animation: none; }
@@ -985,14 +989,16 @@ summary small { color: var(--fg3); font-size: 13px; }
     swipe.open = null
     navigator.vibrate?.(10)
     if (wrap?.isConnected) {
+      swipe.leaving++
       const row = wrap.querySelector('.swipe-row')
       wrap.classList.add('shown', 'leave'); wrap.classList.remove('dragging', 'armed')
       row.style.transform = `translate3d(${-wrap.offsetWidth - 24}px, 0, 0)`
-      await new Promise(done => setTimeout(done, REDUCED.matches ? 0 : 200))
+      await new Promise(done => setTimeout(done, REDUCED.matches ? 0 : 230))
       wrap.style.height = `${wrap.offsetHeight}px`
       void wrap.offsetHeight
       wrap.classList.add('collapse'); wrap.style.height = '0px'
-      await new Promise(done => setTimeout(done, REDUCED.matches ? 0 : 260))
+      await new Promise(done => setTimeout(done, REDUCED.matches ? 0 : 250))
+      swipe.leaving--
     }
     const sent = await sendToClaude(`Cockpit · Archivieren\n${id}`, wrap?.isConnected ? wrap : $('detail'))
     if (sent) island('Wird archiviert', 'Claude archiviert den Chat', 'busy', { ...SESSIONS_LOOK, mono: 'A' })
@@ -1724,7 +1730,8 @@ summary small { color: var(--fg3); font-size: 13px; }
     }
     state.open = closing ? null : id
     if (closing && pr.lingering) setTimeout(archiveMerge, 420)
-    if (state.open) $('detail').innerHTML = detailHtml(cards.find(c => c.id === state.open))
+    // Opening deals the rows in; later redraws of the same card keep them still.
+    if (state.open) { $('detail').classList.remove('still'); $('detail').innerHTML = detailHtml(cards.find(c => c.id === state.open)) }
     refreshCards()
     layout()
     if (state.open) scrollToWallet()
@@ -1889,7 +1896,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     // Leave the detail alone while a finger holds one of its buttons.
     // Let a running merge animation finish instead of restarting it.
     const playing = state.open === 'merge' && Date.now() - pr.playedAt < PLAY_MS && !!$('detail').querySelector('.merged.play')
-    if (state.open && !hold && !playing && !swipe.busy()) { $('detail').innerHTML = detailHtml(cards.find(c => c.id === state.open)); layout(true) }
+    if (state.open && !hold && !playing && !swipe.busy()) { $('detail').classList.add('still'); $('detail').innerHTML = detailHtml(cards.find(c => c.id === state.open)); layout(true) }
     renderResults()
     refreshSheet()
   }
@@ -2059,7 +2066,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     $('ctx-chip').setAttribute('aria-label', `Kontext dieser Session: ${pct(p)} belegt, ${look.word}`)
     const session = document.querySelector('[data-card="session"]')
     if (session) session.innerHTML = cardHtml(TOP_CARDS[0])
-    if (state.open === 'session') { $('detail').innerHTML = detailHtml(TOP_CARDS[0]); layout() }
+    if (state.open === 'session') { $('detail').classList.add('still'); $('detail').innerHTML = detailHtml(TOP_CARDS[0]); layout() }
     if (state.sheet?.context) renderContextSheet(false)
   }
 
@@ -2664,7 +2671,7 @@ summary small { color: var(--fg3); font-size: 13px; }
   // --- Swipe to archive ----------------------------------------------------------------
   // 1:1 with the finger after a clear horizontal start (vertical movement stays a scroll).
   const ACTION_W = 96
-  const swipe = { drag: null, open: null, swallow: false, busy() { return !!(this.drag || this.open) } }
+  const swipe = { drag: null, open: null, leaving: 0, swallow: false, busy() { return !!(this.drag || this.open || this.leaving) } }
   function swipeTo(wrap, x, armed = false) {
     const row = wrap.querySelector('.swipe-row'), btn = wrap.querySelector('.swipe-btn')
     row.style.transform = x ? `translate3d(${x}px, 0, 0)` : ''
