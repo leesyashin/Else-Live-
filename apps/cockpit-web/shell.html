@@ -154,6 +154,36 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .wcard > * { position: relative; z-index: 1; }
 .pattern { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; transition: transform 1s var(--spring); }
 .wcard > .pattern, .pass > .pattern, .best > .pattern { position: absolute; z-index: 0; }
+/* Living cards: slow, quiet, GPU-only. Coordinates follow the pattern's 400×250 slice. */
+.wcard { container-type: size; }
+.wcard > .live { position: absolute; inset: 0; z-index: 0; pointer-events: none; --s: max(0.25cqw, 0.4cqh); }
+.live > * { position: absolute; display: block; animation-iteration-count: infinite; will-change: transform, opacity; }
+.glint { width: var(--z); height: var(--z); margin: calc(var(--z) / -2) 0 0 calc(var(--z) / -2); border-radius: 50%;
+  background: radial-gradient(circle, var(--c) 0, var(--c) 18%, transparent 68%); opacity: 0; animation-name: glint; animation-timing-function: ease-in-out; }
+@keyframes glint { 0%, 100% { opacity: 0; transform: scale(0.55); } 45% { opacity: 1; transform: scale(1); } 60% { opacity: 0.85; } }
+.tglow { width: 16px; height: 16px; margin: 0; border-radius: 5px; background: var(--c); opacity: 0; box-shadow: 0 0 12px var(--c); animation-name: tglow; animation-timing-function: ease-in-out; }
+@keyframes tglow { 0%, 100% { opacity: 0; } 50% { opacity: 0.55; } }
+.spinl { width: calc(var(--r) * 2 * var(--s)); height: calc(var(--r) * 2 * var(--s)); margin: calc(var(--r) * -1 * var(--s)) 0 0 calc(var(--r) * -1 * var(--s)); overflow: visible; animation-name: spin; animation-timing-function: linear; }
+@keyframes spin { to { transform: rotate(1turn); } }
+.sweep { width: calc(var(--r) * 2 * var(--s)); height: calc(var(--r) * 2 * var(--s)); margin: calc(var(--r) * -1 * var(--s)) 0 0 calc(var(--r) * -1 * var(--s)); border-radius: 50%;
+  background: conic-gradient(from 0deg, rgba(48, 209, 88, 0.26), rgba(48, 209, 88, 0.06) 40deg, transparent 70deg); animation-name: spin; animation-timing-function: linear; }
+.comet { width: 46px; height: 4px; margin: -2px 0 0 -46px; border-radius: 2px; background: linear-gradient(90deg, transparent, rgba(196, 150, 255, 0.95)); box-shadow: 0 0 10px rgba(163, 92, 247, 0.8); opacity: 0; animation-name: comet; animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1); }
+@keyframes comet { 0% { opacity: 0; transform: translateX(0); } 12% { opacity: 1; } 70% { opacity: 1; } 82%, 100% { opacity: 0; transform: translateX(calc(100cqw + 46px)); } }
+/* Whole patterns that drift or breathe use the separate translate/scale properties, so the open-card transform still applies. */
+.pattern.drift-x, .pattern.drift-d, .pattern.breathe, .pattern.breathe-y { will-change: transform; animation: 16s ease-in-out infinite alternate; }
+.pattern.drift-x { animation-name: driftX; }
+.pattern.drift-d { animation-name: driftD; animation-duration: 22s; }
+.pattern.breathe { animation-name: breathe2; animation-duration: 22s; transform-origin: 88% 11%; }
+.pattern.breathe-y { animation-name: breatheY; animation-duration: 22s; transform-origin: 50% 94%; }
+@keyframes driftX { from { translate: -10px 0; } to { translate: 10px 0; } }
+@keyframes driftD { from { translate: -8px -5px; } to { translate: 8px 5px; } }
+@keyframes breathe2 { from { scale: 1; } to { scale: 1.045; } }
+@keyframes breatheY { from { scale: 1 0.93; } to { scale: 1 1.03; } }
+/* Cards out of sight, and everything behind an open sheet, hold still. */
+.wcard[aria-hidden="true"] .live > *, .wcard[aria-hidden="true"] > .pattern, body.locked .live > *, body.locked .wcard > .pattern,
+.wallet.moving .wcard > .pattern, .wallet.moving .live > .spinl, .wallet.moving .live > .sweep { animation-play-state: paused; }
+/* Glints may simply stop and start over: they are dark most of the time, a restart is invisible. */
+.wallet.moving .live > .glint, .wallet.moving .live > .tglow, .wallet.moving .live > .comet { animation-name: none; }
 .wcard[aria-expanded="true"] > .pattern { transform: translate3d(-10px, 6px, 0) scale(1.05); }
 .pattern.fade-r { -webkit-mask-image: linear-gradient(100deg, transparent 18%, #000 78%); mask-image: linear-gradient(100deg, transparent 18%, #000 78%); }
 .pattern.fade-b { -webkit-mask-image: linear-gradient(180deg, transparent 10%, #000 85%); mask-image: linear-gradient(180deg, transparent 10%, #000 85%); }
@@ -404,12 +434,29 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .srow { padding: 0; }
 .srow .slink { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; padding: 12px 4px 12px 14px; color: inherit; text-decoration: none; }
 .srow.leaving { opacity: 0.45; transition: opacity 0.3s; }
-.sarch { flex: none; align-self: stretch; min-width: 48px; padding: 0 14px; display: grid; place-items: center; color: var(--fg3); font-size: 13px; font-weight: 600; transition: color 0.2s, background-color 0.2s; }
-.sarch svg { width: 20px; height: 20px; }
-.sarch.armed { color: #fff; background: #ff453a; }
+/* Swipe left to archive, as in iOS Mail: the row follows the finger over a red action. A short
+   swipe leaves it open (tap the action to confirm), a long or fast one archives at once. Only
+   transform and opacity move while the finger is down; the gap closes once, after the row left. */
+.swipe { position: relative; overflow: hidden; }
+.swipe-act { position: absolute; inset: 0; display: flex; justify-content: flex-end; background: #ff453a; color: #fff; opacity: 0; }
+.swipe.shown .swipe-act { opacity: 1; }
+.swipe-btn { width: 96px; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: #fff; font-size: 13px; font-weight: 600; transition: transform 0.24s var(--ease-out); }
+.swipe-btn svg { width: 22px; height: 22px; }
+.swipe-row { position: relative; background: var(--surface); transform: translate3d(0, 0, 0); transition: transform 0.34s var(--ease-out); touch-action: pan-y; }
+.swipe.dragging .swipe-row, .swipe.dragging .swipe-btn { transition: none; }
+.swipe.armed .swipe-btn { transition: transform 0.18s var(--ease-out); }
+.swipe.leave .swipe-row { transition: transform 0.24s var(--ease-out); }
+/* The red goes with the row, so only an empty gap is left to close. */
+.swipe.leave .swipe-act { opacity: 0; transition: opacity 0.18s ease 0.06s; }
+.swipe.collapse { transition: height 0.24s var(--ease-out); }
+/* A redraw of an open card (live data, an archived row) must not deal its rows in again. */
+.detail.still .swipe, .detail.still .mrow, .detail.still .srow, .detail.still .preview, .detail.still .stile, .detail.still .segs i { animation: none; }
+.swipe + .swipe > .swipe-row::before { content: ""; position: absolute; top: 0; left: 68px; right: 0; border-top: 0.5px solid var(--sep); }
+.swipe.sess + .swipe.sess > .swipe-row::before { left: 40px; }
+.swipe-row.mrow { animation: none; }
+.swipe { animation: rowIn 0.5s var(--spring) both; animation-delay: calc(var(--i, 0) * 40ms + 100ms); }
 .secondary.arch { color: #ff453a; }
 .secondary.arch.armed { color: #fff; background: #ff453a; }
-.srow + .srow::before { left: 40px; }
 .sdot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--st); box-shadow: 0 0 0 4px color-mix(in srgb, var(--st) 22%, transparent); }
 .mstate { flex: none; font-size: 13px; font-weight: 600; color: var(--st); }
 /* Alerts arrive on a spring and leave with a swipe. Each sits in a slot whose height follows
@@ -710,6 +757,50 @@ summary small { color: var(--fg3); font-size: 13px; }
 
   // Clean line patterns, one per area, drawn over the card's colour.
   let patternId = 0
+  // Wallet cards get a quiet life on top of their pattern: points that glow, orbits that turn.
+  // Every moving part is its own small layer moving only by transform/opacity (the GPU does it),
+  // and its phase comes from the clock, so a redraw of the card never restarts it.
+  let livePatterns = false
+  const phase = (ms, offset = 0) => `animation-delay:${-((Date.now() + offset) % ms)}ms`
+  const at = (x, y) => `left:calc(${x} * var(--s) - (400 * var(--s) - 100cqw) / 2);top:calc(${y} * var(--s) - (250 * var(--s) - 100cqh) / 2)`
+  const glint = (x, y, color, ms, offset, size = 18) =>
+    `<i class="glint" style="${at(x, y)};--c:${color};--z:${size}px;animation-duration:${ms}ms;${phase(ms, offset)}"></i>`
+  function liveLayer(kind) {
+    let html = ''
+    if (kind === 'orbits') {
+      let orb = ''
+      for (let i = 1; i <= 7; i++) orb += `<ellipse cx="0" cy="0" rx="${i * 30}" ry="${i * 17}" transform="rotate(-18)"/>`
+      for (const [x, y, r] of [[-68, -18, 4], [42, 48, 3.2], [-30, 80, 3.6], [68, -40, 2.6]]) orb += `<circle cx="${x}" cy="${y}" r="${r}" fill="rgba(100, 180, 255, 0.6)" stroke="none"/>`
+      html += `<svg class="spinl" viewBox="-215 -215 430 430" style="${at(330, 70)};--r:215;animation-duration:180s;${phase(180000)}"><g fill="none" stroke="rgba(255, 255, 255, 0.2)">${orb}</g></svg>`
+      html += glint(262, 52, 'rgba(120, 190, 255, 0.9)', 4800, 0, 16)
+    } else if (kind === 'guilloche') {
+      let g = ''
+      for (let i = 0; i < 18; i++) g += `<ellipse cx="0" cy="0" rx="74" ry="24" transform="rotate(${i * 10})"/>`
+      for (let i = 0; i < 18; i++) g += `<ellipse cx="0" cy="0" rx="44" ry="15" transform="rotate(${i * 10 + 5})"/>`
+      html += `<svg class="spinl" viewBox="-78 -78 156 156" style="${at(318, 70)};--r:78;animation-duration:240s;${phase(240000)}"><g fill="none" stroke="rgba(28, 28, 30, 0.13)">${g}</g></svg>`
+    } else if (kind === 'radar') {
+      html += `<i class="sweep" style="${at(372, 232)};--r:240;animation-duration:9s;${phase(9000)}"></i>`
+      html += glint(300, 170, 'rgba(48, 209, 88, 0.95)', 4500, 0) + glint(250, 210, 'rgba(48, 209, 88, 0.85)', 5600, 2600, 14)
+    } else if (kind === 'pins') {
+      const lit = []
+      for (let y = 22; y < 250; y += 22) for (let x = 150; x < 410; x += 22) if ((x * 7 + y * 3) % 5 === 0) lit.push([x, y])
+      lit.filter((_, i) => i % 4 === 1).slice(0, 3).forEach(([x, y], i) => { html += glint(x, y, 'rgba(48, 209, 88, 0.95)', 5200 + i * 700, i * 1800, 16) })
+    } else if (kind === 'dots') {
+      ;[[262, 106], [340, 54], [301, 171]].forEach(([x, y], i) => { html += glint(x, y, 'rgba(255, 255, 255, 0.85)', 4800 + i * 900, i * 1700, 12) })
+    } else if (kind === 'mosaic') {
+      const tints = ['#c58cff', '#7fb4ff', '#6fe0d0', '#ffc46b', '#a9a4ff', '#d6d6de']
+      const tiles = []
+      for (let y = 14; y < 250; y += 26) for (let x = 168; x < 410; x += 26) { const k = (x * 3 + y * 7) % 11; if (k < 6) tiles.push([x, y, tints[k]]) }
+      tiles.filter((_, i) => i % 7 === 3).slice(0, 3).forEach(([x, y, c], i) => {
+        html += `<i class="tglow" style="${at(x, y)};--c:${c};animation-duration:${5400 + i * 610}ms;${phase(5400 + i * 610, i * 1300)}"></i>`
+      })
+    } else if (kind === 'branches') {
+      html += `<i class="comet" style="${at(0, 196)};animation-duration:7s;${phase(7000)}"></i>`
+    }
+    return html ? `<div class="live" aria-hidden="true">${html}</div>` : ''
+  }
+  // Patterns that drift or breathe as a whole.
+  const DRIFT = { waves: 'drift-x', stripes: 'drift-d', grid: 'drift-d', bars: 'breathe-y', rings: 'breathe' }
   function pattern(kind) {
     const id = `pt${++patternId}`
     const ink = kind === 'guilloche' ? 'rgba(28, 28, 30, 0.13)' : 'rgba(255, 255, 255, 0.2)'
@@ -775,7 +866,11 @@ summary small { color: var(--fg3); font-size: 13px; }
       for (let i = 0; i < 18; i++) body += `<ellipse cx="318" cy="70" rx="74" ry="24" transform="rotate(${i * 10} 318 70)"/>`
       for (let i = 0; i < 18; i++) body += `<ellipse cx="318" cy="70" rx="44" ry="15" transform="rotate(${i * 10 + 5} 318 70)"/>`
     }
-    return `<svg class="pattern ${fade}" viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs>${defs}</defs><g fill="none" stroke="${ink}" stroke-width="1">${body}</g></svg>`
+    // On a card the turning parts live in their own layer, not in the still pattern.
+    if (livePatterns && (kind === 'orbits' || kind === 'guilloche')) body = ''
+    const drift = livePatterns && DRIFT[kind] ? ` ${DRIFT[kind]}` : ''
+    const still = `<svg class="pattern ${fade}${drift}"${drift ? ` style="${phase(kind === 'waves' ? 16000 : 22000)}"` : ''} viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs>${defs}</defs><g fill="none" stroke="${ink}" stroke-width="1">${body}</g></svg>`
+    return livePatterns ? still + liveLayer(kind) : still
   }
   const short = name => name.split(':').pop()
 
@@ -958,6 +1053,37 @@ summary small { color: var(--fg3); font-size: 13px; }
     }
     render(); refreshSheet()
   }
+  // A row that can be swiped left to archive; the action under it is a real button for taps and screen readers.
+  function swipeRow(id, title, row, i, kind = '') {
+    return `<div class="swipe${kind ? ` ${kind}` : ''}" data-swipe="${esc(id)}" style="--i:${i}">
+      <div class="swipe-act"><button class="swipe-btn" data-archive-now="${esc(id)}" aria-label="${esc(`${title} archivieren`)}">${svg(ARCHIVE_ICON)}<span>Archivieren</span></button></div>
+      ${row}</div>`
+  }
+  // Archives at once (the swipe was the decision): the row leaves left, the gap closes, then the order goes out.
+  // If it cannot be sent, the row comes back.
+  async function archiveNow(id, wrap) {
+    if (archive.pending.has(id) || !/^session_[A-Za-z0-9]+$/.test(id)) return
+    archive.pending.add(id)
+    swipe.open = null
+    navigator.vibrate?.(10)
+    if (wrap?.isConnected) {
+      swipe.leaving++
+      const row = wrap.querySelector('.swipe-row')
+      wrap.classList.add('shown', 'leave'); wrap.classList.remove('dragging', 'armed')
+      row.style.transform = `translate3d(${-wrap.offsetWidth - 24}px, 0, 0)`
+      await new Promise(done => setTimeout(done, REDUCED.matches ? 0 : 230))
+      wrap.style.height = `${wrap.offsetHeight}px`
+      void wrap.offsetHeight
+      wrap.classList.add('collapse'); wrap.style.height = '0px'
+      await new Promise(done => setTimeout(done, REDUCED.matches ? 0 : 250))
+      swipe.leaving--
+    }
+    const sent = await sendToClaude(`Cockpit · Archivieren\n${id}`, wrap?.isConnected ? wrap : $('detail'))
+    if (sent) island('Wird archiviert', 'Claude archiviert den Chat', 'busy', { ...SESSIONS_LOOK, mono: 'A' })
+    else archive.pending.delete(id)
+    render(); refreshSheet()
+  }
+
   function cleanSession(r) {
     if (!r || typeof r.id !== 'string' || typeof r.url !== 'string' || !/^https:\/\/claude\.ai\//.test(r.url)) return null
     return {
@@ -1324,16 +1450,14 @@ summary small { color: var(--fg3); font-size: 13px; }
     const groups = sessionGroups()
     if (!groups.length) return `<p class="empty">${esc(sessions.error ? 'Die Daten der Seite sind gerade nicht lesbar.' : 'Keine aktuelle Session. Gezeigt werden Sessions der letzten 24 Stunden, archivierte nicht.')}</p>`
     let i = 0
-    const html = groups.map(g => group(g.repo, g.rows.length, g.rows.map(r => {
+    const html = groups.map(g => ({ ...g, rows: g.rows.filter(r => !archive.pending.has(r.id)) })).filter(g => g.rows.length).map(g => group(g.repo, g.rows.length, g.rows.map(r => {
       const look = SESSION_LOOK[r.state]
-      const leaving = archive.pending.has(r.id)
-      return `<div class="mrow srow${leaving ? ' leaving' : ''}" style="--i:${i++};--st:${look.st}">
+      return swipeRow(r.id, r.title, `<div class="mrow srow swipe-row" style="--st:${look.st}">
         <a class="slink" href="${esc(r.url)}" target="_blank" rel="noopener">
-          <span class="sdot" aria-hidden="true"></span><span class="stext"><b>${esc(r.title)}</b><span>${esc(leaving ? 'Wird archiviert …' : r.note || (r.updatedAt ? ago(r.updatedAt) : ''))}</span></span>
-          <span class="trail"><span class="mstate">${esc(look.word)}</span>${CHEV}</span></a>
-        ${leaving ? '' : `<button class="sarch${archive.armed === r.id ? ' armed' : ''}" data-archive="${esc(r.id)}" aria-label="${esc(`${r.title} archivieren`)}">${archive.armed === r.id ? 'Archivieren?' : svg(ARCHIVE_ICON)}</button>`}</div>`
+          <span class="sdot" aria-hidden="true"></span><span class="stext"><b>${esc(r.title)}</b><span>${esc(r.note || (r.updatedAt ? ago(r.updatedAt) : ''))}</span></span>
+          <span class="trail"><span class="mstate">${esc(look.word)}</span>${CHEV}</span></a></div>`, i++, 'sess')
     }).join(''))).join('')
-    return `${TIP(`Tippen öffnet · rechts archivieren${sessions.at ? ` · Stand ${ago(sessions.at)}` : ''}`)}${html}`
+    return `${TIP(`Tippen öffnet · nach links wischen archiviert${sessions.at ? ` · Stand ${ago(sessions.at)}` : ''}`)}${html}`
   }
 
   function teamDetail() {
@@ -1342,10 +1466,10 @@ summary small { color: var(--fg3); font-size: 13px; }
     if (!ms.length) return `<p class="empty">${esc(team.error ? 'Die Daten der Seite sind gerade nicht lesbar.' : team.archivedAt ? `Das letzte Team ist fertig, gemergt und archiviert${team.goal?.goal ? ` („${team.goal.goal}“)` : ''}. Gib Claude die nächste größere Aufgabe.` : 'Noch kein Team. Beschreib eine größere Aufgabe: Claude zerlegt sie und verteilt die Teile auf eigene Chats in diesem Repo.')}</p>${start}`
     const order = { question: 0, conflict: 1, working: 2, waiting: 3, failed: 4, done: 5 }
     const sorted = [...ms].sort((a, b) => order[a.state] - order[b.state] || a.name.localeCompare(b.name))
-    const rows = sorted.map((m, i) => `<button class="mrow" data-member="${esc(m.id)}" style="--i:${i};--st:${MEMBER_LOOK[m.state].st}">
+    const rows = sorted.filter(m => !archive.pending.has(m.id)).map((m, i) => swipeRow(m.id, m.name, `<button class="mrow swipe-row" data-member="${esc(m.id)}" style="--st:${MEMBER_LOOK[m.state].st}">
         ${avatar(m, 40)}<span class="stext"><b>${esc(m.name)}</b><span>${esc(m.note || m.task)}</span></span>
-        <span class="trail"><span class="mstate">${esc(MEMBER_LOOK[m.state].word)}</span>${CHEV}</span></button>`).join('')
-    return `${TIP('Tippen öffnet den Chat')}
+        <span class="trail"><span class="mstate">${esc(MEMBER_LOOK[m.state].word)}</span>${CHEV}</span></button>`, i)).join('')
+    return `${TIP('Tippen öffnet den Chat · nach links wischen archiviert')}
       ${team.goal?.goal ? `<div class="preview"><small class="label" style="margin:0"><span>Aufgabe</span></small><p class="goal">${esc(team.goal.goal)}</p></div>` : ''}
       <div class="glist">${rows}</div>${start}${archiveButton(ms.map(m => m.id), 'Team archivieren')}`
   }
@@ -1533,6 +1657,15 @@ summary small { color: var(--fg3); font-size: 13px; }
 
   // Moves a card. `instant` jumps there (to set a starting point); otherwise it glides from where
   // it is. `onSettle` runs once it has arrived.
+  // While the stack moves, the cards' quiet life holds still: the eye follows the motion, and the
+  // browser need not sample a few dozen ambient animations in every frame of it.
+  let movingTimer = 0
+  function moving(ms) {
+    const w = $('wallet')
+    if (!w.classList.contains('moving')) w.classList.add('moving')
+    clearTimeout(movingTimer)
+    movingTimer = setTimeout(() => w.classList.remove('moving'), ms)
+  }
   function place(el, y, { scale = 1, opacity = 1, delay = 0, instant = false, onSettle } = {}) {
     const m = motionOf(el)
     m.parked = false
@@ -1540,6 +1673,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     if (!instant && m.to && m.to.y === y && m.to.s === scale && m.to.o === opacity) return
     m.to = { y, s: scale, o: opacity }
     clearTimeout(m.timer)
+    if (!instant) moving(delay + 560)
     const fade = opacity < 1 ? 240 : 340
     el.style.transition = instant ? 'none'
       : `transform 520ms ${MOVE} ${delay}ms, opacity ${fade}ms var(--ease-out) ${delay}ms, scale 200ms var(--ease-out)`
@@ -1599,7 +1733,15 @@ summary small { color: var(--fg3); font-size: 13px; }
     for (const card of cards) {
       const el = cardEl(card)
       if (!el) continue
-      el.innerHTML = cardHtml(card)
+      // Redraw only when the card's content changed: rebuilding it restarts nothing (phases come
+      // from the clock) but costs style work, and live data arrives often.
+      const key = cardHtml(card).replace(/pt\d+/g, '')
+      if (el.dataset.key !== key || !el.firstChild) {
+        el.dataset.key = key
+        livePatterns = true
+        el.innerHTML = cardHtml(card)
+        livePatterns = false
+      }
       el.setAttribute('aria-label', `${card.head ? 'Skills, zurück zu allen Bereichen' : card.title}${state.open === card.id ? ', geöffnet' : ''}`)
     }
   }
@@ -1684,7 +1826,8 @@ summary small { color: var(--fg3); font-size: 13px; }
     }
     state.open = closing ? null : id
     if (closing && pr.lingering) setTimeout(archiveMerge, 420)
-    if (state.open) $('detail').innerHTML = detailHtml(cards.find(c => c.id === state.open))
+    // Opening deals the rows in; later redraws of the same card keep them still.
+    if (state.open) { $('detail').classList.remove('still'); $('detail').innerHTML = detailHtml(cards.find(c => c.id === state.open)) }
     refreshCards()
     layout()
     if (state.open) scrollToWallet()
@@ -1849,7 +1992,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     // Leave the detail alone while a finger holds one of its buttons.
     // Let a running merge animation finish instead of restarting it.
     const playing = state.open === 'merge' && Date.now() - pr.playedAt < PLAY_MS && !!$('detail').querySelector('.merged.play')
-    if (state.open && !hold && !playing) { $('detail').innerHTML = detailHtml(cards.find(c => c.id === state.open)); layout(true) }
+    if (state.open && !hold && !playing && !swipe.busy()) { $('detail').classList.add('still'); $('detail').innerHTML = detailHtml(cards.find(c => c.id === state.open)); layout(true) }
     renderResults()
     refreshSheet()
   }
@@ -2018,8 +2161,8 @@ summary small { color: var(--fg3); font-size: 13px; }
     arc.setAttribute('style', `${arcStyle(14, p)};stroke:${look.a}`)
     $('ctx-chip').setAttribute('aria-label', `Kontext dieser Session: ${pct(p)} belegt, ${look.word}`)
     const session = document.querySelector('[data-card="session"]')
-    if (session) session.innerHTML = cardHtml(TOP_CARDS[0])
-    if (state.open === 'session') { $('detail').innerHTML = detailHtml(TOP_CARDS[0]); layout() }
+    if (session) { livePatterns = true; session.innerHTML = cardHtml(TOP_CARDS[0]); livePatterns = false }
+    if (state.open === 'session') { $('detail').classList.add('still'); $('detail').innerHTML = detailHtml(TOP_CARDS[0]); layout() }
     if (state.sheet?.context) renderContextSheet(false)
   }
 
@@ -2621,9 +2764,87 @@ summary small { color: var(--fg3); font-size: 13px; }
   document.addEventListener('keydown', () => { swallowClick = false })
   document.addEventListener('contextmenu', e => { if (e.target.closest('[data-hold]')) e.preventDefault() })
 
+  // --- Swipe to archive ----------------------------------------------------------------
+  // 1:1 with the finger after a clear horizontal start (vertical movement stays a scroll).
+  const ACTION_W = 96
+  const swipe = { drag: null, open: null, leaving: 0, swallow: false, busy() { return !!(this.drag || this.open || this.leaving) } }
+  function swipeTo(wrap, x, armed = false) {
+    const row = wrap.querySelector('.swipe-row'), btn = wrap.querySelector('.swipe-btn')
+    row.style.transform = x ? `translate3d(${x}px, 0, 0)` : ''
+    wrap.classList.toggle('shown', x < 0)
+    wrap.classList.toggle('armed', armed)
+    // Armed, the label rides on the row's edge; otherwise it waits at the right.
+    btn.style.transform = armed ? `translate3d(${x + ACTION_W}px, 0, 0)` : ''
+  }
+  function closeSwipe(wrap) {
+    if (!wrap?.isConnected) { swipe.open = null; return }
+    wrap.classList.remove('dragging')
+    swipeTo(wrap, 0)
+    if (swipe.open === wrap) swipe.open = null
+    setTimeout(() => { if (swipe.open !== wrap && !wrap.classList.contains('dragging')) wrap.classList.remove('shown') }, 340)
+  }
+  document.addEventListener('pointerdown', e => {
+    const wrap = e.target.closest?.('.swipe')
+    // A touch anywhere else closes an open row.
+    if (swipe.open && swipe.open !== wrap) { closeSwipe(swipe.open); swipe.swallow = true; return }
+    if (!wrap || e.target.closest('.swipe-btn') || (e.pointerType === 'mouse' && e.button !== 0)) return
+    const row = wrap.querySelector('.swipe-row')
+    swipe.drag = { wrap, id: e.pointerId, x0: e.clientX, y0: e.clientY, base: swipe.open === wrap ? -ACTION_W : 0, on: false, trail: [{ x: e.clientX, t: e.timeStamp }], w: wrap.offsetWidth, row }
+  }, { passive: true })
+  document.addEventListener('pointermove', e => {
+    const d = swipe.drag
+    if (!d || e.pointerId !== d.id) return
+    const dx = e.clientX - d.x0, dy = e.clientY - d.y0
+    if (!d.on) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { swipe.drag = null; return }
+      if (Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy) * 1.2) return
+      d.on = true
+      d.x0 = e.clientX - (dx > 0 ? 10 : -10)
+      d.wrap.classList.add('dragging', 'shown')
+      try { d.row.setPointerCapture(e.pointerId) } catch {}
+      // The hold-to-load of a row underneath gives way to the swipe.
+      cancelHold?.()
+    }
+    d.trail.push({ x: e.clientX, t: e.timeStamp }); if (d.trail.length > 6) d.trail.shift()
+    let x = d.base + e.clientX - d.x0
+    // Right of rest it resists; there is nothing there.
+    if (x > 0) x = rubberband(x, d.w)
+    const armed = x < -d.w * 0.55
+    if (armed !== d.armed) { d.armed = armed; if (armed) navigator.vibrate?.(6) }
+    swipeTo(d.wrap, x, armed)
+    d.x = x
+  }, { passive: true })
+  const endSwipe = e => {
+    const d = swipe.drag
+    if (!d || e.pointerId !== d.id) return
+    swipe.drag = null
+    if (!d.on) return
+    swipe.swallow = true
+    d.wrap.classList.remove('dragging')
+    const recent = d.trail.filter(p => d.trail.at(-1).t - p.t < 100)
+    const v = recent.length > 1 ? (recent.at(-1).x - recent[0].x) / Math.max(1, recent.at(-1).t - recent[0].t) : 0
+    const x = d.x ?? 0
+    // Where the flick would come to rest decides: far enough left archives, past the action opens it.
+    const rest = x + v * 140
+    const id = d.wrap.dataset.swipe
+    if (e.type !== 'pointercancel' && (d.armed || rest < -d.w * 0.55)) archiveNow(id, d.wrap)
+    else if (rest < -ACTION_W * 0.6) { swipeTo(d.wrap, -ACTION_W); swipe.open = d.wrap }
+    else closeSwipe(d.wrap)
+  }
+  document.addEventListener('pointerup', endSwipe)
+  document.addEventListener('pointercancel', endSwipe)
+  // The tap that ends a swipe (or closes an open row) opens nothing.
+  document.addEventListener('click', e => {
+    if (!swipe.swallow) return
+    swipe.swallow = false
+    if (e.target.closest?.('.swipe-btn')) return
+    e.preventDefault(); e.stopPropagation()
+  }, true)
+
   // --- Events ----------------------------------------------------------------------
   document.addEventListener('click', async e => {
     if (swallowClick) { swallowClick = false; e.preventDefault(); return }
+    if (e.target.closest?.('[data-archive-now]')) { const b = e.target.closest('[data-archive-now]'); return archiveNow(b.dataset.archiveNow, b.closest('.swipe')) }
     const t = e.target.closest('button, .scrim')
     if (!t) return
     if (t.id === 'scrim' || t.hasAttribute('data-close')) return closeSheet()

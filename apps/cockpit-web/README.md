@@ -27,6 +27,8 @@ Jeder Auftrag nennt die Session, für die er gedacht ist (`Session: <ID>`, die S
 - Die Suche schwebt als Material über der Seite.
 - Bei reduzierter Bewegung blendet das Blatt nur über. Reduzierte Transparenz und erhöhter Kontrast werden beachtet.
 
+- **Archivieren per Wischen:** In der Sessions-Karte und in der Team-Karte eine Zeile nach links wischen. Kurz gewischt bleibt sie offen, ein Tipp auf „Archivieren“ bestätigt. Weit oder schnell gewischt archiviert sie sofort. Die Zeile fliegt nach links hinaus, die Lücke schließt sich, dann geht `Cockpit · Archivieren` an Claude. Klappt das Senden nicht, kommt die Zeile zurück.
+
 Wie „Starten“ funktioniert:
 1. Die Seite schickt den Auftrag per „Send to Claude“ als Kommentar an die Session.
 2. Claude startet den Skill und antwortet im Kommentar.
