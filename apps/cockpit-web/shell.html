@@ -148,43 +148,33 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   transition: box-shadow 0.4s; will-change: transform, opacity;
   display: flex; flex-direction: column; justify-content: space-between; padding: 15px 20px 18px; width: 100%;
 }
-.wcard::before { content: ""; position: absolute; inset: 0; background: linear-gradient(118deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 34%, rgba(255, 255, 255, 0) 52%); pointer-events: none; }
-.wcard::after { content: ""; position: absolute; inset: 0; opacity: 0.05; pointer-events: none;
+/* Layers inside a card, bottom to top: colour, pattern, gloss and grain, content. The gloss lies over
+   the pattern, so light catches both like one printed surface. */
+.wcard::before { content: ""; position: absolute; inset: 0; z-index: 1; background: linear-gradient(118deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 34%, rgba(255, 255, 255, 0) 52%); pointer-events: none; }
+.wcard::after { content: ""; position: absolute; inset: 0; z-index: 1; opacity: 0.05; pointer-events: none;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
-.wcard > * { position: relative; z-index: 1; }
-.pattern { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; transition: transform 1s var(--spring); }
+.wcard > * { position: relative; z-index: 2; }
+/* The pattern is part of the card's material: it never moves on its own. */
+.pattern { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .wcard > .pattern, .pass > .pattern, .best > .pattern { position: absolute; z-index: 0; }
-/* Living cards: slow, quiet, GPU-only. Coordinates follow the pattern's 400×250 slice. */
+/* Living cards: the life is in the pattern's own lines and dots (a ring that brightens, a pin that
+   glows, light running along a line), never a separate layer on top. Coordinates follow the
+   pattern's 400×250 slice. */
 .wcard { container-type: size; }
 .wcard > .live { position: absolute; inset: 0; z-index: 0; pointer-events: none; --s: max(0.25cqw, 0.4cqh); }
-.live > * { position: absolute; display: block; animation-iteration-count: infinite; will-change: transform, opacity; }
-.glint { width: var(--z); height: var(--z); margin: calc(var(--z) / -2) 0 0 calc(var(--z) / -2); border-radius: 50%;
-  background: radial-gradient(circle, var(--c) 0, var(--c) 18%, transparent 68%); opacity: 0; animation-name: glint; animation-timing-function: ease-in-out; }
-@keyframes glint { 0%, 100% { opacity: 0; transform: scale(0.55); } 45% { opacity: 1; transform: scale(1); } 60% { opacity: 0.85; } }
-.tglow { width: 16px; height: 16px; margin: 0; border-radius: 5px; background: var(--c); opacity: 0; box-shadow: 0 0 12px var(--c); animation-name: tglow; animation-timing-function: ease-in-out; }
-@keyframes tglow { 0%, 100% { opacity: 0; } 50% { opacity: 0.55; } }
+.live > * { position: absolute; display: block; animation-iteration-count: infinite; will-change: transform; }
 .spinl { width: calc(var(--r) * 2 * var(--s)); height: calc(var(--r) * 2 * var(--s)); margin: calc(var(--r) * -1 * var(--s)) 0 0 calc(var(--r) * -1 * var(--s)); overflow: visible; animation-name: spin; animation-timing-function: linear; }
 @keyframes spin { to { transform: rotate(1turn); } }
-.sweep { width: calc(var(--r) * 2 * var(--s)); height: calc(var(--r) * 2 * var(--s)); margin: calc(var(--r) * -1 * var(--s)) 0 0 calc(var(--r) * -1 * var(--s)); border-radius: 50%;
-  background: conic-gradient(from 0deg, rgba(48, 209, 88, 0.26), rgba(48, 209, 88, 0.06) 40deg, transparent 70deg); animation-name: spin; animation-timing-function: linear; }
-.comet { width: 46px; height: 4px; margin: -2px 0 0 -46px; border-radius: 2px; background: linear-gradient(90deg, transparent, rgba(196, 150, 255, 0.95)); box-shadow: 0 0 10px rgba(163, 92, 247, 0.8); opacity: 0; animation-name: comet; animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1); }
-@keyframes comet { 0% { opacity: 0; transform: translateX(0); } 12% { opacity: 1; } 70% { opacity: 1; } 82%, 100% { opacity: 0; transform: translateX(calc(100cqw + 46px)); } }
-/* Whole patterns that drift or breathe use the separate translate/scale properties, so the open-card transform still applies. */
-.pattern.drift-x, .pattern.drift-d, .pattern.breathe, .pattern.breathe-y { will-change: transform; animation: 16s ease-in-out infinite alternate; }
-.pattern.drift-x { animation-name: driftX; }
-.pattern.drift-d { animation-name: driftD; animation-duration: 22s; }
-.pattern.breathe { animation-name: breathe2; animation-duration: 22s; transform-origin: 88% 11%; }
-.pattern.breathe-y { animation-name: breatheY; animation-duration: 22s; transform-origin: 50% 94%; }
-@keyframes driftX { from { translate: -10px 0; } to { translate: 10px 0; } }
-@keyframes driftD { from { translate: -8px -5px; } to { translate: 8px 5px; } }
-@keyframes breathe2 { from { scale: 1; } to { scale: 1.045; } }
-@keyframes breatheY { from { scale: 1 0.93; } to { scale: 1 1.03; } }
-/* Cards out of sight, and everything behind an open sheet, hold still. */
-.wcard[aria-hidden="true"] .live > *, .wcard[aria-hidden="true"] > .pattern, body.locked .live > *, body.locked .wcard > .pattern,
-.wallet.moving .wcard > .pattern, .wallet.moving .live > .spinl, .wallet.moving .live > .sweep { animation-play-state: paused; }
-/* Glints may simply stop and start over: they are dark most of the time, a restart is invisible. */
-.wallet.moving .live > .glint, .wallet.moving .live > .tglow, .wallet.moving .live > .comet { animation-name: none; }
-.wcard[aria-expanded="true"] > .pattern { transform: translate3d(-10px, 6px, 0) scale(1.05); }
+/* A part of the pattern that brightens and settles back, in its own ink. */
+.pattern .lv { animation: lv var(--d) ease-in-out infinite; }
+@keyframes lv { 0%, 100% { opacity: var(--lo, 0.35); } 50% { opacity: 1; } }
+/* Light that runs along a line of the pattern. */
+.pattern .run { stroke-dasharray: 46 560; animation: run var(--d) cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+@keyframes run { from { stroke-dashoffset: 46; } to { stroke-dashoffset: -560; } }
+/* Cards out of sight, everything behind an open sheet, and the whole stack while it moves hold still. */
+.wcard[aria-hidden="true"] .live > *, .wcard[aria-hidden="true"] .pattern .lv, .wcard[aria-hidden="true"] .pattern .run,
+body.locked .live > *, body.locked .pattern .lv, body.locked .pattern .run,
+.wallet.moving .live > *, .wallet.moving .pattern .lv, .wallet.moving .pattern .run { animation-play-state: paused; }
 .pattern.fade-r { -webkit-mask-image: linear-gradient(100deg, transparent 18%, #000 78%); mask-image: linear-gradient(100deg, transparent 18%, #000 78%); }
 .pattern.fade-b { -webkit-mask-image: linear-gradient(180deg, transparent 10%, #000 85%); mask-image: linear-gradient(180deg, transparent 10%, #000 85%); }
 .wcard.ticket { color: #1c1c1e; }
@@ -626,6 +616,9 @@ summary small { color: var(--fg3); font-size: 13px; }
   .cscrim, .composer, .aslot > .alert { transform: none !important; transition: opacity 0.2s ease !important; }
   .cscrim.open, .composer.open { opacity: 1; }
   .chip.pressed { transform: none; opacity: 0.6; transition: opacity 0.1s !important; }
+  /* The cards' patterns stand still, as drawn; added lights are not shown. */
+  .pattern .lv { animation: none !important; }
+  .pattern .lv.add, .pattern .run { display: none; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .search { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
@@ -757,14 +750,15 @@ summary small { color: var(--fg3); font-size: 13px; }
 
   // Clean line patterns, one per area, drawn over the card's colour.
   let patternId = 0
-  // Wallet cards get a quiet life on top of their pattern: points that glow, orbits that turn.
-  // Every moving part is its own small layer moving only by transform/opacity (the GPU does it),
-  // and its phase comes from the clock, so a redraw of the card never restarts it.
+  // Wallet cards get a quiet life inside their pattern: a ring, a pin or a tile of the pattern itself
+  // brightens and settles, light runs along a line. Nothing lies on top of it. Each phase comes from
+  // the clock, so a redraw of the card never restarts it.
   let livePatterns = false
   const phase = (ms, offset = 0) => `animation-delay:${-((Date.now() + offset) % ms)}ms`
   const at = (x, y) => `left:calc(${x} * var(--s) - (400 * var(--s) - 100cqw) / 2);top:calc(${y} * var(--s) - (250 * var(--s) - 100cqh) / 2)`
-  const glint = (x, y, color, ms, offset, size = 18) =>
-    `<i class="glint" style="${at(x, y)};--c:${color};--z:${size}px;animation-duration:${ms}ms;${phase(ms, offset)}"></i>`
+  // `lo` 0 marks an added light (a lit copy of a tile or dot): it only exists while things move.
+  const lv = (ms, offset = 0, lo = 0.35) => `class="lv${lo ? '' : ' add'}" style="--d:${ms}ms;--lo:${lo};${phase(ms, offset)}"`
+  // Orbits and the guilloche turn as a whole, slowly: the pattern itself is what moves.
   function liveLayer(kind) {
     let html = ''
     if (kind === 'orbits') {
@@ -772,35 +766,14 @@ summary small { color: var(--fg3); font-size: 13px; }
       for (let i = 1; i <= 7; i++) orb += `<ellipse cx="0" cy="0" rx="${i * 30}" ry="${i * 17}" transform="rotate(-18)"/>`
       for (const [x, y, r] of [[-68, -18, 4], [42, 48, 3.2], [-30, 80, 3.6], [68, -40, 2.6]]) orb += `<circle cx="${x}" cy="${y}" r="${r}" fill="rgba(100, 180, 255, 0.6)" stroke="none"/>`
       html += `<svg class="spinl" viewBox="-215 -215 430 430" style="${at(330, 70)};--r:215;animation-duration:180s;${phase(180000)}"><g fill="none" stroke="rgba(255, 255, 255, 0.2)">${orb}</g></svg>`
-      html += glint(262, 52, 'rgba(120, 190, 255, 0.9)', 4800, 0, 16)
     } else if (kind === 'guilloche') {
       let g = ''
       for (let i = 0; i < 18; i++) g += `<ellipse cx="0" cy="0" rx="74" ry="24" transform="rotate(${i * 10})"/>`
       for (let i = 0; i < 18; i++) g += `<ellipse cx="0" cy="0" rx="44" ry="15" transform="rotate(${i * 10 + 5})"/>`
       html += `<svg class="spinl" viewBox="-78 -78 156 156" style="${at(318, 70)};--r:78;animation-duration:240s;${phase(240000)}"><g fill="none" stroke="rgba(28, 28, 30, 0.13)">${g}</g></svg>`
-    } else if (kind === 'radar') {
-      html += `<i class="sweep" style="${at(372, 232)};--r:240;animation-duration:9s;${phase(9000)}"></i>`
-      html += glint(300, 170, 'rgba(48, 209, 88, 0.95)', 4500, 0) + glint(250, 210, 'rgba(48, 209, 88, 0.85)', 5600, 2600, 14)
-    } else if (kind === 'pins') {
-      const lit = []
-      for (let y = 22; y < 250; y += 22) for (let x = 150; x < 410; x += 22) if ((x * 7 + y * 3) % 5 === 0) lit.push([x, y])
-      lit.filter((_, i) => i % 4 === 1).slice(0, 3).forEach(([x, y], i) => { html += glint(x, y, 'rgba(48, 209, 88, 0.95)', 5200 + i * 700, i * 1800, 16) })
-    } else if (kind === 'dots') {
-      ;[[262, 106], [340, 54], [301, 171]].forEach(([x, y], i) => { html += glint(x, y, 'rgba(255, 255, 255, 0.85)', 4800 + i * 900, i * 1700, 12) })
-    } else if (kind === 'mosaic') {
-      const tints = ['#c58cff', '#7fb4ff', '#6fe0d0', '#ffc46b', '#a9a4ff', '#d6d6de']
-      const tiles = []
-      for (let y = 14; y < 250; y += 26) for (let x = 168; x < 410; x += 26) { const k = (x * 3 + y * 7) % 11; if (k < 6) tiles.push([x, y, tints[k]]) }
-      tiles.filter((_, i) => i % 7 === 3).slice(0, 3).forEach(([x, y, c], i) => {
-        html += `<i class="tglow" style="${at(x, y)};--c:${c};animation-duration:${5400 + i * 610}ms;${phase(5400 + i * 610, i * 1300)}"></i>`
-      })
-    } else if (kind === 'branches') {
-      html += `<i class="comet" style="${at(0, 196)};animation-duration:7s;${phase(7000)}"></i>`
     }
     return html ? `<div class="live" aria-hidden="true">${html}</div>` : ''
   }
-  // Patterns that drift or breathe as a whole.
-  const DRIFT = { waves: 'drift-x', stripes: 'drift-d', grid: 'drift-d', bars: 'breathe-y', rings: 'breathe' }
   function pattern(kind) {
     const id = `pt${++patternId}`
     const ink = kind === 'guilloche' ? 'rgba(28, 28, 30, 0.13)' : 'rgba(255, 255, 255, 0.2)'
@@ -813,6 +786,8 @@ summary small { color: var(--fg3); font-size: 13px; }
     } else if (kind === 'dots') {
       defs = `<pattern id="${id}" width="13" height="13" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.25" fill="rgba(255,255,255,.34)" stroke="none"/></pattern>`
       body = `<rect width="400" height="250" fill="url(#${id})" stroke="none"/>`
+      // Live: single dots of the grid light up, right where they sit.
+      if (livePatterns) [[262, 106], [340, 54], [301, 171], [236, 54]].forEach(([x, y], i) => { body += `<circle cx="${x}" cy="${y}" r="1.6" fill="rgba(255, 255, 255, 0.95)" stroke="none" ${lv(4800 + i * 900, i * 1700, 0)}/>` })
       fade = 'fade-r'
     } else if (kind === 'bars') {
       for (let i = 0; i < 30; i++) {
@@ -831,10 +806,13 @@ summary small { color: var(--fg3); font-size: 13px; }
       for (let y = 0; y <= 250; y += 20) body += `<line x1="0" y1="${y}" x2="400" y2="${y}"/>`
       fade = 'fade-b'
     } else if (kind === 'radar') {
-      for (let i = 1; i <= 9; i++) body += `<circle cx="372" cy="232" r="${i * 26}" stroke="rgba(48, 209, 88, ${(0.42 - i * 0.035).toFixed(2)})"/>`
+      // Live: the rings brighten one after another, outward, like a slow ping.
+      for (let i = 1; i <= 9; i++) body += `<circle cx="372" cy="232" r="${i * 26}" stroke="rgba(48, 209, 88, ${(0.42 - i * 0.035).toFixed(2)})"${livePatterns ? ` ${lv(6000, -i * 420, 0.55)}` : ''}/>`
     } else if (kind === 'branches') {
       // Side branches curving into one main line, like a merge graph.
       body += `<line x1="-10" y1="196" x2="410" y2="196" stroke="rgba(163, 92, 247, 0.55)" stroke-width="2.5"/>`
+      // Live: a light runs along the main line, in the line's own colour.
+      if (livePatterns) body += `<line class="run" x1="-10" y1="196" x2="410" y2="196" stroke="rgba(214, 180, 255, 0.9)" stroke-width="2.5" stroke-linecap="round" style="--d:7000ms;${phase(7000)}"/>`
       for (let i = 0; i < 9; i++) {
         const x = 120 + i * 30, y = 36 + i * 9
         body += `<path d="M${x - 140} ${y} C ${x - 40} ${y}, ${x} 196, ${x + 70} 196"/>`
@@ -847,6 +825,8 @@ summary small { color: var(--fg3); font-size: 13px; }
         for (let x = 168; x < 410; x += 26) {
           const k = (x * 3 + y * 7) % 11
           if (k < 6) body += `<rect x="${x}" y="${y}" width="16" height="16" rx="5" fill="${tints[k]}" fill-opacity="${(0.18 + (k % 3) * 0.08).toFixed(2)}" stroke="none"/>`
+          // Live: a few tiles light up in place now and then.
+          if (livePatterns && k < 6 && (x + y) % 7 === 3) body += `<rect x="${x}" y="${y}" width="16" height="16" rx="5" fill="${tints[k]}" fill-opacity="0.6" stroke="none" ${lv(5400 + (x % 5) * 610, y * 37, 0)}/>`
         }
       }
       fade = 'fade-r'
@@ -858,7 +838,8 @@ summary small { color: var(--fg3); font-size: 13px; }
       for (let y = 22; y < 250; y += 22) {
         for (let x = 150; x < 410; x += 22) {
           const lit = (x * 7 + y * 3) % 5 === 0
-          body += `<circle cx="${x}" cy="${y}" r="${lit ? 3.2 : 2.2}" fill="${lit ? 'rgba(48, 209, 88, 0.55)' : 'rgba(255, 255, 255, 0.16)'}" stroke="none"/>`
+          // Live: the lit pins glow up and settle, each at its own pace.
+          body += `<circle cx="${x}" cy="${y}" r="${lit ? 3.2 : 2.2}" fill="${lit ? 'rgba(48, 209, 88, 0.55)' : 'rgba(255, 255, 255, 0.16)'}" stroke="none"${livePatterns && lit ? ` ${lv(4200 + (y % 4) * 700, x * 53, 0.45)}` : ''}/>`
         }
       }
       fade = 'fade-r'
@@ -868,8 +849,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     }
     // On a card the turning parts live in their own layer, not in the still pattern.
     if (livePatterns && (kind === 'orbits' || kind === 'guilloche')) body = ''
-    const drift = livePatterns && DRIFT[kind] ? ` ${DRIFT[kind]}` : ''
-    const still = `<svg class="pattern ${fade}${drift}"${drift ? ` style="${phase(kind === 'waves' ? 16000 : 22000)}"` : ''} viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs>${defs}</defs><g fill="none" stroke="${ink}" stroke-width="1">${body}</g></svg>`
+    const still = `<svg class="pattern ${fade}" viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs>${defs}</defs><g fill="none" stroke="${ink}" stroke-width="1">${body}</g></svg>`
     return livePatterns ? still + liveLayer(kind) : still
   }
   const short = name => name.split(':').pop()
@@ -1674,15 +1654,19 @@ summary small { color: var(--fg3); font-size: 13px; }
     m.to = { y, s: scale, o: opacity }
     clearTimeout(m.timer)
     if (!instant) moving(delay + 560)
-    const fade = opacity < 1 ? 240 : 340
+    // Cards are opaque objects: a half-faded card lets the one beneath show through and the two
+    // patterns cross. So a card is only see-through for a moment: a leaving card fades at once (even
+    // when its move waits for its turn) and a returning one is whole early in its move back.
+    const fade = opacity < 1 ? 140 : 110
+    const fadeDelay = opacity < 1 ? 0 : delay
     el.style.transition = instant ? 'none'
-      : `transform 520ms ${MOVE} ${delay}ms, opacity ${fade}ms var(--ease-out) ${delay}ms, scale 200ms var(--ease-out)`
+      : `transform 520ms ${MOVE} ${delay}ms, opacity ${fade}ms ${opacity < 1 ? 'ease-in' : 'ease-out'} ${fadeDelay}ms, scale 200ms var(--ease-out)`
     el.style.transform = `translate3d(0, ${y}px, 0)${scale !== 1 ? ` scale(${scale})` : ''}`
     el.style.opacity = opacity >= 1 ? '' : String(opacity)
-    // A card on its way out can still be caught until it has mostly faded.
+    // A card on its way out can still be caught until it has faded.
     clearTimeout(m.catchTimer)
     el.style.pointerEvents = instant && opacity < 1 ? 'none' : ''
-    if (!instant && opacity < 1) m.catchTimer = setTimeout(() => { el.style.pointerEvents = 'none' }, delay + fade / 2)
+    if (!instant && opacity < 1) m.catchTimer = setTimeout(() => { el.style.pointerEvents = 'none' }, fade)
     // Commit the jump before the next glide starts from it (style only, no layout).
     if (instant) getComputedStyle(el).transform
     if (onSettle) m.timer = setTimeout(onSettle, instant ? 0 : delay + (opacity < 1 ? fade : 520))
@@ -1695,7 +1679,7 @@ summary small { color: var(--fg3); font-size: 13px; }
     const hidden = getComputedStyle(el).opacity < 0.05
     el.style.transition = !animate ? 'none'
       : show ? `transform 480ms ${MOVE} ${hidden ? 120 : 0}ms, opacity 360ms var(--ease-out) ${hidden ? 120 : 0}ms`
-      : 'transform 260ms var(--ease-out), opacity 180ms var(--ease-out)'
+      : 'transform 260ms var(--ease-out), opacity 90ms ease-in'
     el.style.transform = show ? 'none' : 'translate3d(0, 26px, 0)'
     el.style.opacity = show ? '1' : '0'
   }
@@ -1770,7 +1754,9 @@ summary small { color: var(--fg3); font-size: 13px; }
       cards.forEach((card, i) => {
         const el = cardEl(card)
         if (animate && motionOf(el).parked) place(el, stackY(i) + (el.dataset.away === 'up' ? -28 : 96), { opacity: 0, scale: 0.97, instant: true })
-        if (!keepPlaces) place(el, stackY(i), { instant: !animate, delay: after(i, from) })
+        // Cards that were away wait until the detail has mostly gone, so they never pass under its text.
+        const away = !!el.dataset.away
+        if (!keepPlaces) place(el, stackY(i), { instant: !animate, delay: animate && away ? Math.max(after(i, from), 50) : after(i, from) })
         delete el.dataset.away
         el.style.zIndex = i + 1
         el.removeAttribute('aria-hidden')
